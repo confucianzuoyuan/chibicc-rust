@@ -110,6 +110,11 @@ impl<R: Read> Lexer<R> {
                 b'0'..=b'9' => self.number(),
                 b'+' => self.simple_token(Tok::Plus),
                 b'-' => self.simple_token(Tok::Minus),
+                b'*' => self.simple_token(Tok::Star),
+                b'/' => self.simple_token(Tok::Slash),
+                b'(' => self.simple_token(Tok::LEFT_PAREN),
+                b')' => self.simple_token(Tok::RIGHT_PAREN),
+                b'\0' => self.simple_token(Tok::EndOfFile),
                 _ => {
                     let mut pos = self.current_pos();
                     pos.length = 1;

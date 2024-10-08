@@ -2,15 +2,22 @@ use std::{
     cmp::{max, min},
     fs::File,
     io::{self, Read, Seek, SeekFrom},
-    string,
 };
 
-use crate::{position::Pos, symbol::Symbols, terminal::Terminal};
+use crate::{position::Pos, symbol::Symbols, terminal::Terminal, token::Tok};
 
 #[derive(Clone, Debug)]
 pub enum Error {
     Msg(String),
-    InvalidToken { pos: Pos, start: char },
+    UnexpectedToken {
+        expected: String,
+        pos: Pos,
+        unexpected: Tok,
+    },
+    InvalidToken {
+        pos: Pos,
+        start: char,
+    },
     Eof,
 }
 
@@ -18,6 +25,20 @@ impl Error {
     pub fn show(&self, symbols: &Symbols<()>, terminal: &Terminal) -> io::Result<()> {
         match *self {
             Error::Msg(ref string) => eprintln!("{}", string),
+            Error::UnexpectedToken {
+                ref expected,
+                pos,
+                ref unexpected,
+            } => {
+                eprintln!(
+                    "Unexpected token {}, expecting {}{}",
+                    unexpected,
+                    expected,
+                    terminal.end_bold()
+                );
+                pos.show(symbols, terminal);
+                highlight_line(pos, symbols, terminal)?;
+            }
             Error::InvalidToken { pos, ref start } => {
                 eprintln!(
                     "Unexpected start of token `{}`{}",

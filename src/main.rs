@@ -1,52 +1,57 @@
-use std::{env, io::BufReader, rc::Rc};
+use std::{io::BufReader, rc::Rc};
 
+use codegen::CodeGenerator;
+use error::Error;
 use lexer::Lexer;
+use parser::Parser;
 use symbol::{Strings, Symbols};
-use token::{Tok, Token};
+use terminal::Terminal;
 
+mod ast;
+mod codegen;
 mod error;
 mod lexer;
+mod parser;
 mod position;
 mod symbol;
 mod terminal;
 mod token;
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
-    if args.len() != 2 {
-        panic!("{}: invalid number of arguments\n", args.first().unwrap());
-    }
-
     let strings = Rc::new(Strings::new());
-    let mut symbols: Symbols<()> = Symbols::new(Rc::clone(&strings));
-    let mut source_code = args.get(1).unwrap().clone();
-    if source_code.as_bytes().last().unwrap() == &b'\n' {
-        source_code.push_str("\n");
-    } else {
-        source_code.push_str("\n\0");
-    }
-    let file = BufReader::new(source_code.as_bytes());
-    let file_symbol = symbols.symbol("stdin");
-    let mut lexer = Lexer::new(file, file_symbol);
-
-    println!("  .globl main");
-    println!("main:");
-
-    // the first token must be a number
-    println!("  mov ${}, %rax", lexer.token().unwrap().token);
-
-    // ... followed by either `+ <number>` or `- <number>`.
-    loop {
-        match lexer.token() {
-            Ok(Token {
-                token: Tok::Plus, ..
-            }) => println!("  add ${}, %rax", lexer.token().unwrap().token),
-            Ok(Token {
-                token: Tok::Minus, ..
-            }) => println!("  sub ${}, %rax", lexer.token().unwrap().token),
-            _ => break,
+    let mut symbols = Symbols::new(Rc::clone(&strings));
+    if let Err(error) = drive(strings, &mut symbols) {
+        let terminal = Terminal::new();
+        if let Err(error) = error.show(&symbols, &terminal) {
+            eprintln!("Error printing errors: {}", error);
         }
     }
+}
 
-    println!("  ret");
+fn drive(strings: Rc<Strings>, symbols: &mut Symbols<()>) -> Result<(), Error> {
+    let mut args = std::env::args();
+    args.next();
+    if let Some(source_code) = args.next() {
+        let mut source_code = source_code.clone();
+        if source_code.as_bytes().last().unwrap() == &b'\n' {
+            source_code.push_str("\n");
+        } else {
+            source_code.push_str("\n\0");
+        }
+        let file = BufReader::new(source_code.as_bytes());
+        let file_symbol = symbols.symbol("stdin");
+        let lexer = Lexer::new(file, file_symbol);
+        let mut parser = Parser::new(lexer, symbols);
+        let ast = parser.parse()?;
+        let mut cg = CodeGenerator::new();
+
+        println!("  .globl main");
+        println!("main:");
+
+        cg.gen_expr(ast);
+        println!("  ret");
+
+        assert!(cg.depth == 0);
+    }
+    Ok(())
 }
