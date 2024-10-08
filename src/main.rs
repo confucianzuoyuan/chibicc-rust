@@ -20,7 +20,11 @@ fn main() {
     let strings = Rc::new(Strings::new());
     let mut symbols: Symbols<()> = Symbols::new(Rc::clone(&strings));
     let mut source_code = args.get(1).unwrap().clone();
-    source_code.push_str("\n\0");
+    if source_code.as_bytes().last().unwrap() == &b'\n' {
+        source_code.push_str("\n");
+    } else {
+        source_code.push_str("\n\0");
+    }
     let file = BufReader::new(source_code.as_bytes());
     let file_symbol = symbols.symbol("stdin");
     let mut lexer = Lexer::new(file, file_symbol);
