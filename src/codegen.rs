@@ -27,6 +27,8 @@ impl CodeGenerator {
                 println!("  neg %rax");
             }
             ast::Expr::Binary { left, op, right } => {
+                // 后序遍历
+                // 先遍历右子树，再遍历左子树，最后遍历根节点
                 self.gen_expr(*right);
                 self.push();
                 self.gen_expr(*left);
