@@ -7,6 +7,10 @@ pub enum Expr {
         op: BinaryOperatorWithPos,
         right: Box<ExprWithPos>,
     },
+    Unary {
+        op: UnaryOperatorWithPos,
+        expr: Box<ExprWithPos>,
+    },
     Number {
         value: i64,
     },
@@ -23,3 +27,10 @@ pub enum BinaryOperator {
 }
 
 pub type BinaryOperatorWithPos = WithPos<BinaryOperator>;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum UnaryOperator {
+    Neg,
+}
+
+pub type UnaryOperatorWithPos = WithPos<UnaryOperator>;

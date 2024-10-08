@@ -22,6 +22,10 @@ impl CodeGenerator {
     pub fn gen_expr(&mut self, ast: ast::ExprWithPos) {
         match ast.node {
             ast::Expr::Number { value } => println!("  mov ${}, %rax", value),
+            ast::Expr::Unary { expr, .. } => {
+                self.gen_expr(*expr);
+                println!("  neg %rax");
+            }
             ast::Expr::Binary { left, op, right } => {
                 self.gen_expr(*right);
                 self.push();

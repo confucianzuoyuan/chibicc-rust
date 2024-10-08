@@ -1,7 +1,7 @@
 use std::{io::Read, result};
 
 use crate::{
-    ast::{BinaryOperator, Expr, ExprWithPos},
+    ast::{BinaryOperator, Expr, ExprWithPos, UnaryOperator},
     error::Error::{self, UnexpectedToken},
     lexer::Lexer,
     position::WithPos,
@@ -92,9 +92,9 @@ impl<'a, R: Read> Parser<'a, R> {
         Ok(expr)
     }
 
-    // mul = primary ("*" primary | "/" primary)*
+    // mul = unary ("*" unary | "/" unary)*
     fn mul(&mut self) -> Result<ExprWithPos> {
-        let mut expr = self.primary()?;
+        let mut expr = self.unary()?;
 
         loop {
             let op = match self.peek_token() {
@@ -102,7 +102,7 @@ impl<'a, R: Read> Parser<'a, R> {
                 Ok(&Tok::Slash) => WithPos::new(BinaryOperator::Div, eat!(self, Slash)),
                 _ => break,
             };
-            let right = Box::new(self.primary()?);
+            let right = Box::new(self.unary()?);
             let pos = expr.pos.grow(right.pos);
             expr = WithPos::new(
                 Expr::Binary {
@@ -114,6 +114,30 @@ impl<'a, R: Read> Parser<'a, R> {
             );
         }
         Ok(expr)
+    }
+
+    // unary = ("+" | "-") unary
+    //       | primary
+    fn unary(&mut self) -> Result<ExprWithPos> {
+        match self.peek()?.token {
+            Plus => {
+                eat!(self, Plus);
+                Ok(self.unary()?)
+            }
+            Minus => {
+                let op = WithPos::new(UnaryOperator::Neg, eat!(self, Minus));
+                let expr = self.unary()?;
+                let pos = expr.pos.grow(expr.pos);
+                Ok(WithPos::new(
+                    Expr::Unary {
+                        op,
+                        expr: Box::new(expr),
+                    },
+                    pos,
+                ))
+            }
+            _ => self.primary(),
+        }
     }
 
     // primary = "(" expr ")" | num
