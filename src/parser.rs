@@ -7,7 +7,10 @@ use crate::{
     position::WithPos,
     symbol::Symbols,
     token::{
-        Tok::{self, Minus, Number, Plus, Slash, Star, LEFT_PAREN, RIGHT_PAREN},
+        Tok::{
+            self, BangEqual, EqualEqual, Greater, GreaterEqual, LeftParen, Lesser, LesserEqual,
+            Minus, Number, Plus, RightParen, Slash, Star,
+        },
         Token,
     },
 };
@@ -68,8 +71,63 @@ impl<'a, R: Read> Parser<'a, R> {
         }
     }
 
-    // expr = mul ("+" mul | "-" mul)*
+    // expr = equality
     fn expr(&mut self) -> Result<ExprWithPos> {
+        self.equality()
+    }
+
+    // equality = relational ("==" relational | "!=" relational)*
+    fn equality(&mut self) -> Result<ExprWithPos> {
+        let mut expr = self.relational()?;
+
+        loop {
+            let op = match self.peek_token() {
+                Ok(&Tok::EqualEqual) => WithPos::new(BinaryOperator::Eq, eat!(self, EqualEqual)),
+                Ok(&Tok::BangEqual) => WithPos::new(BinaryOperator::Ne, eat!(self, BangEqual)),
+                _ => break,
+            };
+            let right = Box::new(self.relational()?);
+            let pos = expr.pos.grow(right.pos);
+            expr = WithPos::new(
+                Expr::Binary {
+                    left: Box::new(expr),
+                    op,
+                    right,
+                },
+                pos,
+            );
+        }
+        Ok(expr)
+    }
+
+    // relational = add ("<" add | "<=" add | ">" add | ">=" add)*
+    fn relational(&mut self) -> Result<ExprWithPos> {
+        let mut expr = self.add()?;
+
+        loop {
+            let op = match self.peek_token() {
+                Ok(&Tok::Lesser) => WithPos::new(BinaryOperator::Lt, eat!(self, Lesser)),
+                Ok(&Tok::LesserEqual) => WithPos::new(BinaryOperator::Le, eat!(self, LesserEqual)),
+                Ok(&Tok::Greater) => WithPos::new(BinaryOperator::Gt, eat!(self, Greater)),
+                Ok(&Tok::GreaterEqual) => WithPos::new(BinaryOperator::Ge, eat!(self, GreaterEqual)),
+                _ => break,
+            };
+            let right = Box::new(self.add()?);
+            let pos = expr.pos.grow(right.pos);
+            expr = WithPos::new(
+                Expr::Binary {
+                    left: Box::new(expr),
+                    op,
+                    right,
+                },
+                pos,
+            );
+        }
+        Ok(expr)
+    }
+
+    // add = mul ("+" mul | "-" mul)*
+    fn add(&mut self) -> Result<ExprWithPos> {
         let mut expr = self.mul()?;
 
         loop {
@@ -143,10 +201,10 @@ impl<'a, R: Read> Parser<'a, R> {
     // primary = "(" expr ")" | num
     fn primary(&mut self) -> Result<ExprWithPos> {
         match self.peek()?.token {
-            LEFT_PAREN => {
-                eat!(self, LEFT_PAREN);
+            LeftParen => {
+                eat!(self, LeftParen);
                 let expr = self.expr()?;
-                eat!(self, RIGHT_PAREN);
+                eat!(self, RightParen);
                 Ok(expr)
             }
             Number(_) => {

@@ -39,6 +39,36 @@ impl CodeGenerator {
                         println!("  cqo");
                         println!("  idiv %rdi");
                     }
+                    ast::BinaryOperator::Eq => {
+                        println!("  cmp %rdi, %rax");
+                        println!("  sete %al");
+                        println!("  movzb %al, %rax");
+                    }
+                    ast::BinaryOperator::Ne => {
+                        println!("  cmp %rdi, %rax");
+                        println!("  setne %al");
+                        println!("  movzb %al, %rax");
+                    }
+                    ast::BinaryOperator::Lt => {
+                        println!("  cmp %rdi, %rax");
+                        println!("  setl %al");
+                        println!("  movzb %al, %rax");
+                    }
+                    ast::BinaryOperator::Le => {
+                        println!("  cmp %rdi, %rax");
+                        println!("  setle %al");
+                        println!("  movzb %al, %rax");
+                    }
+                    ast::BinaryOperator::Gt => {
+                        println!("  cmp %rdi, %rax");
+                        println!("  setg %al");
+                        println!("  movzb %al, %rax");
+                    }
+                    ast::BinaryOperator::Ge => {
+                        println!("  cmp %rdi, %rax");
+                        println!("  setge %al");
+                        println!("  movzb %al, %rax");
+                    }
                 }
             }
         }

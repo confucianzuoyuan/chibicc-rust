@@ -4,12 +4,20 @@ use crate::position::Pos;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Tok {
-    LEFT_PAREN,
-    RIGHT_PAREN,
+    LeftParen,
+    RightParen,
     Plus,
     Minus,
     Star,
     Slash,
+    Equal,
+    EqualEqual,
+    Bang,
+    BangEqual,
+    Lesser,
+    LesserEqual,
+    Greater,
+    GreaterEqual,
     Number(i64),
     EndOfFile,
 }
@@ -24,12 +32,20 @@ impl Display for Tok {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let string = (|| {
             let string = match *self {
-                Tok::LEFT_PAREN => "(",
-                Tok::RIGHT_PAREN => ")",
+                Tok::LeftParen => "(",
+                Tok::RightParen => ")",
                 Tok::Plus => "+",
                 Tok::Minus => "-",
                 Tok::Star => "*",
                 Tok::Slash => "/",
+                Tok::Equal => "=",
+                Tok::EqualEqual => "==",
+                Tok::Bang => "!",
+                Tok::BangEqual => "!=",
+                Tok::Greater => ">",
+                Tok::GreaterEqual => ">=",
+                Tok::Lesser => "<",
+                Tok::LesserEqual => "<=",
                 Tok::Number(i) => return i.to_string(),
                 Tok::EndOfFile => "<eof>",
             };

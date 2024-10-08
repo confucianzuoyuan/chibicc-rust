@@ -24,6 +24,12 @@ pub enum BinaryOperator {
     Sub,
     Mul,
     Div,
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
 }
 
 pub type BinaryOperatorWithPos = WithPos<BinaryOperator>;

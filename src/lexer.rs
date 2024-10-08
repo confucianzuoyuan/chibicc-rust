@@ -100,6 +100,22 @@ impl<R: Read> Lexer<R> {
         Ok(buffer)
     }
 
+    fn greater_or_greater_equal(&mut self) -> Result<Token> {
+        self.two_char_token(vec![('=', Tok::GreaterEqual)], Tok::Greater)
+    }
+
+    fn lesser_or_lesser_equal(&mut self) -> Result<Token> {
+        self.two_char_token(vec![('=', Tok::LesserEqual)], Tok::Lesser)
+    }
+
+    fn bang_or_bang_equal(&mut self) -> Result<Token> {
+        self.two_char_token(vec![('=', Tok::BangEqual)], Tok::Bang)
+    }
+
+    fn equal_or_equal_equal(&mut self) -> Result<Token> {
+        self.two_char_token(vec![('=', Tok::EqualEqual)], Tok::Equal)
+    }
+
     pub fn token(&mut self) -> Result<Token> {
         if let Some(&Ok(ch)) = self.bytes_iter.peek() {
             return match ch {
@@ -112,8 +128,12 @@ impl<R: Read> Lexer<R> {
                 b'-' => self.simple_token(Tok::Minus),
                 b'*' => self.simple_token(Tok::Star),
                 b'/' => self.simple_token(Tok::Slash),
-                b'(' => self.simple_token(Tok::LEFT_PAREN),
-                b')' => self.simple_token(Tok::RIGHT_PAREN),
+                b'(' => self.simple_token(Tok::LeftParen),
+                b')' => self.simple_token(Tok::RightParen),
+                b'>' => self.greater_or_greater_equal(),
+                b'<' => self.lesser_or_lesser_equal(),
+                b'!' => self.bang_or_bang_equal(),
+                b'=' => self.equal_or_equal_equal(),
                 b'\0' => self.simple_token(Tok::EndOfFile),
                 _ => {
                     let mut pos = self.current_pos();
@@ -137,5 +157,30 @@ impl<R: Read> Lexer<R> {
                 })
             }
         }
+    }
+
+    fn two_char_token(&mut self, tokens: Vec<(char, Tok)>, default: Tok) -> Result<Token> {
+        self.save_start();
+        self.advance()?;
+        let token = match self.bytes_iter.peek() {
+            Some(&Ok(byte)) => {
+                let mut token = None;
+                let next_char = byte as char;
+                for (ch, tok) in tokens {
+                    if ch == next_char {
+                        token = Some(tok);
+                    }
+                }
+                token
+            }
+            _ => None,
+        };
+        let (token, len) = if let Some(token) = token {
+            self.advance()?;
+            (token, 2)
+        } else {
+            (default, 1)
+        };
+        self.make_token(token, len)
     }
 }
