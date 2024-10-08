@@ -45,13 +45,7 @@ fn drive(strings: Rc<Strings>, symbols: &mut Symbols<()>) -> Result<(), Error> {
         let ast = parser.parse()?;
         let mut cg = CodeGenerator::new();
 
-        println!("  .globl main");
-        println!("main:");
-
-        cg.gen_expr(ast);
-        println!("  ret");
-
-        assert!(cg.depth == 0);
+        cg.codegen(ast);
     }
     Ok(())
 }

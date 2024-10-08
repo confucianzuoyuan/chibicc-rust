@@ -134,6 +134,7 @@ impl<R: Read> Lexer<R> {
                 b'<' => self.lesser_or_lesser_equal(),
                 b'!' => self.bang_or_bang_equal(),
                 b'=' => self.equal_or_equal_equal(),
+                b';' => self.simple_token(Tok::Semicolon),
                 b'\0' => self.simple_token(Tok::EndOfFile),
                 _ => {
                     let mut pos = self.current_pos();

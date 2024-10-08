@@ -40,3 +40,12 @@ pub enum UnaryOperator {
 }
 
 pub type UnaryOperatorWithPos = WithPos<UnaryOperator>;
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Stmt {
+    ExprStmt { expr: ExprWithPos },
+}
+
+pub type StmtWithPos = WithPos<Stmt>;
+
+pub type Program = Vec<StmtWithPos>;

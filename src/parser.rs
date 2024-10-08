@@ -1,7 +1,7 @@
 use std::{io::Read, result};
 
 use crate::{
-    ast::{BinaryOperator, Expr, ExprWithPos, UnaryOperator},
+    ast::{BinaryOperator, Expr, ExprWithPos, Program, Stmt, StmtWithPos, UnaryOperator},
     error::Error::{self, UnexpectedToken},
     lexer::Lexer,
     position::WithPos,
@@ -9,7 +9,7 @@ use crate::{
     token::{
         Tok::{
             self, BangEqual, EqualEqual, Greater, GreaterEqual, LeftParen, Lesser, LesserEqual,
-            Minus, Number, Plus, RightParen, Slash, Star,
+            Minus, Number, Plus, RightParen, Semicolon, Slash, Star,
         },
         Token,
     },
@@ -71,6 +71,18 @@ impl<'a, R: Read> Parser<'a, R> {
         }
     }
 
+    // stmt = expr-stmt
+    fn stmt(&mut self) -> Result<StmtWithPos> {
+        self.expr_stmt()
+    }
+
+    // expr-stmt = expr ";"
+    fn expr_stmt(&mut self) -> Result<StmtWithPos> {
+        let expr = self.expr()?;
+        let pos = eat!(self, Semicolon);
+        Ok(WithPos::new(Stmt::ExprStmt { expr }, pos))
+    }
+
     // expr = equality
     fn expr(&mut self) -> Result<ExprWithPos> {
         self.equality()
@@ -109,7 +121,9 @@ impl<'a, R: Read> Parser<'a, R> {
                 Ok(&Tok::Lesser) => WithPos::new(BinaryOperator::Lt, eat!(self, Lesser)),
                 Ok(&Tok::LesserEqual) => WithPos::new(BinaryOperator::Le, eat!(self, LesserEqual)),
                 Ok(&Tok::Greater) => WithPos::new(BinaryOperator::Gt, eat!(self, Greater)),
-                Ok(&Tok::GreaterEqual) => WithPos::new(BinaryOperator::Ge, eat!(self, GreaterEqual)),
+                Ok(&Tok::GreaterEqual) => {
+                    WithPos::new(BinaryOperator::Ge, eat!(self, GreaterEqual))
+                }
                 _ => break,
             };
             let right = Box::new(self.add()?);
@@ -244,15 +258,19 @@ impl<'a, R: Read> Parser<'a, R> {
         })
     }
 
-    pub fn parse(&mut self) -> Result<ExprWithPos> {
-        let expr = self.expr()?;
-        match self.token() {
-            Ok(Token {
-                token: Tok::EndOfFile,
-                ..
-            })
-            | Err(Error::Eof) => Ok(expr),
-            _ => Err(self.unexpected_token("end of file")?),
+    // program = stmt*
+    pub fn parse(&mut self) -> Result<Program> {
+        let mut program = vec![];
+        loop {
+            match self.peek() {
+                Ok(Token {
+                    token: Tok::EndOfFile,
+                    ..
+                })
+                | Err(Error::Eof) => break,
+                _ => program.push(self.stmt()?),
+            }
         }
+        Ok(program)
     }
 }

@@ -1,7 +1,7 @@
 use crate::ast;
 
 pub struct CodeGenerator {
-    pub depth: u32,
+    depth: u32,
 }
 
 impl CodeGenerator {
@@ -19,7 +19,13 @@ impl CodeGenerator {
         self.depth -= 1;
     }
 
-    pub fn gen_expr(&mut self, ast: ast::ExprWithPos) {
+    fn gen_stmt(&mut self, ast: ast::StmtWithPos) {
+        match ast.node {
+            ast::Stmt::ExprStmt { expr } => self.gen_expr(expr),
+        }
+    }
+
+    fn gen_expr(&mut self, ast: ast::ExprWithPos) {
         match ast.node {
             ast::Expr::Number { value } => println!("  mov ${}, %rax", value),
             ast::Expr::Unary { expr, .. } => {
@@ -74,5 +80,17 @@ impl CodeGenerator {
                 }
             }
         }
+    }
+
+    pub fn codegen(&mut self, ast: ast::Program) {
+        println!("  .globl main");
+        println!("main:");
+
+        for n in ast {
+            self.gen_stmt(n);
+            assert!(self.depth == 0);
+        }
+
+        println!("  ret");
     }
 }
