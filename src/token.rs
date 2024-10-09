@@ -21,6 +21,9 @@ pub enum Tok {
     Semicolon,
     Number(i64),
     Ident(String),
+
+    KeywordReturn,
+
     EndOfFile,
 }
 
@@ -51,6 +54,7 @@ impl Display for Tok {
                 Tok::Semicolon => ";",
                 Tok::Number(i) => return i.to_string(),
                 Tok::Ident(ref ident) => ident,
+                Tok::KeywordReturn => "return",
                 Tok::EndOfFile => "<eof>",
             };
             string.to_string()

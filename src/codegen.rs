@@ -31,6 +31,10 @@ impl CodeGenerator {
     fn gen_stmt(&mut self, ast: &ast::StmtWithPos) {
         match &ast.node {
             ast::Stmt::ExprStmt { expr } => self.gen_expr(expr),
+            ast::Stmt::Return { expr } => {
+                self.gen_expr(expr);
+                println!("  jmp .L.return");
+            }
         }
     }
 
@@ -133,6 +137,7 @@ impl CodeGenerator {
             assert!(self.depth == 0);
         }
 
+        println!(".L.return:");
         println!("  mov %rbp, %rsp");
         println!("  pop %rbp");
         println!("  ret");

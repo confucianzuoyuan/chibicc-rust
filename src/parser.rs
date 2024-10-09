@@ -10,8 +10,9 @@ use crate::{
     symbol::Symbols,
     token::{
         Tok::{
-            self, BangEqual, Equal, EqualEqual, Greater, GreaterEqual, Ident, LeftParen, Lesser,
-            LesserEqual, Minus, Number, Plus, RightParen, Semicolon, Slash, Star,
+            self, BangEqual, Equal, EqualEqual, Greater, GreaterEqual, Ident, KeywordReturn,
+            LeftParen, Lesser, LesserEqual, Minus, Number, Plus, RightParen, Semicolon, Slash,
+            Star,
         },
         Token,
     },
@@ -77,9 +78,19 @@ impl<'a, R: Read> Parser<'a, R> {
         }
     }
 
-    // stmt = expr-stmt
+    /// stmt = "return" expr ";"
+    ///      | expr-stmt
     fn stmt(&mut self) -> Result<StmtWithPos> {
-        self.expr_stmt()
+        match self.peek()?.token {
+            Tok::KeywordReturn => {
+                let pos = eat!(self, KeywordReturn);
+                let expr = self.expr()?;
+                let node = WithPos::new(Stmt::Return { expr }, pos);
+                eat!(self, Semicolon);
+                Ok(node)
+            }
+            _ => self.expr_stmt(),
+        }
     }
 
     // expr-stmt = expr ";"
