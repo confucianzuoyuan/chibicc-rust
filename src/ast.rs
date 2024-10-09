@@ -53,6 +53,7 @@ pub enum Stmt {
     ExprStmt { expr: ExprWithPos },
     Return { expr: ExprWithPos },
     Block { body: Vec<StmtWithPos> },
+    NullStmt,
 }
 
 pub type StmtWithPos = WithPos<Stmt>;

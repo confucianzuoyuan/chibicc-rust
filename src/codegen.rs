@@ -40,6 +40,7 @@ impl CodeGenerator {
                     self.gen_stmt(n);
                 }
             }
+            ast::Stmt::NullStmt => (),
         }
     }
 

@@ -112,11 +112,19 @@ impl<'a, R: Read> Parser<'a, R> {
         Ok(WithPos::new(Stmt::Block { body: stmts }, pos))
     }
 
-    // expr-stmt = expr ";"
+    /// expr-stmt = expr? ";"
     fn expr_stmt(&mut self) -> Result<StmtWithPos> {
-        let expr = self.expr()?;
-        let pos = eat!(self, Semicolon);
-        Ok(WithPos::new(Stmt::ExprStmt { expr }, pos))
+        match self.peek()?.token {
+            Tok::Semicolon => {
+                let pos = eat!(self, Semicolon);
+                Ok(WithPos::new(Stmt::NullStmt, pos))
+            }
+            _ => {
+                let expr = self.expr()?;
+                let pos = eat!(self, Semicolon);
+                Ok(WithPos::new(Stmt::ExprStmt { expr }, pos))
+            }
+        }
     }
 
     // expr = assign
