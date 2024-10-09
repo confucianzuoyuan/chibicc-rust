@@ -120,6 +120,8 @@ impl<R: Read> Lexer<R> {
         let ident = self.take_while(|ch| ch.is_alphanumeric() || ch == '_')?;
         let len = ident.len();
         let token = match ident.as_str() {
+            "if" => Tok::KeywordIf,
+            "else" => Tok::KeywordElse,
             "return" => Tok::KeywordReturn,
             _ => Tok::Ident(ident),
         };

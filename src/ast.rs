@@ -50,10 +50,21 @@ pub type UnaryOperatorWithPos = WithPos<UnaryOperator>;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Stmt {
-    ExprStmt { expr: ExprWithPos },
-    Return { expr: ExprWithPos },
-    Block { body: Vec<StmtWithPos> },
+    ExprStmt {
+        expr: ExprWithPos,
+    },
+    Return {
+        expr: ExprWithPos,
+    },
+    Block {
+        body: Vec<StmtWithPos>,
+    },
     NullStmt,
+    IfStmt {
+        condition: ExprWithPos,
+        then_clause: Box<StmtWithPos>,
+        else_clause: Option<Box<StmtWithPos>>,
+    },
 }
 
 pub type StmtWithPos = WithPos<Stmt>;

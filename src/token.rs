@@ -25,6 +25,8 @@ pub enum Tok {
     Ident(String),
 
     KeywordReturn,
+    KeywordIf,
+    KeywordElse,
 
     EndOfFile,
 }
@@ -59,6 +61,8 @@ impl Display for Tok {
                 Tok::Number(i) => return i.to_string(),
                 Tok::Ident(ref ident) => ident,
                 Tok::KeywordReturn => "return",
+                Tok::KeywordIf => "if",
+                Tok::KeywordElse => "else",
                 Tok::EndOfFile => "<eof>",
             };
             string.to_string()

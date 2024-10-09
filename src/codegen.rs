@@ -2,11 +2,15 @@ use crate::ast;
 
 pub struct CodeGenerator {
     depth: u32,
+    label_count: u32,
 }
 
 impl CodeGenerator {
     pub fn new() -> Self {
-        CodeGenerator { depth: 0 }
+        CodeGenerator {
+            depth: 0,
+            label_count: 1,
+        }
     }
 
     fn push(&mut self) {
@@ -41,6 +45,24 @@ impl CodeGenerator {
                 }
             }
             ast::Stmt::NullStmt => (),
+            ast::Stmt::IfStmt {
+                condition,
+                then_clause,
+                else_clause,
+            } => {
+                let c = self.label_count;
+                self.label_count += 1;
+                self.gen_expr(condition);
+                println!("  cmp $0, %rax");
+                println!("  je .L.else.{}", c);
+                self.gen_stmt(&then_clause);
+                println!("  jmp .L.end.{}", c);
+                println!(".L.else.{}:", c);
+                if let Some(els) = else_clause {
+                    self.gen_stmt(els);
+                }
+                println!(".L.end.{}:", c);
+            }
         }
     }
 

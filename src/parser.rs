@@ -10,9 +10,9 @@ use crate::{
     symbol::Symbols,
     token::{
         Tok::{
-            self, BangEqual, Equal, EqualEqual, Greater, GreaterEqual, Ident, KeywordReturn,
-            LeftBrace, LeftParen, Lesser, LesserEqual, Minus, Number, Plus, RightBrace, RightParen,
-            Semicolon, Slash, Star,
+            self, BangEqual, Equal, EqualEqual, Greater, GreaterEqual, Ident, KeywordElse,
+            KeywordIf, KeywordReturn, LeftBrace, LeftParen, Lesser, LesserEqual, Minus, Number,
+            Plus, RightBrace, RightParen, Semicolon, Slash, Star,
         },
         Token,
     },
@@ -79,6 +79,7 @@ impl<'a, R: Read> Parser<'a, R> {
     }
 
     /// stmt = "return" expr ";"
+    ///      | "if" "(" expr ")" stmt ("else" stmt)?
     ///      | "{" compound-stmt
     ///      | expr-stmt
     fn stmt(&mut self) -> Result<StmtWithPos> {
@@ -94,6 +95,32 @@ impl<'a, R: Read> Parser<'a, R> {
                 let stmt = self.compound_stmt()?;
                 eat!(self, RightBrace);
                 Ok(stmt)
+            }
+            Tok::KeywordIf => {
+                let pos = eat!(self, KeywordIf);
+                eat!(self, LeftParen);
+                let condition = self.expr()?;
+                eat!(self, RightParen);
+                let then_clause = self.stmt()?;
+                let else_clause = match self.peek()?.token {
+                    Tok::KeywordElse => {
+                        eat!(self, KeywordElse);
+                        Some(self.stmt()?)
+                    }
+                    _ => None,
+                };
+                Ok(WithPos::new(
+                    Stmt::IfStmt {
+                        condition,
+                        then_clause: Box::new(then_clause),
+                        else_clause: if let Some(els) = else_clause {
+                            Some(Box::new(els))
+                        } else {
+                            None
+                        },
+                    },
+                    pos,
+                ))
             }
             _ => self.expr_stmt(),
         }
