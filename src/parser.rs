@@ -10,7 +10,7 @@ use crate::{
     symbol::Symbols,
     token::{
         Tok::{
-            self, BangEqual, Equal, EqualEqual, Greater, GreaterEqual, Ident, KeywordElse,
+            self, Amp, BangEqual, Equal, EqualEqual, Greater, GreaterEqual, Ident, KeywordElse,
             KeywordFor, KeywordIf, KeywordReturn, KeywordWhile, LeftBrace, LeftParen, Lesser,
             LesserEqual, Minus, Number, Plus, RightBrace, RightParen, Semicolon, Slash, Star,
         },
@@ -327,7 +327,7 @@ impl<'a, R: Read> Parser<'a, R> {
         Ok(expr)
     }
 
-    /// unary = ("+" | "-") unary
+    /// unary = ("+" | "-" | "*" | "&") unary
     ///       | primary
     fn unary(&mut self) -> Result<ExprWithPos> {
         match self.peek()?.token {
@@ -346,6 +346,16 @@ impl<'a, R: Read> Parser<'a, R> {
                     },
                     pos,
                 ))
+            }
+            Amp => {
+                let pos = eat!(self, Amp);
+                let expr = self.unary()?;
+                Ok(WithPos::new(Expr::Addr(Box::new(expr)), pos))
+            }
+            Star => {
+                let pos = eat!(self, Star);
+                let expr = self.unary()?;
+                Ok(WithPos::new(Expr::Deref(Box::new(expr)), pos))
             }
             _ => self.primary(),
         }

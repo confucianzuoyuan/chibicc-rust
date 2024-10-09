@@ -21,6 +21,8 @@ pub enum Expr {
         r_value: Box<ExprWithPos>,
     },
     Variable(Rc<RefCell<Obj>>),
+    Deref(Box<ExprWithPos>),
+    Addr(Box<ExprWithPos>),
 }
 
 pub type ExprWithPos = WithPos<Expr>;

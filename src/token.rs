@@ -21,6 +21,7 @@ pub enum Tok {
     Greater,
     GreaterEqual,
     Semicolon,
+    Amp,
     Number(i64),
     Ident(String),
 
@@ -60,6 +61,7 @@ impl Display for Tok {
                 Tok::Lesser => "<",
                 Tok::LesserEqual => "<=",
                 Tok::Semicolon => ";",
+                Tok::Amp => "&",
                 Tok::Number(i) => return i.to_string(),
                 Tok::Ident(ref ident) => ident,
                 Tok::KeywordReturn => "return",

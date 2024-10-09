@@ -24,10 +24,12 @@ impl CodeGenerator {
     }
 
     fn gen_addr(&mut self, ast: &ast::ExprWithPos) {
+        eprintln!("{:?}", ast);
         match &ast.node {
             ast::Expr::Variable(obj) => {
                 println!("  lea {}(%rbp), %rax", obj.borrow_mut().offset);
             }
+            ast::Expr::Deref(expr) => self.gen_expr(expr),
             _ => panic!("not an lvalue"),
         }
     }
@@ -63,7 +65,12 @@ impl CodeGenerator {
                 }
                 println!(".L.end.{}:", c);
             }
-            ast::Stmt::ForStmt { init, condition, body, increment } => {
+            ast::Stmt::ForStmt {
+                init,
+                condition,
+                body,
+                increment,
+            } => {
                 let c = self.label_count;
                 self.label_count += 1;
                 self.gen_stmt(init);
@@ -111,6 +118,13 @@ impl CodeGenerator {
                 self.gen_expr(r_value);
                 self.pop("%rdi".to_string());
                 println!("  mov %rax, (%rdi)");
+            }
+            ast::Expr::Deref(expr) => {
+                self.gen_expr(expr);
+                println!("  mov (%rax), %rax");
+            }
+            ast::Expr::Addr(expr) => {
+                self.gen_addr(expr);
             }
             ast::Expr::Binary { left, op, right } => {
                 // 后序遍历
@@ -170,7 +184,8 @@ impl CodeGenerator {
 
     fn assign_lvar_offsets(&mut self, ast: &mut ast::Program) {
         let mut offset = 0;
-        for local in &mut ast.locals {
+        use itertools::Itertools;
+        for local in &mut ast.locals.iter().sorted_by_key(|x| x.0).rev() {
             offset += 8;
             local.1.borrow_mut().offset = -offset;
         }
