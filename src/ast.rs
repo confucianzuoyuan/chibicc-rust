@@ -65,6 +65,12 @@ pub enum Stmt {
         then_clause: Box<StmtWithPos>,
         else_clause: Option<Box<StmtWithPos>>,
     },
+    ForStmt {
+        init: Box<StmtWithPos>,
+        condition: Option<ExprWithPos>,
+        body: Box<StmtWithPos>,
+        increment: Option<ExprWithPos>,
+    },
 }
 
 pub type StmtWithPos = WithPos<Stmt>;

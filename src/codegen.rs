@@ -63,6 +63,23 @@ impl CodeGenerator {
                 }
                 println!(".L.end.{}:", c);
             }
+            ast::Stmt::ForStmt { init, condition, body, increment } => {
+                let c = self.label_count;
+                self.label_count += 1;
+                self.gen_stmt(init);
+                println!(".L.begin.{}:", c);
+                if let Some(cond) = condition {
+                    self.gen_expr(cond);
+                    println!("  cmp $0, %rax");
+                    println!("  je .L.end.{}", c);
+                }
+                self.gen_stmt(body);
+                if let Some(inc) = increment {
+                    self.gen_expr(inc);
+                }
+                println!("  jmp .L.begin.{}", c);
+                println!(".L.end.{}:", c);
+            }
         }
     }
 

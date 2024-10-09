@@ -11,8 +11,8 @@ use crate::{
     token::{
         Tok::{
             self, BangEqual, Equal, EqualEqual, Greater, GreaterEqual, Ident, KeywordElse,
-            KeywordIf, KeywordReturn, LeftBrace, LeftParen, Lesser, LesserEqual, Minus, Number,
-            Plus, RightBrace, RightParen, Semicolon, Slash, Star,
+            KeywordFor, KeywordIf, KeywordReturn, LeftBrace, LeftParen, Lesser, LesserEqual, Minus,
+            Number, Plus, RightBrace, RightParen, Semicolon, Slash, Star,
         },
         Token,
     },
@@ -80,6 +80,7 @@ impl<'a, R: Read> Parser<'a, R> {
 
     /// stmt = "return" expr ";"
     ///      | "if" "(" expr ")" stmt ("else" stmt)?
+    ///      | "for" "(" expr-stmt expr? ";" expr? ")" stmt
     ///      | "{" compound-stmt
     ///      | expr-stmt
     fn stmt(&mut self) -> Result<StmtWithPos> {
@@ -118,6 +119,38 @@ impl<'a, R: Read> Parser<'a, R> {
                         } else {
                             None
                         },
+                    },
+                    pos,
+                ))
+            }
+            Tok::KeywordFor => {
+                let pos = eat!(self, KeywordFor);
+                eat!(self, LeftParen);
+
+                let init = self.expr_stmt()?;
+
+                let cond = match self.peek()?.token {
+                    Tok::Semicolon => None,
+                    _ => Some(self.expr()?),
+                };
+
+                eat!(self, Semicolon);
+
+                let inc = match self.peek()?.token {
+                    Tok::RightParen => None,
+                    _ => Some(self.expr()?),
+                };
+
+                eat!(self, RightParen);
+
+                let body = self.stmt()?;
+
+                Ok(WithPos::new(
+                    Stmt::ForStmt {
+                        init: Box::new(init),
+                        condition: cond,
+                        body: Box::new(body),
+                        increment: inc,
                     },
                     pos,
                 ))
