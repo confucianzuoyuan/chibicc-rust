@@ -202,12 +202,12 @@ impl<'a, R: Read> Parser<'a, R> {
         }
     }
 
-    // expr = assign
+    /// expr = assign
     fn expr(&mut self) -> Result<ExprWithPos> {
         self.assign()
     }
 
-    // assign = equality ("=" assign)?
+    /// assign = equality ("=" assign)?
     fn assign(&mut self) -> Result<ExprWithPos> {
         let mut expr = self.equality()?;
         match self.peek()?.token {
@@ -227,7 +227,7 @@ impl<'a, R: Read> Parser<'a, R> {
         Ok(expr)
     }
 
-    // equality = relational ("==" relational | "!=" relational)*
+    /// equality = relational ("==" relational | "!=" relational)*
     fn equality(&mut self) -> Result<ExprWithPos> {
         let mut expr = self.relational()?;
 
@@ -251,7 +251,7 @@ impl<'a, R: Read> Parser<'a, R> {
         Ok(expr)
     }
 
-    // relational = add ("<" add | "<=" add | ">" add | ">=" add)*
+    /// relational = add ("<" add | "<=" add | ">" add | ">=" add)*
     fn relational(&mut self) -> Result<ExprWithPos> {
         let mut expr = self.add()?;
 
@@ -279,7 +279,7 @@ impl<'a, R: Read> Parser<'a, R> {
         Ok(expr)
     }
 
-    // add = mul ("+" mul | "-" mul)*
+    /// add = mul ("+" mul | "-" mul)*
     fn add(&mut self) -> Result<ExprWithPos> {
         let mut expr = self.mul()?;
 
@@ -303,7 +303,7 @@ impl<'a, R: Read> Parser<'a, R> {
         Ok(expr)
     }
 
-    // mul = unary ("*" unary | "/" unary)*
+    /// mul = unary ("*" unary | "/" unary)*
     fn mul(&mut self) -> Result<ExprWithPos> {
         let mut expr = self.unary()?;
 
@@ -327,8 +327,8 @@ impl<'a, R: Read> Parser<'a, R> {
         Ok(expr)
     }
 
-    // unary = ("+" | "-") unary
-    //       | primary
+    /// unary = ("+" | "-") unary
+    ///       | primary
     fn unary(&mut self) -> Result<ExprWithPos> {
         match self.peek()?.token {
             Plus => {
@@ -351,7 +351,7 @@ impl<'a, R: Read> Parser<'a, R> {
         }
     }
 
-    // primary = "(" expr ")" | ident | num
+    /// primary = "(" expr ")" | ident | num
     fn primary(&mut self) -> Result<ExprWithPos> {
         match self.peek()?.token {
             LeftParen => {
@@ -412,7 +412,7 @@ impl<'a, R: Read> Parser<'a, R> {
         })
     }
 
-    // program = stmt*
+    /// program = stmt*
     pub fn parse(&mut self) -> Result<Program> {
         let mut stmts = vec![];
         loop {
