@@ -11,8 +11,8 @@ use crate::{
     token::{
         Tok::{
             self, BangEqual, Equal, EqualEqual, Greater, GreaterEqual, Ident, KeywordReturn,
-            LeftParen, Lesser, LesserEqual, Minus, Number, Plus, RightParen, Semicolon, Slash,
-            Star,
+            LeftBrace, LeftParen, Lesser, LesserEqual, Minus, Number, Plus, RightBrace, RightParen,
+            Semicolon, Slash, Star,
         },
         Token,
     },
@@ -79,6 +79,7 @@ impl<'a, R: Read> Parser<'a, R> {
     }
 
     /// stmt = "return" expr ";"
+    ///      | "{" compound-stmt
     ///      | expr-stmt
     fn stmt(&mut self) -> Result<StmtWithPos> {
         match self.peek()?.token {
@@ -89,8 +90,26 @@ impl<'a, R: Read> Parser<'a, R> {
                 eat!(self, Semicolon);
                 Ok(node)
             }
+            Tok::LeftBrace => {
+                let stmt = self.compound_stmt()?;
+                eat!(self, RightBrace);
+                Ok(stmt)
+            }
             _ => self.expr_stmt(),
         }
+    }
+
+    /// compound-stmt = stmt* "}"
+    fn compound_stmt(&mut self) -> Result<StmtWithPos> {
+        let pos = eat!(self, LeftBrace);
+        let mut stmts = vec![];
+        loop {
+            match self.peek()?.token {
+                Tok::RightBrace => break,
+                _ => stmts.push(self.stmt()?),
+            }
+        }
+        Ok(WithPos::new(Stmt::Block { body: stmts }, pos))
     }
 
     // expr-stmt = expr ";"

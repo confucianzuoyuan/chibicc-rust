@@ -52,6 +52,7 @@ pub type UnaryOperatorWithPos = WithPos<UnaryOperator>;
 pub enum Stmt {
     ExprStmt { expr: ExprWithPos },
     Return { expr: ExprWithPos },
+    Block { body: Vec<StmtWithPos> },
 }
 
 pub type StmtWithPos = WithPos<Stmt>;

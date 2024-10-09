@@ -35,6 +35,11 @@ impl CodeGenerator {
                 self.gen_expr(expr);
                 println!("  jmp .L.return");
             }
+            ast::Stmt::Block { body } => {
+                for n in body {
+                    self.gen_stmt(n);
+                }
+            }
         }
     }
 

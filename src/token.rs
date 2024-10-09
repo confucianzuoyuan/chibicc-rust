@@ -6,6 +6,8 @@ use crate::position::Pos;
 pub enum Tok {
     LeftParen,
     RightParen,
+    LeftBrace,
+    RightBrace,
     Plus,
     Minus,
     Star,
@@ -39,6 +41,8 @@ impl Display for Tok {
             let string = match *self {
                 Tok::LeftParen => "(",
                 Tok::RightParen => ")",
+                Tok::LeftBrace => "{",
+                Tok::RightBrace => "}",
                 Tok::Plus => "+",
                 Tok::Minus => "-",
                 Tok::Star => "*",
