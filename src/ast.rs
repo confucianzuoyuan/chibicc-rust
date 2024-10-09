@@ -1,3 +1,5 @@
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
+
 use crate::position::WithPos;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -18,9 +20,7 @@ pub enum Expr {
         l_value: Box<ExprWithPos>,
         r_value: Box<ExprWithPos>,
     },
-    Variable {
-        name: String,
-    },
+    Variable(Rc<RefCell<Obj>>),
 }
 
 pub type ExprWithPos = WithPos<Expr>;
@@ -55,4 +55,17 @@ pub enum Stmt {
 
 pub type StmtWithPos = WithPos<Stmt>;
 
-pub type Program = Vec<StmtWithPos>;
+pub type Program = Function;
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Obj {
+    pub name: String,
+    pub offset: i32,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Function {
+    pub body: Vec<StmtWithPos>,
+    pub locals: HashMap<String, Rc<RefCell<Obj>>>,
+    pub stack_size: i32,
+}

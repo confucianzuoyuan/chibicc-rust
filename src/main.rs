@@ -42,10 +42,10 @@ fn drive(strings: Rc<Strings>, symbols: &mut Symbols<()>) -> Result<(), Error> {
         let file_symbol = symbols.symbol("stdin");
         let lexer = Lexer::new(file, file_symbol);
         let mut parser = Parser::new(lexer, symbols);
-        let ast = parser.parse()?;
+        let mut ast = parser.parse()?;
         let mut cg = CodeGenerator::new();
 
-        cg.codegen(ast);
+        cg.codegen(&mut ast);
     }
     Ok(())
 }

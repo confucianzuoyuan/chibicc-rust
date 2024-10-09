@@ -1,7 +1,9 @@
-use std::{io::Read, result};
+use std::{cell::RefCell, collections::HashMap, io::Read, rc::Rc, result};
 
 use crate::{
-    ast::{BinaryOperator, Expr, ExprWithPos, Program, Stmt, StmtWithPos, UnaryOperator},
+    ast::{
+        self, BinaryOperator, Expr, ExprWithPos, Obj, Program, Stmt, StmtWithPos, UnaryOperator,
+    },
     error::Error::{self, UnexpectedToken},
     lexer::Lexer,
     position::WithPos,
@@ -60,6 +62,9 @@ pub struct Parser<'a, R: Read> {
     lexer: Lexer<R>,
     lookahead: Option<Result<Token>>,
     symbols: &'a mut Symbols<()>,
+    /// All local variable instances created during parsing are
+    /// accumulated to this map
+    locals: HashMap<String, Rc<RefCell<Obj>>>,
 }
 
 impl<'a, R: Read> Parser<'a, R> {
@@ -68,6 +73,7 @@ impl<'a, R: Read> Parser<'a, R> {
             lexer,
             lookahead: None,
             symbols,
+            locals: HashMap::new(),
         }
     }
 
@@ -249,7 +255,17 @@ impl<'a, R: Read> Parser<'a, R> {
             Tok::Ident(_) => {
                 let name;
                 let pos = eat!(self, Ident, name);
-                Ok(WithPos::new(Expr::Variable { name }, pos))
+                if self.locals.get(&name).is_none() {
+                    self.locals.insert(
+                        name.clone(),
+                        Rc::new(RefCell::new(Obj {
+                            name: name.clone(),
+                            offset: 0,
+                        })),
+                    );
+                }
+                let var = self.locals.get(&name).unwrap().clone();
+                Ok(WithPos::new(Expr::Variable(var), pos))
             }
             _ => Err(self.unexpected_token("expected `(` or number")?),
         }
@@ -285,7 +301,7 @@ impl<'a, R: Read> Parser<'a, R> {
 
     // program = stmt*
     pub fn parse(&mut self) -> Result<Program> {
-        let mut program = vec![];
+        let mut stmts = vec![];
         loop {
             match self.peek() {
                 Ok(Token {
@@ -293,9 +309,13 @@ impl<'a, R: Read> Parser<'a, R> {
                     ..
                 })
                 | Err(Error::Eof) => break,
-                _ => program.push(self.stmt()?),
+                _ => stmts.push(self.stmt()?),
             }
         }
-        Ok(program)
+        Ok(ast::Function {
+            body: stmts,
+            locals: self.locals.clone(),
+            stack_size: 0,
+        })
     }
 }

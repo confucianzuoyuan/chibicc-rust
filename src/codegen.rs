@@ -19,27 +19,26 @@ impl CodeGenerator {
         self.depth -= 1;
     }
 
-    fn gen_addr(&mut self, ast: ast::ExprWithPos) {
-        match ast.node {
-            ast::Expr::Variable { name } => {
-                let offset = name.chars().next().unwrap() as i32 - 'a' as i32 + 1;
-                println!("  lea {}(%rbp), %rax", -offset);
+    fn gen_addr(&mut self, ast: &ast::ExprWithPos) {
+        match &ast.node {
+            ast::Expr::Variable(obj) => {
+                println!("  lea {}(%rbp), %rax", obj.borrow_mut().offset);
             }
             _ => panic!("not an lvalue"),
         }
     }
 
-    fn gen_stmt(&mut self, ast: ast::StmtWithPos) {
-        match ast.node {
+    fn gen_stmt(&mut self, ast: &ast::StmtWithPos) {
+        match &ast.node {
             ast::Stmt::ExprStmt { expr } => self.gen_expr(expr),
         }
     }
 
-    fn gen_expr(&mut self, ast: ast::ExprWithPos) {
-        match ast.node {
+    fn gen_expr(&mut self, ast: &ast::ExprWithPos) {
+        match &ast.node {
             ast::Expr::Number { value } => println!("  mov ${}, %rax", value),
             ast::Expr::Unary { expr, .. } => {
-                self.gen_expr(*expr);
+                self.gen_expr(expr);
                 println!("  neg %rax");
             }
             ast::Expr::Variable { .. } => {
@@ -47,18 +46,18 @@ impl CodeGenerator {
                 println!("  mov (%rax), %rax");
             }
             ast::Expr::Assign { l_value, r_value } => {
-                self.gen_addr(*l_value);
+                self.gen_addr(l_value);
                 self.push();
-                self.gen_expr(*r_value);
+                self.gen_expr(r_value);
                 self.pop("%rdi".to_string());
                 println!("  mov %rax, (%rdi)");
             }
             ast::Expr::Binary { left, op, right } => {
                 // 后序遍历
                 // 先遍历右子树，再遍历左子树，最后遍历根节点
-                self.gen_expr(*right);
+                self.gen_expr(right);
                 self.push();
-                self.gen_expr(*left);
+                self.gen_expr(left);
                 self.pop("%rdi".to_string());
                 match op.node {
                     ast::BinaryOperator::Add => println!("  add %rdi, %rax"),
@@ -103,16 +102,33 @@ impl CodeGenerator {
         }
     }
 
-    pub fn codegen(&mut self, ast: ast::Program) {
+    // Round up `n` to the nearest multiple of `align`. For instance,
+    // align_to(5, 8) returns 8 and align_to(11, 8) returns 16.
+    fn align_to(&self, n: i32, align: i32) -> i32 {
+        (n + align - 1) / align * align
+    }
+
+    fn assign_lvar_offsets(&mut self, ast: &mut ast::Program) {
+        let mut offset = 0;
+        for local in &mut ast.locals {
+            offset += 8;
+            local.1.borrow_mut().offset = -offset;
+        }
+        ast.stack_size = self.align_to(offset, 16);
+    }
+
+    pub fn codegen(&mut self, ast: &mut ast::Program) {
+        self.assign_lvar_offsets(ast);
+
         println!("  .globl main");
         println!("main:");
 
         // Prologue
         println!("  push %rbp");
         println!("  mov %rsp, %rbp");
-        println!("  sub $208, %rsp");
+        println!("  sub ${}, %rsp", ast.stack_size);
 
-        for n in ast {
+        for n in &ast.body {
             self.gen_stmt(n);
             assert!(self.depth == 0);
         }
