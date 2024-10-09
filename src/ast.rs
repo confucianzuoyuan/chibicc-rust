@@ -71,6 +71,10 @@ pub enum Stmt {
         body: Box<StmtWithPos>,
         increment: Option<ExprWithPos>,
     },
+    WhileStmt {
+        condition: ExprWithPos,
+        body: Box<StmtWithPos>,
+    },
 }
 
 pub type StmtWithPos = WithPos<Stmt>;

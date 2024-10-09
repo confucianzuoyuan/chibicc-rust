@@ -124,6 +124,7 @@ impl<R: Read> Lexer<R> {
             "else" => Tok::KeywordElse,
             "return" => Tok::KeywordReturn,
             "for" => Tok::KeywordFor,
+            "while" => Tok::KeywordWhile,
             _ => Tok::Ident(ident),
         };
         self.make_token(token, len)

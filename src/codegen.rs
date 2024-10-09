@@ -80,6 +80,17 @@ impl CodeGenerator {
                 println!("  jmp .L.begin.{}", c);
                 println!(".L.end.{}:", c);
             }
+            ast::Stmt::WhileStmt { condition, body } => {
+                let c = self.label_count;
+                self.label_count += 1;
+                println!(".L.begin.{}:", c);
+                self.gen_expr(condition);
+                println!("  cmp $0, %rax");
+                println!("  je .L.end.{}", c);
+                self.gen_stmt(body);
+                println!(" jmp .L.begin.{}", c);
+                println!(".L.end.{}:", c);
+            }
         }
     }
 

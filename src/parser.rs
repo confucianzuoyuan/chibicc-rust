@@ -11,8 +11,8 @@ use crate::{
     token::{
         Tok::{
             self, BangEqual, Equal, EqualEqual, Greater, GreaterEqual, Ident, KeywordElse,
-            KeywordFor, KeywordIf, KeywordReturn, LeftBrace, LeftParen, Lesser, LesserEqual, Minus,
-            Number, Plus, RightBrace, RightParen, Semicolon, Slash, Star,
+            KeywordFor, KeywordIf, KeywordReturn, KeywordWhile, LeftBrace, LeftParen, Lesser,
+            LesserEqual, Minus, Number, Plus, RightBrace, RightParen, Semicolon, Slash, Star,
         },
         Token,
     },
@@ -81,6 +81,7 @@ impl<'a, R: Read> Parser<'a, R> {
     /// stmt = "return" expr ";"
     ///      | "if" "(" expr ")" stmt ("else" stmt)?
     ///      | "for" "(" expr-stmt expr? ";" expr? ")" stmt
+    ///      | "while" "(" expr ")"
     ///      | "{" compound-stmt
     ///      | expr-stmt
     fn stmt(&mut self) -> Result<StmtWithPos> {
@@ -151,6 +152,20 @@ impl<'a, R: Read> Parser<'a, R> {
                         condition: cond,
                         body: Box::new(body),
                         increment: inc,
+                    },
+                    pos,
+                ))
+            }
+            Tok::KeywordWhile => {
+                let pos = eat!(self, KeywordWhile);
+                eat!(self, LeftParen);
+                let cond = self.expr()?;
+                eat!(self, RightParen);
+                let body = self.stmt()?;
+                Ok(WithPos::new(
+                    Stmt::WhileStmt {
+                        condition: cond,
+                        body: Box::new(body),
                     },
                     pos,
                 ))

@@ -28,6 +28,7 @@ pub enum Tok {
     KeywordIf,
     KeywordElse,
     KeywordFor,
+    KeywordWhile,
 
     EndOfFile,
 }
@@ -65,6 +66,7 @@ impl Display for Tok {
                 Tok::KeywordIf => "if",
                 Tok::KeywordElse => "else",
                 Tok::KeywordFor => "for",
+                Tok::KeywordWhile => "while",
                 Tok::EndOfFile => "<eof>",
             };
             string.to_string()
