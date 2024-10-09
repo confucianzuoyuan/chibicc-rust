@@ -14,6 +14,13 @@ pub enum Expr {
     Number {
         value: i64,
     },
+    Assign {
+        l_value: Box<ExprWithPos>,
+        r_value: Box<ExprWithPos>,
+    },
+    Variable {
+        name: String,
+    },
 }
 
 pub type ExprWithPos = WithPos<Expr>;

@@ -8,8 +8,8 @@ use crate::{
     symbol::Symbols,
     token::{
         Tok::{
-            self, BangEqual, EqualEqual, Greater, GreaterEqual, LeftParen, Lesser, LesserEqual,
-            Minus, Number, Plus, RightParen, Semicolon, Slash, Star,
+            self, BangEqual, Equal, EqualEqual, Greater, GreaterEqual, Ident, LeftParen, Lesser,
+            LesserEqual, Minus, Number, Plus, RightParen, Semicolon, Slash, Star,
         },
         Token,
     },
@@ -83,9 +83,29 @@ impl<'a, R: Read> Parser<'a, R> {
         Ok(WithPos::new(Stmt::ExprStmt { expr }, pos))
     }
 
-    // expr = equality
+    // expr = assign
     fn expr(&mut self) -> Result<ExprWithPos> {
-        self.equality()
+        self.assign()
+    }
+
+    // assign = equality ("=" assign)?
+    fn assign(&mut self) -> Result<ExprWithPos> {
+        let mut expr = self.equality()?;
+        match self.peek()?.token {
+            Tok::Equal => {
+                let pos = eat!(self, Equal);
+                let r_value = self.assign()?;
+                expr = WithPos::new(
+                    Expr::Assign {
+                        l_value: Box::new(expr),
+                        r_value: Box::new(r_value),
+                    },
+                    pos,
+                )
+            }
+            _ => (),
+        }
+        Ok(expr)
     }
 
     // equality = relational ("==" relational | "!=" relational)*
@@ -212,7 +232,7 @@ impl<'a, R: Read> Parser<'a, R> {
         }
     }
 
-    // primary = "(" expr ")" | num
+    // primary = "(" expr ")" | ident | num
     fn primary(&mut self) -> Result<ExprWithPos> {
         match self.peek()?.token {
             LeftParen => {
@@ -225,6 +245,11 @@ impl<'a, R: Read> Parser<'a, R> {
                 let value;
                 let pos = eat!(self, Number, value);
                 Ok(WithPos::new(Expr::Number { value }, pos))
+            }
+            Tok::Ident(_) => {
+                let name;
+                let pos = eat!(self, Ident, name);
+                Ok(WithPos::new(Expr::Variable { name }, pos))
             }
             _ => Err(self.unexpected_token("expected `(` or number")?),
         }

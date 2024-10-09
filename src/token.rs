@@ -20,6 +20,7 @@ pub enum Tok {
     GreaterEqual,
     Semicolon,
     Number(i64),
+    Ident(String),
     EndOfFile,
 }
 
@@ -49,6 +50,7 @@ impl Display for Tok {
                 Tok::LesserEqual => "<=",
                 Tok::Semicolon => ";",
                 Tok::Number(i) => return i.to_string(),
+                Tok::Ident(ref ident) => ident,
                 Tok::EndOfFile => "<eof>",
             };
             string.to_string()

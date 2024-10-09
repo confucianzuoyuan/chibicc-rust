@@ -19,6 +19,16 @@ impl CodeGenerator {
         self.depth -= 1;
     }
 
+    fn gen_addr(&mut self, ast: ast::ExprWithPos) {
+        match ast.node {
+            ast::Expr::Variable { name } => {
+                let offset = name.chars().next().unwrap() as i32 - 'a' as i32 + 1;
+                println!("  lea {}(%rbp), %rax", -offset);
+            }
+            _ => panic!("not an lvalue"),
+        }
+    }
+
     fn gen_stmt(&mut self, ast: ast::StmtWithPos) {
         match ast.node {
             ast::Stmt::ExprStmt { expr } => self.gen_expr(expr),
@@ -31,6 +41,17 @@ impl CodeGenerator {
             ast::Expr::Unary { expr, .. } => {
                 self.gen_expr(*expr);
                 println!("  neg %rax");
+            }
+            ast::Expr::Variable { .. } => {
+                self.gen_addr(ast);
+                println!("  mov (%rax), %rax");
+            }
+            ast::Expr::Assign { l_value, r_value } => {
+                self.gen_addr(*l_value);
+                self.push();
+                self.gen_expr(*r_value);
+                self.pop("%rdi".to_string());
+                println!("  mov %rax, (%rdi)");
             }
             ast::Expr::Binary { left, op, right } => {
                 // 后序遍历
@@ -86,11 +107,18 @@ impl CodeGenerator {
         println!("  .globl main");
         println!("main:");
 
+        // Prologue
+        println!("  push %rbp");
+        println!("  mov %rsp, %rbp");
+        println!("  sub $208, %rsp");
+
         for n in ast {
             self.gen_stmt(n);
             assert!(self.depth == 0);
         }
 
+        println!("  mov %rbp, %rsp");
+        println!("  pop %rbp");
         println!("  ret");
     }
 }
