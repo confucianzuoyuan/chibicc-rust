@@ -90,6 +90,11 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
             Type::TyPtr { base, .. } => e.node.ty = *base,
             _ => panic!("invalid pointer dereference: {:#?}", expr),
         },
+        ast::Expr::FunctionCall { .. } => {
+            if e.node.ty == Type::TyPlaceholder {
+                e.node.ty = Type::TyInt { name: None }
+            }
+        }
     }
 }
 

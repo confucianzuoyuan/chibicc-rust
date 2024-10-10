@@ -127,6 +127,10 @@ impl CodeGenerator {
             ast::Expr::Addr { expr, .. } => {
                 self.gen_addr(expr);
             }
+            ast::Expr::FunctionCall { name } => {
+                println!("  mov $0, %rax");
+                println!("  call {}", name);
+            }
             ast::Expr::Binary {
                 left, op, right, ..
             } => {

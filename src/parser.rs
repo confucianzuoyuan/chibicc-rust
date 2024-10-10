@@ -701,7 +701,8 @@ impl<'a, R: Read> Parser<'a, R> {
         }
     }
 
-    /// primary = "(" expr ")" | ident | num
+    /// primary = "(" expr ")" | ident args? | num
+    /// args = "(" ")"
     fn primary(&mut self) -> Result<ExprWithPos> {
         match self.peek()?.token {
             LeftParen => {
@@ -721,6 +722,16 @@ impl<'a, R: Read> Parser<'a, R> {
             Tok::Ident(_) => {
                 let name;
                 let pos = eat!(self, Ident, name);
+                // function call
+                if self.peek()?.token == Tok::LeftParen {
+                    eat!(self, LeftParen);
+                    eat!(self, RightParen);
+                    return Ok(WithPos::new(
+                        WithType::new(Expr::FunctionCall { name }, Type::TyInt { name: None }),
+                        pos,
+                    ));
+                }
+                // variable
                 if self.locals.get(&name).is_none() {
                     self.locals.insert(
                         name.clone(),

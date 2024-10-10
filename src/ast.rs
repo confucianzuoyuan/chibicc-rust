@@ -32,6 +32,9 @@ pub enum Expr {
     Addr {
         expr: Box<ExprWithPos>,
     },
+    FunctionCall {
+        name: String,
+    },
 }
 
 pub type ExprWithPos = WithPos<ExprWithType>;
