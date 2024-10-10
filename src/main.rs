@@ -4,6 +4,7 @@ use codegen::CodeGenerator;
 use error::Error;
 use lexer::Lexer;
 use parser::Parser;
+use sema::sema;
 use symbol::{Strings, Symbols};
 use terminal::Terminal;
 
@@ -13,6 +14,7 @@ mod error;
 mod lexer;
 mod parser;
 mod position;
+mod sema;
 mod symbol;
 mod terminal;
 mod token;

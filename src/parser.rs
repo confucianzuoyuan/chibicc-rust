@@ -7,6 +7,7 @@ use crate::{
     error::Error::{self, UnexpectedToken},
     lexer::Lexer,
     position::WithPos,
+    sema::{add_type, sema_stmt, Type, WithType},
     symbol::Symbols,
     token::{
         Tok::{
@@ -181,7 +182,11 @@ impl<'a, R: Read> Parser<'a, R> {
         loop {
             match self.peek()?.token {
                 Tok::RightBrace => break,
-                _ => stmts.push(self.stmt()?),
+                _ => {
+                    let mut stmt = self.stmt()?;
+                    sema_stmt(&mut stmt);
+                    stmts.push(stmt)
+                }
             }
         }
         Ok(WithPos::new(Stmt::Block { body: stmts }, pos))
@@ -215,10 +220,13 @@ impl<'a, R: Read> Parser<'a, R> {
                 let pos = eat!(self, Equal);
                 let r_value = self.assign()?;
                 expr = WithPos::new(
-                    Expr::Assign {
-                        l_value: Box::new(expr),
-                        r_value: Box::new(r_value),
-                    },
+                    WithType::new(
+                        Expr::Assign {
+                            l_value: Box::new(expr),
+                            r_value: Box::new(r_value),
+                        },
+                        Type::TyPlaceholder,
+                    ),
                     pos,
                 )
             }
@@ -240,11 +248,14 @@ impl<'a, R: Read> Parser<'a, R> {
             let right = Box::new(self.relational()?);
             let pos = expr.pos.grow(right.pos);
             expr = WithPos::new(
-                Expr::Binary {
-                    left: Box::new(expr),
-                    op,
-                    right,
-                },
+                WithType::new(
+                    Expr::Binary {
+                        left: Box::new(expr),
+                        op,
+                        right,
+                    },
+                    Type::TyPlaceholder,
+                ),
                 pos,
             );
         }
@@ -268,11 +279,14 @@ impl<'a, R: Read> Parser<'a, R> {
             let right = Box::new(self.add()?);
             let pos = expr.pos.grow(right.pos);
             expr = WithPos::new(
-                Expr::Binary {
-                    left: Box::new(expr),
-                    op,
-                    right,
-                },
+                WithType::new(
+                    Expr::Binary {
+                        left: Box::new(expr),
+                        op,
+                        right,
+                    },
+                    Type::TyPlaceholder,
+                ),
                 pos,
             );
         }
@@ -284,21 +298,181 @@ impl<'a, R: Read> Parser<'a, R> {
         let mut expr = self.mul()?;
 
         loop {
-            let op = match self.peek_token() {
-                Ok(&Tok::Minus) => WithPos::new(BinaryOperator::Sub, eat!(self, Minus)),
-                Ok(&Tok::Plus) => WithPos::new(BinaryOperator::Add, eat!(self, Plus)),
+            match self.peek()?.token {
+                // In C, `+` operator is overloaded to perform the pointer arithmetic.
+                // If p is a pointer, p+n adds not n but sizeof(*p)*n to the value of p,
+                // so that p+n points to the location n elements (not bytes) ahead of p.
+                // In other words, we need to scale an integer value before adding to a
+                // pointer value. This function takes care of the scaling.
+                Tok::Plus => {
+                    let pos = eat!(self, Plus);
+                    let mut right = self.mul()?;
+                    add_type(&mut expr);
+                    add_type(&mut right);
+
+                    match (expr.node.ty.clone(), right.node.ty.clone()) {
+                        // num + num
+                        (Type::TyInt, Type::TyInt) => {
+                            expr = WithPos::new(
+                                WithType::new(
+                                    Expr::Binary {
+                                        left: Box::new(expr),
+                                        op: WithPos::new(ast::BinaryOperator::Add, pos),
+                                        right: Box::new(right),
+                                    },
+                                    Type::TyInt,
+                                ),
+                                pos,
+                            );
+                        }
+                        // ptr + num
+                        (Type::TyPtr(..), Type::TyInt) => {
+                            // num * 8
+                            right = WithPos::new(
+                                WithType::new(
+                                    Expr::Binary {
+                                        left: Box::new(right),
+                                        op: WithPos::new(ast::BinaryOperator::Mul, pos),
+                                        right: Box::new(WithPos::new(
+                                            WithType::new(Expr::Number { value: 8 }, Type::TyInt),
+                                            pos,
+                                        )),
+                                    },
+                                    Type::TyInt,
+                                ),
+                                pos,
+                            );
+                            expr = WithPos::new(
+                                WithType::new(
+                                    Expr::Binary {
+                                        left: Box::new(expr.clone()),
+                                        op: WithPos::new(ast::BinaryOperator::Add, pos),
+                                        right: Box::new(right),
+                                    },
+                                    expr.node.ty.clone(),
+                                ),
+                                pos,
+                            );
+                        }
+                        // num + ptr
+                        (Type::TyInt, Type::TyPtr(..)) => {
+                            // num * 8
+                            expr = WithPos::new(
+                                WithType::new(
+                                    Expr::Binary {
+                                        left: Box::new(expr),
+                                        op: WithPos::new(ast::BinaryOperator::Mul, pos),
+                                        right: Box::new(WithPos::new(
+                                            WithType::new(Expr::Number { value: 8 }, Type::TyInt),
+                                            pos,
+                                        )),
+                                    },
+                                    Type::TyInt,
+                                ),
+                                pos,
+                            );
+                            expr = WithPos::new(
+                                WithType::new(
+                                    Expr::Binary {
+                                        left: Box::new(right.clone()),
+                                        op: WithPos::new(ast::BinaryOperator::Add, pos),
+                                        right: Box::new(expr),
+                                    },
+                                    right.node.ty.clone(),
+                                ),
+                                pos,
+                            );
+                        }
+                        // other
+                        _ => panic!("invalid operands for pointer arithmetic add."),
+                    }
+                }
+                // Like `+`, `-` is overloaded for the pointer type.
+                Tok::Minus => {
+                    let pos = eat!(self, Minus);
+                    let mut right = self.mul()?;
+                    add_type(&mut expr);
+                    add_type(&mut right);
+
+                    match (expr.node.ty.clone(), right.node.ty.clone()) {
+                        // num - num
+                        (Type::TyInt, Type::TyInt) => {
+                            expr = WithPos::new(
+                                WithType::new(
+                                    Expr::Binary {
+                                        left: Box::new(expr),
+                                        op: WithPos::new(ast::BinaryOperator::Sub, pos),
+                                        right: Box::new(right),
+                                    },
+                                    Type::TyInt,
+                                ),
+                                pos,
+                            );
+                        }
+                        // ptr - num
+                        (Type::TyPtr(..), Type::TyInt) => {
+                            // num * 8
+                            right = WithPos::new(
+                                WithType::new(
+                                    Expr::Binary {
+                                        left: Box::new(right),
+                                        op: WithPos::new(ast::BinaryOperator::Mul, pos),
+                                        right: Box::new(WithPos::new(
+                                            WithType::new(Expr::Number { value: 8 }, Type::TyInt),
+                                            pos,
+                                        )),
+                                    },
+                                    Type::TyInt,
+                                ),
+                                pos,
+                            );
+                            add_type(&mut right);
+                            expr = WithPos::new(
+                                WithType::new(
+                                    Expr::Binary {
+                                        left: Box::new(expr.clone()),
+                                        op: WithPos::new(ast::BinaryOperator::Sub, pos),
+                                        right: Box::new(right),
+                                    },
+                                    expr.node.ty.clone(),
+                                ),
+                                pos,
+                            );
+                        }
+                        // ptr - ptr, which returns how many elements are between the two.
+                        (Type::TyPtr(..), Type::TyPtr(..)) => {
+                            let left = WithPos::new(
+                                WithType::new(
+                                    Expr::Binary {
+                                        left: Box::new(expr),
+                                        op: WithPos::new(ast::BinaryOperator::Sub, pos),
+                                        right: Box::new(right),
+                                    },
+                                    Type::TyInt,
+                                ),
+                                pos,
+                            );
+                            expr = WithPos::new(
+                                WithType::new(
+                                    Expr::Binary {
+                                        left: Box::new(left),
+                                        op: WithPos::new(ast::BinaryOperator::Div, pos),
+                                        right: Box::new(WithPos::new(
+                                            WithType::new(Expr::Number { value: 8 }, Type::TyInt),
+                                            pos,
+                                        )),
+                                    },
+                                    Type::TyInt,
+                                ),
+                                pos,
+                            );
+                        }
+                        // other
+                        _ => panic!("invalid operands for pointer arithmetic sub."),
+                    }
+                }
                 _ => break,
-            };
-            let right = Box::new(self.mul()?);
-            let pos = expr.pos.grow(right.pos);
-            expr = WithPos::new(
-                Expr::Binary {
-                    left: Box::new(expr),
-                    op,
-                    right,
-                },
-                pos,
-            );
+            }
         }
         Ok(expr)
     }
@@ -313,14 +487,19 @@ impl<'a, R: Read> Parser<'a, R> {
                 Ok(&Tok::Slash) => WithPos::new(BinaryOperator::Div, eat!(self, Slash)),
                 _ => break,
             };
-            let right = Box::new(self.unary()?);
+            let mut right = Box::new(self.unary()?);
+            add_type(&mut expr);
+            add_type(&mut right);
             let pos = expr.pos.grow(right.pos);
             expr = WithPos::new(
-                Expr::Binary {
-                    left: Box::new(expr),
-                    op,
-                    right,
-                },
+                WithType::new(
+                    Expr::Binary {
+                        left: Box::new(expr.clone()),
+                        op,
+                        right,
+                    },
+                    expr.node.ty.clone(),
+                ),
                 pos,
             );
         }
@@ -340,22 +519,41 @@ impl<'a, R: Read> Parser<'a, R> {
                 let expr = self.unary()?;
                 let pos = expr.pos.grow(expr.pos);
                 Ok(WithPos::new(
-                    Expr::Unary {
-                        op,
-                        expr: Box::new(expr),
-                    },
+                    WithType::new(
+                        Expr::Unary {
+                            op,
+                            expr: Box::new(expr),
+                        },
+                        Type::TyPlaceholder,
+                    ),
                     pos,
                 ))
             }
             Amp => {
                 let pos = eat!(self, Amp);
                 let expr = self.unary()?;
-                Ok(WithPos::new(Expr::Addr(Box::new(expr)), pos))
+                Ok(WithPos::new(
+                    WithType::new(
+                        Expr::Addr {
+                            expr: Box::new(expr),
+                        },
+                        Type::TyPlaceholder,
+                    ),
+                    pos,
+                ))
             }
             Star => {
                 let pos = eat!(self, Star);
                 let expr = self.unary()?;
-                Ok(WithPos::new(Expr::Deref(Box::new(expr)), pos))
+                Ok(WithPos::new(
+                    WithType::new(
+                        Expr::Deref {
+                            expr: Box::new(expr),
+                        },
+                        Type::TyPlaceholder,
+                    ),
+                    pos,
+                ))
             }
             _ => self.primary(),
         }
@@ -373,7 +571,10 @@ impl<'a, R: Read> Parser<'a, R> {
             Number(_) => {
                 let value;
                 let pos = eat!(self, Number, value);
-                Ok(WithPos::new(Expr::Number { value }, pos))
+                Ok(WithPos::new(
+                    WithType::new(Expr::Number { value }, Type::TyInt),
+                    pos,
+                ))
             }
             Tok::Ident(_) => {
                 let name;
@@ -388,7 +589,10 @@ impl<'a, R: Read> Parser<'a, R> {
                     );
                 }
                 let var = self.locals.get(&name).unwrap().clone();
-                Ok(WithPos::new(Expr::Variable(var), pos))
+                Ok(WithPos::new(
+                    WithType::new(Expr::Variable { obj: var }, Type::TyPlaceholder),
+                    pos,
+                ))
             }
             _ => Err(self.unexpected_token("expected `(` or number")?),
         }

@@ -1,6 +1,9 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use crate::position::WithPos;
+use crate::{
+    position::WithPos,
+    sema::{Type, WithType},
+};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
@@ -20,12 +23,19 @@ pub enum Expr {
         l_value: Box<ExprWithPos>,
         r_value: Box<ExprWithPos>,
     },
-    Variable(Rc<RefCell<Obj>>),
-    Deref(Box<ExprWithPos>),
-    Addr(Box<ExprWithPos>),
+    Variable {
+        obj: Rc<RefCell<Obj>>,
+    },
+    Deref {
+        expr: Box<ExprWithPos>,
+    },
+    Addr {
+        expr: Box<ExprWithPos>,
+    },
 }
 
-pub type ExprWithPos = WithPos<Expr>;
+pub type ExprWithPos = WithPos<ExprWithType>;
+pub type ExprWithType = WithType<Expr>;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum BinaryOperator {

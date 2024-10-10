@@ -24,12 +24,11 @@ impl CodeGenerator {
     }
 
     fn gen_addr(&mut self, ast: &ast::ExprWithPos) {
-        eprintln!("{:?}", ast);
-        match &ast.node {
-            ast::Expr::Variable(obj) => {
+        match &ast.node.node {
+            ast::Expr::Variable { obj, .. } => {
                 println!("  lea {}(%rbp), %rax", obj.borrow_mut().offset);
             }
-            ast::Expr::Deref(expr) => self.gen_expr(expr),
+            ast::Expr::Deref { expr, .. } => self.gen_expr(expr),
             _ => panic!("not an lvalue"),
         }
     }
@@ -102,8 +101,8 @@ impl CodeGenerator {
     }
 
     fn gen_expr(&mut self, ast: &ast::ExprWithPos) {
-        match &ast.node {
-            ast::Expr::Number { value } => println!("  mov ${}, %rax", value),
+        match &ast.node.node {
+            ast::Expr::Number { value, .. } => println!("  mov ${}, %rax", value),
             ast::Expr::Unary { expr, .. } => {
                 self.gen_expr(expr);
                 println!("  neg %rax");
@@ -112,21 +111,25 @@ impl CodeGenerator {
                 self.gen_addr(ast);
                 println!("  mov (%rax), %rax");
             }
-            ast::Expr::Assign { l_value, r_value } => {
+            ast::Expr::Assign {
+                l_value, r_value, ..
+            } => {
                 self.gen_addr(l_value);
                 self.push();
                 self.gen_expr(r_value);
                 self.pop("%rdi".to_string());
                 println!("  mov %rax, (%rdi)");
             }
-            ast::Expr::Deref(expr) => {
+            ast::Expr::Deref { expr, .. } => {
                 self.gen_expr(expr);
                 println!("  mov (%rax), %rax");
             }
-            ast::Expr::Addr(expr) => {
+            ast::Expr::Addr { expr, .. } => {
                 self.gen_addr(expr);
             }
-            ast::Expr::Binary { left, op, right } => {
+            ast::Expr::Binary {
+                left, op, right, ..
+            } => {
                 // 后序遍历
                 // 先遍历右子树，再遍历左子树，最后遍历根节点
                 self.gen_expr(right);
