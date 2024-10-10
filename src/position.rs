@@ -4,7 +4,7 @@ use std::u32;
 use crate::symbol::{Symbol, Symbols};
 use crate::terminal::Terminal;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Pos {
     pub byte: u64,
     pub column: u32,

@@ -6,14 +6,15 @@ use crate::{
     },
     error::Error::{self, UnexpectedToken},
     lexer::Lexer,
-    position::WithPos,
-    sema::{add_type, sema_stmt, Type, WithType},
+    position::{Pos, WithPos},
+    sema::{self, add_type, sema_stmt, Type, WithType},
     symbol::Symbols,
     token::{
         Tok::{
-            self, Amp, BangEqual, Equal, EqualEqual, Greater, GreaterEqual, Ident, KeywordElse,
-            KeywordFor, KeywordIf, KeywordReturn, KeywordWhile, LeftBrace, LeftParen, Lesser,
-            LesserEqual, Minus, Number, Plus, RightBrace, RightParen, Semicolon, Slash, Star,
+            self, Amp, BangEqual, Comma, Equal, EqualEqual, Greater, GreaterEqual, Ident,
+            KeywordElse, KeywordFor, KeywordIf, KeywordInt, KeywordReturn, KeywordWhile, LeftBrace,
+            LeftParen, Lesser, LesserEqual, Minus, Number, Plus, RightBrace, RightParen, Semicolon,
+            Slash, Star,
         },
         Token,
     },
@@ -89,7 +90,8 @@ impl<'a, R: Read> Parser<'a, R> {
         match self.peek()?.token {
             Tok::KeywordReturn => {
                 let pos = eat!(self, KeywordReturn);
-                let expr = self.expr()?;
+                let mut expr = self.expr()?;
+                add_type(&mut expr);
                 let node = WithPos::new(Stmt::Return { expr }, pos);
                 eat!(self, Semicolon);
                 Ok(node)
@@ -175,17 +177,143 @@ impl<'a, R: Read> Parser<'a, R> {
         }
     }
 
-    /// compound-stmt = stmt* "}"
+    /// declaration = declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
+    fn declaration(&mut self) -> Result<StmtWithPos> {
+        let basety = self.declspec()?;
+
+        let mut decls = vec![];
+
+        loop {
+            match self.peek()?.token {
+                Tok::Comma => {
+                    eat!(self, Comma);
+                }
+                Tok::Semicolon => {
+                    eat!(self, Semicolon);
+                    break;
+                }
+                _ => {
+                    let ty = self.declarator(basety.clone())?;
+                    let ident;
+                    match ty.clone() {
+                        Type::TyInt {
+                            name:
+                                Some(Token {
+                                    token: Tok::Ident(ident_name),
+                                    ..
+                                }),
+                        } => {
+                            ident = ident_name;
+                        }
+                        Type::TyPtr {
+                            name:
+                                Some(Token {
+                                    token: Tok::Ident(ident_name),
+                                    ..
+                                }),
+                            ..
+                        } => {
+                            ident = ident_name;
+                        }
+                        _ => panic!("ident must have a type."),
+                    }
+                    if self.locals.get(&ident).is_none() {
+                        self.locals.insert(
+                            ident.clone(),
+                            Rc::new(RefCell::new(Obj {
+                                name: ident.clone(),
+                                offset: 0,
+                                ty: ty.clone(),
+                            })),
+                        );
+                    } else {
+                        panic!("{} has been already declared.", ident);
+                    }
+
+                    match self.peek()?.token {
+                        Tok::Equal => {
+                            eat!(self, Equal);
+                        }
+                        _ => continue,
+                    }
+
+                    let var = self.locals.get(&ident).unwrap().clone();
+
+                    let lhs = WithPos::new(
+                        WithType::new(Expr::Variable { obj: var }, ty.clone()),
+                        Pos::dummy(),
+                    );
+                    let rhs = self.assign()?;
+                    let node = WithPos::new(
+                        WithType::new(
+                            Expr::Assign {
+                                l_value: Box::new(lhs),
+                                r_value: Box::new(rhs),
+                            },
+                            ty.clone(),
+                        ),
+                        Pos::dummy(),
+                    );
+
+                    let expr_stmt = WithPos::new(Stmt::ExprStmt { expr: node }, Pos::dummy());
+                    decls.push(expr_stmt);
+                }
+            }
+        }
+
+        Ok(WithPos::new(Stmt::Block { body: decls }, Pos::dummy()))
+    }
+
+    /// declspec = "int"
+    fn declspec(&mut self) -> Result<Type> {
+        eat!(self, KeywordInt);
+        Ok(Type::TyInt { name: None })
+    }
+
+    /// declarator = "*"* ident
+    fn declarator(&mut self, ty: Type) -> Result<Type> {
+        let mut ty = ty.clone();
+        loop {
+            match self.peek()?.token {
+                Tok::Star => {
+                    eat!(self, Star);
+                    ty = sema::pointer_to(ty);
+                }
+                _ => break,
+            }
+        }
+
+        match self.peek()?.token {
+            Tok::Ident(..) => {
+                let tok = self.token()?;
+                match ty {
+                    Type::TyInt { ref mut name } => *name = Some(tok.clone()),
+                    Type::TyPtr { ref mut name, .. } => *name = Some(tok.clone()),
+                    _ => (),
+                }
+            }
+            _ => panic!("expected a variable name."),
+        }
+
+        Ok(ty)
+    }
+
+    /// compound-stmt = (declaration | stmt)* "}"
     fn compound_stmt(&mut self) -> Result<StmtWithPos> {
         let pos = eat!(self, LeftBrace);
         let mut stmts = vec![];
         loop {
             match self.peek()?.token {
                 Tok::RightBrace => break,
+                Tok::KeywordInt => {
+                    let mut declarations = self.declaration()?;
+                    sema_stmt(&mut declarations);
+                    stmts.push(declarations);
+                }
                 _ => {
                     let mut stmt = self.stmt()?;
                     sema_stmt(&mut stmt);
-                    stmts.push(stmt)
+                    stmts.push(stmt);
                 }
             }
         }
@@ -312,7 +440,7 @@ impl<'a, R: Read> Parser<'a, R> {
 
                     match (expr.node.ty.clone(), right.node.ty.clone()) {
                         // num + num
-                        (Type::TyInt, Type::TyInt) => {
+                        (Type::TyInt { .. }, Type::TyInt { .. }) => {
                             expr = WithPos::new(
                                 WithType::new(
                                     Expr::Binary {
@@ -320,13 +448,13 @@ impl<'a, R: Read> Parser<'a, R> {
                                         op: WithPos::new(ast::BinaryOperator::Add, pos),
                                         right: Box::new(right),
                                     },
-                                    Type::TyInt,
+                                    Type::TyInt { name: None },
                                 ),
                                 pos,
                             );
                         }
                         // ptr + num
-                        (Type::TyPtr(..), Type::TyInt) => {
+                        (Type::TyPtr { .. }, Type::TyInt { .. }) => {
                             // num * 8
                             right = WithPos::new(
                                 WithType::new(
@@ -334,11 +462,14 @@ impl<'a, R: Read> Parser<'a, R> {
                                         left: Box::new(right),
                                         op: WithPos::new(ast::BinaryOperator::Mul, pos),
                                         right: Box::new(WithPos::new(
-                                            WithType::new(Expr::Number { value: 8 }, Type::TyInt),
+                                            WithType::new(
+                                                Expr::Number { value: 8 },
+                                                Type::TyInt { name: None },
+                                            ),
                                             pos,
                                         )),
                                     },
-                                    Type::TyInt,
+                                    Type::TyInt { name: None },
                                 ),
                                 pos,
                             );
@@ -355,7 +486,7 @@ impl<'a, R: Read> Parser<'a, R> {
                             );
                         }
                         // num + ptr
-                        (Type::TyInt, Type::TyPtr(..)) => {
+                        (Type::TyInt { .. }, Type::TyPtr { .. }) => {
                             // num * 8
                             expr = WithPos::new(
                                 WithType::new(
@@ -363,11 +494,14 @@ impl<'a, R: Read> Parser<'a, R> {
                                         left: Box::new(expr),
                                         op: WithPos::new(ast::BinaryOperator::Mul, pos),
                                         right: Box::new(WithPos::new(
-                                            WithType::new(Expr::Number { value: 8 }, Type::TyInt),
+                                            WithType::new(
+                                                Expr::Number { value: 8 },
+                                                Type::TyInt { name: None },
+                                            ),
                                             pos,
                                         )),
                                     },
-                                    Type::TyInt,
+                                    Type::TyInt { name: None },
                                 ),
                                 pos,
                             );
@@ -396,7 +530,7 @@ impl<'a, R: Read> Parser<'a, R> {
 
                     match (expr.node.ty.clone(), right.node.ty.clone()) {
                         // num - num
-                        (Type::TyInt, Type::TyInt) => {
+                        (Type::TyInt { .. }, Type::TyInt { .. }) => {
                             expr = WithPos::new(
                                 WithType::new(
                                     Expr::Binary {
@@ -404,13 +538,13 @@ impl<'a, R: Read> Parser<'a, R> {
                                         op: WithPos::new(ast::BinaryOperator::Sub, pos),
                                         right: Box::new(right),
                                     },
-                                    Type::TyInt,
+                                    Type::TyInt { name: None },
                                 ),
                                 pos,
                             );
                         }
                         // ptr - num
-                        (Type::TyPtr(..), Type::TyInt) => {
+                        (Type::TyPtr { .. }, Type::TyInt { .. }) => {
                             // num * 8
                             right = WithPos::new(
                                 WithType::new(
@@ -418,11 +552,14 @@ impl<'a, R: Read> Parser<'a, R> {
                                         left: Box::new(right),
                                         op: WithPos::new(ast::BinaryOperator::Mul, pos),
                                         right: Box::new(WithPos::new(
-                                            WithType::new(Expr::Number { value: 8 }, Type::TyInt),
+                                            WithType::new(
+                                                Expr::Number { value: 8 },
+                                                Type::TyInt { name: None },
+                                            ),
                                             pos,
                                         )),
                                     },
-                                    Type::TyInt,
+                                    Type::TyInt { name: None },
                                 ),
                                 pos,
                             );
@@ -440,7 +577,7 @@ impl<'a, R: Read> Parser<'a, R> {
                             );
                         }
                         // ptr - ptr, which returns how many elements are between the two.
-                        (Type::TyPtr(..), Type::TyPtr(..)) => {
+                        (Type::TyPtr { .. }, Type::TyPtr { .. }) => {
                             let left = WithPos::new(
                                 WithType::new(
                                     Expr::Binary {
@@ -448,7 +585,7 @@ impl<'a, R: Read> Parser<'a, R> {
                                         op: WithPos::new(ast::BinaryOperator::Sub, pos),
                                         right: Box::new(right),
                                     },
-                                    Type::TyInt,
+                                    Type::TyInt { name: None },
                                 ),
                                 pos,
                             );
@@ -458,11 +595,14 @@ impl<'a, R: Read> Parser<'a, R> {
                                         left: Box::new(left),
                                         op: WithPos::new(ast::BinaryOperator::Div, pos),
                                         right: Box::new(WithPos::new(
-                                            WithType::new(Expr::Number { value: 8 }, Type::TyInt),
+                                            WithType::new(
+                                                Expr::Number { value: 8 },
+                                                Type::TyInt { name: None },
+                                            ),
                                             pos,
                                         )),
                                     },
-                                    Type::TyInt,
+                                    Type::TyInt { name: None },
                                 ),
                                 pos,
                             );
@@ -531,7 +671,8 @@ impl<'a, R: Read> Parser<'a, R> {
             }
             Amp => {
                 let pos = eat!(self, Amp);
-                let expr = self.unary()?;
+                let mut expr = self.unary()?;
+                add_type(&mut expr);
                 Ok(WithPos::new(
                     WithType::new(
                         Expr::Addr {
@@ -544,7 +685,8 @@ impl<'a, R: Read> Parser<'a, R> {
             }
             Star => {
                 let pos = eat!(self, Star);
-                let expr = self.unary()?;
+                let mut expr = self.unary()?;
+                add_type(&mut expr);
                 Ok(WithPos::new(
                     WithType::new(
                         Expr::Deref {
@@ -572,7 +714,7 @@ impl<'a, R: Read> Parser<'a, R> {
                 let value;
                 let pos = eat!(self, Number, value);
                 Ok(WithPos::new(
-                    WithType::new(Expr::Number { value }, Type::TyInt),
+                    WithType::new(Expr::Number { value }, Type::TyInt { name: None }),
                     pos,
                 ))
             }
@@ -585,12 +727,14 @@ impl<'a, R: Read> Parser<'a, R> {
                         Rc::new(RefCell::new(Obj {
                             name: name.clone(),
                             offset: 0,
+                            ty: Type::TyPlaceholder,
                         })),
                     );
                 }
                 let var = self.locals.get(&name).unwrap().clone();
+                let _ty = var.borrow().ty.clone();
                 Ok(WithPos::new(
-                    WithType::new(Expr::Variable { obj: var }, Type::TyPlaceholder),
+                    WithType::new(Expr::Variable { obj: var }, _ty),
                     pos,
                 ))
             }

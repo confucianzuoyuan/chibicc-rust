@@ -97,6 +97,7 @@ pub type Program = Function;
 pub struct Obj {
     pub name: String,
     pub offset: i32,
+    pub ty: Type,
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -21,6 +21,7 @@ pub enum Tok {
     Greater,
     GreaterEqual,
     Semicolon,
+    Comma,
     Amp,
     Number(i64),
     Ident(String),
@@ -30,11 +31,12 @@ pub enum Tok {
     KeywordElse,
     KeywordFor,
     KeywordWhile,
+    KeywordInt,
 
     EndOfFile,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     pub pos: Pos,
     pub token: Tok,
@@ -61,6 +63,7 @@ impl Display for Tok {
                 Tok::Lesser => "<",
                 Tok::LesserEqual => "<=",
                 Tok::Semicolon => ";",
+                Tok::Comma => ",",
                 Tok::Amp => "&",
                 Tok::Number(i) => return i.to_string(),
                 Tok::Ident(ref ident) => ident,
@@ -69,6 +72,7 @@ impl Display for Tok {
                 Tok::KeywordElse => "else",
                 Tok::KeywordFor => "for",
                 Tok::KeywordWhile => "while",
+                Tok::KeywordInt => "int",
                 Tok::EndOfFile => "<eof>",
             };
             string.to_string()

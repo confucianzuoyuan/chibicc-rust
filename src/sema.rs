@@ -1,10 +1,16 @@
 use crate::ast::BinaryOperator::{Add, Div, Eq, Ge, Gt, Le, Lt, Mul, Ne, Sub};
 use crate::ast::{self, BinaryOperatorWithPos, UnaryOperatorWithPos};
+use crate::token::Token;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Type {
-    TyInt,
-    TyPtr(Box<Type>),
+    TyInt {
+        name: Option<Token>,
+    },
+    TyPtr {
+        base: Box<Type>,
+        name: Option<Token>,
+    },
     TyPlaceholder,
 }
 
@@ -20,8 +26,11 @@ impl<T> WithType<T> {
     }
 }
 
-fn pointer_to(base: Type) -> Type {
-    Type::TyPtr(Box::new(base))
+pub fn pointer_to(base: Type) -> Type {
+    Type::TyPtr {
+        base: Box::new(base),
+        name: None,
+    }
 }
 
 pub fn add_type(e: &mut ast::ExprWithPos) {
@@ -37,7 +46,7 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
         | ast::Expr::Variable { .. }
         | ast::Expr::Number { .. } => {
             if e.node.ty == Type::TyPlaceholder {
-                e.node.ty = Type::TyInt;
+                e.node.ty = Type::TyInt { name: None };
             }
         }
         ast::Expr::Binary {
@@ -70,14 +79,16 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
                 e.node.ty = expr.node.ty.clone();
             }
         }
+        // "&" addr
         ast::Expr::Addr { expr } => {
             if e.node.ty == Type::TyPlaceholder {
                 e.node.ty = pointer_to(expr.node.ty.clone());
             }
         }
+        // "*" dereference
         ast::Expr::Deref { expr } => match expr.node.ty.clone() {
-            Type::TyPtr(base) => e.node.ty = *base,
-            _ => e.node.ty = Type::TyInt,
+            Type::TyPtr { base, .. } => e.node.ty = *base,
+            _ => panic!("invalid pointer dereference: {:#?}", expr),
         },
     }
 }

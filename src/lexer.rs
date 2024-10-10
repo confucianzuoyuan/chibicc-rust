@@ -125,6 +125,7 @@ impl<R: Read> Lexer<R> {
             "return" => Tok::KeywordReturn,
             "for" => Tok::KeywordFor,
             "while" => Tok::KeywordWhile,
+            "int" => Tok::KeywordInt,
             _ => Tok::Ident(ident),
         };
         self.make_token(token, len)
@@ -152,6 +153,7 @@ impl<R: Read> Lexer<R> {
                 b'!' => self.bang_or_bang_equal(),
                 b'=' => self.equal_or_equal_equal(),
                 b';' => self.simple_token(Tok::Semicolon),
+                b',' => self.simple_token(Tok::Comma),
                 b'&' => self.simple_token(Tok::Amp),
                 b'\0' => self.simple_token(Tok::EndOfFile),
                 _ => {
