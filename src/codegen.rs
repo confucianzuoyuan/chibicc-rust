@@ -127,7 +127,19 @@ impl CodeGenerator {
             ast::Expr::Addr { expr, .. } => {
                 self.gen_addr(expr);
             }
-            ast::Expr::FunctionCall { name } => {
+            ast::Expr::FunctionCall { name, args } => {
+                if args.len() > 0 {
+                    let argreg = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"];
+                    // 参数逆序入栈
+                    for arg in args.iter().rev() {
+                        self.gen_expr(arg);
+                        self.push();
+                    }
+                    for i in 0..=args.len() - 1 {
+                        self.pop(argreg[i].to_string());
+                    }
+                }
+
                 println!("  mov $0, %rax");
                 println!("  call {}", name);
             }
@@ -212,8 +224,8 @@ impl CodeGenerator {
 
         for n in &ast.body {
             self.gen_stmt(n);
-            assert!(self.depth == 0);
         }
+        assert!(self.depth == 0);
 
         println!(".L.return:");
         println!("  mov %rbp, %rsp");

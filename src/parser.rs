@@ -701,6 +701,40 @@ impl<'a, R: Read> Parser<'a, R> {
         }
     }
 
+    /// funcall = ident "(" (assign ("," assign)*)? ")"
+    fn funcall(&mut self, funname: String) -> Result<ExprWithPos> {
+        let pos = eat!(self, LeftParen);
+        let mut args = vec![];
+
+        loop {
+            match self.peek()?.token {
+                Tok::RightParen => {
+                    eat!(self, RightParen);
+                    break;
+                }
+                Tok::Comma => {
+                    eat!(self, Comma);
+                }
+                _ => {
+                    let mut arg_exp = self.assign()?;
+                    add_type(&mut arg_exp);
+                    args.push(arg_exp);
+                }
+            }
+        }
+
+        Ok(WithPos::new(
+            WithType::new(
+                Expr::FunctionCall {
+                    name: funname,
+                    args,
+                },
+                Type::TyInt { name: None },
+            ),
+            pos,
+        ))
+    }
+
     /// primary = "(" expr ")" | ident args? | num
     /// args = "(" ")"
     fn primary(&mut self) -> Result<ExprWithPos> {
@@ -724,12 +758,7 @@ impl<'a, R: Read> Parser<'a, R> {
                 let pos = eat!(self, Ident, name);
                 // function call
                 if self.peek()?.token == Tok::LeftParen {
-                    eat!(self, LeftParen);
-                    eat!(self, RightParen);
-                    return Ok(WithPos::new(
-                        WithType::new(Expr::FunctionCall { name }, Type::TyInt { name: None }),
-                        pos,
-                    ));
+                    return self.funcall(name.clone());
                 }
                 // variable
                 if self.locals.get(&name).is_none() {
