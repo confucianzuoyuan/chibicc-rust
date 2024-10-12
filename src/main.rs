@@ -4,7 +4,6 @@ use codegen::CodeGenerator;
 use error::Error;
 use lexer::Lexer;
 use parser::Parser;
-use sema::sema;
 use symbol::{Strings, Symbols};
 use terminal::Terminal;
 

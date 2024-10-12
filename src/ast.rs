@@ -95,7 +95,7 @@ pub enum Stmt {
 
 pub type StmtWithPos = WithPos<Stmt>;
 
-pub type Program = Function;
+pub type Program = Vec<Function>;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Obj {
@@ -106,7 +106,8 @@ pub struct Obj {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Function {
-    pub body: Vec<StmtWithPos>,
+    pub name: String,
+    pub body: StmtWithPos,
     pub locals: HashMap<String, Rc<RefCell<Obj>>>,
     pub stack_size: i32,
 }

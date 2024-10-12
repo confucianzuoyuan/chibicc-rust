@@ -1,8 +1,11 @@
-use crate::ast;
+use itertools::Itertools;
+
+use crate::ast::{self, Function};
 
 pub struct CodeGenerator {
     depth: u32,
     label_count: u32,
+    current_fn: Option<Function>,
 }
 
 impl CodeGenerator {
@@ -10,6 +13,7 @@ impl CodeGenerator {
         CodeGenerator {
             depth: 0,
             label_count: 1,
+            current_fn: None,
         }
     }
 
@@ -38,7 +42,7 @@ impl CodeGenerator {
             ast::Stmt::ExprStmt { expr } => self.gen_expr(expr),
             ast::Stmt::Return { expr } => {
                 self.gen_expr(expr);
-                println!("  jmp .L.return");
+                println!("  jmp .L.return.{}", self.current_fn.as_ref().unwrap().name);
             }
             ast::Stmt::Block { body } => {
                 for n in body {
@@ -202,34 +206,39 @@ impl CodeGenerator {
     }
 
     fn assign_lvar_offsets(&mut self, ast: &mut ast::Program) {
-        let mut offset = 0;
         use itertools::Itertools;
-        for local in &mut ast.locals.iter().sorted_by_key(|x| x.0).rev() {
-            offset += 8;
-            local.1.borrow_mut().offset = -offset;
+        for f in ast {
+            let mut offset = 0;
+            for local in &mut f.locals.iter().sorted_by_key(|x| x.0).rev() {
+                offset += 8;
+                local.1.borrow_mut().offset = -offset;
+            }
+            f.stack_size = self.align_to(offset, 16);
         }
-        ast.stack_size = self.align_to(offset, 16);
     }
 
     pub fn codegen(&mut self, ast: &mut ast::Program) {
         self.assign_lvar_offsets(ast);
 
-        println!("  .globl main");
-        println!("main:");
+        for f in ast {
+            println!("  .globl {}", f.name);
+            println!("{}:", f.name);
+            self.current_fn = Some(f.clone());
 
-        // Prologue
-        println!("  push %rbp");
-        println!("  mov %rsp, %rbp");
-        println!("  sub ${}, %rsp", ast.stack_size);
+            // Prologue
+            println!("  push %rbp");
+            println!("  mov %rsp, %rbp");
+            println!("  sub ${}, %rsp", f.stack_size);
 
-        for n in &ast.body {
-            self.gen_stmt(n);
+            // Emit code
+            self.gen_stmt(&f.body);
+            assert!(self.depth == 0);
+
+            // Epilogue
+            println!(".L.return.{}:", f.name);
+            println!("  mov %rbp, %rsp");
+            println!("  pop %rbp");
+            println!("  ret");
         }
-        assert!(self.depth == 0);
-
-        println!(".L.return:");
-        println!("  mov %rbp, %rsp");
-        println!("  pop %rbp");
-        println!("  ret");
     }
 }

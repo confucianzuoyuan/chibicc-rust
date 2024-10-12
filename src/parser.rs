@@ -2,7 +2,8 @@ use std::{cell::RefCell, collections::HashMap, io::Read, rc::Rc, result};
 
 use crate::{
     ast::{
-        self, BinaryOperator, Expr, ExprWithPos, Obj, Program, Stmt, StmtWithPos, UnaryOperator,
+        self, BinaryOperator, Expr, ExprWithPos, Function, Obj, Program, Stmt, StmtWithPos,
+        UnaryOperator,
     },
     error::Error::{self, UnexpectedToken},
     lexer::Lexer,
@@ -97,8 +98,8 @@ impl<'a, R: Read> Parser<'a, R> {
                 Ok(node)
             }
             Tok::LeftBrace => {
+                eat!(self, LeftBrace);
                 let stmt = self.compound_stmt()?;
-                eat!(self, RightBrace);
                 Ok(stmt)
             }
             Tok::KeywordIf => {
@@ -270,7 +271,22 @@ impl<'a, R: Read> Parser<'a, R> {
         Ok(Type::TyInt { name: None })
     }
 
-    /// declarator = "*"* ident
+    /// type-suffix = ("(" func-params)?
+    fn type_suffix(&mut self, ty: Type) -> Result<Type> {
+        match self.peek()?.token {
+            Tok::LeftParen => {
+                eat!(self, LeftParen);
+                eat!(self, RightParen);
+                Ok(Type::TyFunc {
+                    name: None,
+                    return_ty: Box::new(ty),
+                })
+            }
+            _ => Ok(ty),
+        }
+    }
+
+    /// declarator = "*"* ident type-suffix
     fn declarator(&mut self, ty: Type) -> Result<Type> {
         let mut ty = ty.clone();
         loop {
@@ -286,9 +302,11 @@ impl<'a, R: Read> Parser<'a, R> {
         match self.peek()?.token {
             Tok::Ident(..) => {
                 let tok = self.token()?;
+                ty = self.type_suffix(ty)?;
                 match ty {
                     Type::TyInt { ref mut name } => *name = Some(tok.clone()),
                     Type::TyPtr { ref mut name, .. } => *name = Some(tok.clone()),
+                    Type::TyFunc { ref mut name, .. } => *name = Some(tok.clone()),
                     _ => (),
                 }
             }
@@ -300,11 +318,13 @@ impl<'a, R: Read> Parser<'a, R> {
 
     /// compound-stmt = (declaration | stmt)* "}"
     fn compound_stmt(&mut self) -> Result<StmtWithPos> {
-        let pos = eat!(self, LeftBrace);
         let mut stmts = vec![];
         loop {
             match self.peek()?.token {
-                Tok::RightBrace => break,
+                Tok::RightBrace => {
+                    eat!(self, RightBrace);
+                    break;
+                },
                 Tok::KeywordInt => {
                     let mut declarations = self.declaration()?;
                     sema_stmt(&mut declarations);
@@ -317,7 +337,7 @@ impl<'a, R: Read> Parser<'a, R> {
                 }
             }
         }
-        Ok(WithPos::new(Stmt::Block { body: stmts }, pos))
+        Ok(WithPos::new(Stmt::Block { body: stmts }, Pos::dummy()))
     }
 
     /// expr-stmt = expr? ";"
@@ -810,9 +830,40 @@ impl<'a, R: Read> Parser<'a, R> {
         })
     }
 
-    /// program = stmt*
+    fn function(&mut self) -> Result<Function> {
+        let mut ty = self.declspec()?;
+        ty = self.declarator(ty)?;
+
+        self.locals = HashMap::new();
+
+        let ident;
+        match ty.clone() {
+            Type::TyFunc {
+                name:
+                    Some(Token {
+                        token: Tok::Ident(ident_name),
+                        ..
+                    }),
+                ..
+            } => {
+                ident = ident_name;
+            }
+            _ => panic!("ident must have a type."),
+        }
+
+        eat!(self, LeftBrace);
+        let body = self.compound_stmt()?;
+        Ok(ast::Function {
+            name: ident,
+            body,
+            locals: self.locals.clone(),
+            stack_size: 0,
+        })
+    }
+
+    /// program = function-definition*
     pub fn parse(&mut self) -> Result<Program> {
-        let mut stmts = vec![];
+        let mut funcs = vec![];
         loop {
             match self.peek() {
                 Ok(Token {
@@ -820,13 +871,9 @@ impl<'a, R: Read> Parser<'a, R> {
                     ..
                 })
                 | Err(Error::Eof) => break,
-                _ => stmts.push(self.stmt()?),
+                _ => funcs.push(self.function()?),
             }
         }
-        Ok(ast::Function {
-            body: stmts,
-            locals: self.locals.clone(),
-            stack_size: 0,
-        })
+        Ok(funcs)
     }
 }

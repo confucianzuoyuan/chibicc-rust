@@ -11,6 +11,10 @@ pub enum Type {
         base: Box<Type>,
         name: Option<Token>,
     },
+    TyFunc {
+        name: Option<Token>,
+        return_ty: Box<Type>,
+    },
     TyPlaceholder,
 }
 
@@ -138,11 +142,5 @@ pub fn sema_stmt(node: &mut ast::StmtWithPos) {
             add_type(condition);
             sema_stmt(body);
         }
-    }
-}
-
-pub fn sema(program: &mut ast::Program) {
-    for n in &mut program.body {
-        sema_stmt(n);
     }
 }
