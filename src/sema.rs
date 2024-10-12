@@ -53,10 +53,14 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
                 },
             ..
         }
-        | ast::Expr::Variable { .. }
         | ast::Expr::Number { .. } => {
             if e.node.ty == Type::TyPlaceholder {
                 e.node.ty = Type::TyInt { name: None };
+            }
+        }
+        ast::Expr::Variable { obj } => {
+            if e.node.ty == Type::TyPlaceholder {
+                e.node.ty = obj.borrow().ty.clone();
             }
         }
         ast::Expr::Binary {
