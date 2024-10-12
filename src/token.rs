@@ -34,6 +34,7 @@ pub enum Tok {
     KeywordFor,
     KeywordWhile,
     KeywordInt,
+    KeywordSizeof,
 
     EndOfFile,
 }
@@ -77,6 +78,7 @@ impl Display for Tok {
                 Tok::KeywordFor => "for",
                 Tok::KeywordWhile => "while",
                 Tok::KeywordInt => "int",
+                Tok::KeywordSizeof => "sizeof",
                 Tok::EndOfFile => "<eof>",
             };
             string.to_string()

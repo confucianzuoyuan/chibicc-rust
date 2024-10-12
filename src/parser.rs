@@ -13,9 +13,9 @@ use crate::{
     token::{
         Tok::{
             self, Amp, BangEqual, Comma, Equal, EqualEqual, Greater, GreaterEqual, Ident,
-            KeywordElse, KeywordFor, KeywordIf, KeywordInt, KeywordReturn, KeywordWhile, LeftBrace,
-            LeftBracket, LeftParen, Lesser, LesserEqual, Minus, Number, Plus, RightBrace,
-            RightBracket, RightParen, Semicolon, Slash, Star,
+            KeywordElse, KeywordFor, KeywordIf, KeywordInt, KeywordReturn, KeywordSizeof,
+            KeywordWhile, LeftBrace, LeftBracket, LeftParen, Lesser, LesserEqual, Minus, Number,
+            Plus, RightBrace, RightBracket, RightParen, Semicolon, Slash, Star,
         },
         Token,
     },
@@ -859,7 +859,7 @@ impl<'a, R: Read> Parser<'a, R> {
         ))
     }
 
-    /// primary = "(" expr ")" | ident args? | num
+    /// primary = "(" expr ")" | "sizeof" unary | ident args? | num
     /// args = "(" ")"
     fn primary(&mut self) -> Result<ExprWithPos> {
         match self.peek()?.token {
@@ -874,6 +874,20 @@ impl<'a, R: Read> Parser<'a, R> {
                 let pos = eat!(self, Number, value);
                 Ok(WithPos::new(
                     WithType::new(Expr::Number { value }, Type::TyInt { name: None }),
+                    pos,
+                ))
+            }
+            Tok::KeywordSizeof => {
+                let pos = eat!(self, KeywordSizeof);
+                let mut node = self.unary()?;
+                add_type(&mut node);
+                Ok(WithPos::new(
+                    WithType::new(
+                        Expr::Number {
+                            value: get_sizeof(node.node.ty.clone()) as i64,
+                        },
+                        Type::TyInt { name: None },
+                    ),
                     pos,
                 ))
             }
