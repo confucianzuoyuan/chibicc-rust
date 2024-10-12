@@ -310,9 +310,9 @@ impl<'a, R: Read> Parser<'a, R> {
     }
 
     /// type-suffix = "(" func-params
-    ///             | "[" num "]"
+    ///             | "[" num "]" type-suffix
     ///             | ε
-    fn type_suffix(&mut self, ty: Type) -> Result<Type> {
+    fn type_suffix(&mut self, mut ty: Type) -> Result<Type> {
         match self.peek()?.token {
             Tok::LeftParen => {
                 eat!(self, LeftParen);
@@ -323,6 +323,7 @@ impl<'a, R: Read> Parser<'a, R> {
                 let num;
                 eat!(self, Number, num);
                 eat!(self, RightBracket);
+                ty = self.type_suffix(ty)?;
                 Ok(Type::TyArray {
                     name: None,
                     base: Box::new(ty),
