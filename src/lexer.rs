@@ -148,6 +148,8 @@ impl<R: Read> Lexer<R> {
                 b')' => self.simple_token(Tok::RightParen),
                 b'{' => self.simple_token(Tok::LeftBrace),
                 b'}' => self.simple_token(Tok::RightBrace),
+                b'[' => self.simple_token(Tok::LeftBracket),
+                b']' => self.simple_token(Tok::RightBracket),
                 b'>' => self.greater_or_greater_equal(),
                 b'<' => self.lesser_or_lesser_equal(),
                 b'!' => self.bang_or_bang_equal(),

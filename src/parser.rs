@@ -8,14 +8,14 @@ use crate::{
     error::Error::{self, UnexpectedToken},
     lexer::Lexer,
     position::{Pos, WithPos},
-    sema::{self, add_type, sema_stmt, Type, WithType},
+    sema::{self, add_type, get_sizeof, sema_stmt, Type, WithType},
     symbol::Symbols,
     token::{
         Tok::{
             self, Amp, BangEqual, Comma, Equal, EqualEqual, Greater, GreaterEqual, Ident,
             KeywordElse, KeywordFor, KeywordIf, KeywordInt, KeywordReturn, KeywordWhile, LeftBrace,
-            LeftParen, Lesser, LesserEqual, Minus, Number, Plus, RightBrace, RightParen, Semicolon,
-            Slash, Star,
+            LeftBracket, LeftParen, Lesser, LesserEqual, Minus, Number, Plus, RightBrace,
+            RightBracket, RightParen, Semicolon, Slash, Star,
         },
         Token,
     },
@@ -216,6 +216,16 @@ impl<'a, R: Read> Parser<'a, R> {
                         } => {
                             ident = ident_name;
                         }
+                        Type::TyArray {
+                            name:
+                                Some(Token {
+                                    token: Tok::Ident(ident_name),
+                                    ..
+                                }),
+                            ..
+                        } => {
+                            ident = ident_name;
+                        }
                         _ => panic!("ident must have a type."),
                     }
                     if self.locals.get(&ident).is_none() {
@@ -271,35 +281,52 @@ impl<'a, R: Read> Parser<'a, R> {
         Ok(Type::TyInt { name: None })
     }
 
-    /// type-suffix = ("(" func-params)? ")")?
-    /// func-params = param ("," param)*
+    /// func-params = (param ("," param)*)? ")"
     /// param       = declspec declarator
+    fn func_params(&mut self, ty: Type) -> Result<Type> {
+        let mut params = vec![];
+        loop {
+            match self.peek()?.token {
+                Tok::Comma => {
+                    eat!(self, Comma);
+                }
+                Tok::RightParen => {
+                    eat!(self, RightParen);
+                    break;
+                }
+                _ => {
+                    let basety = self.declspec()?;
+                    let ty = self.declarator(basety)?;
+                    params.push(ty);
+                }
+            }
+        }
+
+        Ok(Type::TyFunc {
+            name: None,
+            params,
+            return_ty: Box::new(ty),
+        })
+    }
+
+    /// type-suffix = "(" func-params
+    ///             | "[" num "]"
+    ///             | ε
     fn type_suffix(&mut self, ty: Type) -> Result<Type> {
         match self.peek()?.token {
             Tok::LeftParen => {
                 eat!(self, LeftParen);
-                let mut params = vec![];
-                loop {
-                    match self.peek()?.token {
-                        Tok::Comma => {
-                            eat!(self, Comma);
-                        }
-                        Tok::RightParen => {
-                            eat!(self, RightParen);
-                            break;
-                        }
-                        _ => {
-                            let basety = self.declspec()?;
-                            let ty = self.declarator(basety)?;
-                            params.push(ty);
-                        }
-                    }
-                }
-
-                Ok(Type::TyFunc {
+                self.func_params(ty)
+            }
+            Tok::LeftBracket => {
+                eat!(self, LeftBracket);
+                let num;
+                eat!(self, Number, num);
+                eat!(self, RightBracket);
+                Ok(Type::TyArray {
                     name: None,
-                    params,
-                    return_ty: Box::new(ty),
+                    base: Box::new(ty),
+                    array_len: num as i32,
                 })
             }
             _ => Ok(ty),
@@ -327,6 +354,7 @@ impl<'a, R: Read> Parser<'a, R> {
                     Type::TyInt { ref mut name } => *name = Some(tok.clone()),
                     Type::TyPtr { ref mut name, .. } => *name = Some(tok.clone()),
                     Type::TyFunc { ref mut name, .. } => *name = Some(tok.clone()),
+                    Type::TyArray { ref mut name, .. } => *name = Some(tok.clone()),
                     _ => (),
                 }
             }
@@ -494,7 +522,15 @@ impl<'a, R: Read> Parser<'a, R> {
                             );
                         }
                         // ptr + num
-                        (Type::TyPtr { .. }, Type::TyInt { .. }) => {
+                        (
+                            Type::TyPtr { base, .. }
+                            | Type::TyArray {
+                                name: _,
+                                base,
+                                array_len: _,
+                            },
+                            Type::TyInt { .. },
+                        ) => {
                             // num * 8
                             right = WithPos::new(
                                 WithType::new(
@@ -503,7 +539,9 @@ impl<'a, R: Read> Parser<'a, R> {
                                         op: WithPos::new(ast::BinaryOperator::Mul, pos),
                                         right: Box::new(WithPos::new(
                                             WithType::new(
-                                                Expr::Number { value: 8 },
+                                                Expr::Number {
+                                                    value: get_sizeof(*base) as i64,
+                                                },
                                                 Type::TyInt { name: None },
                                             ),
                                             pos,
@@ -526,7 +564,10 @@ impl<'a, R: Read> Parser<'a, R> {
                             );
                         }
                         // num + ptr
-                        (Type::TyInt { .. }, Type::TyPtr { .. }) => {
+                        (
+                            Type::TyInt { .. },
+                            Type::TyPtr { base, .. } | Type::TyArray { base, .. },
+                        ) => {
                             // num * 8
                             expr = WithPos::new(
                                 WithType::new(
@@ -535,7 +576,9 @@ impl<'a, R: Read> Parser<'a, R> {
                                         op: WithPos::new(ast::BinaryOperator::Mul, pos),
                                         right: Box::new(WithPos::new(
                                             WithType::new(
-                                                Expr::Number { value: 8 },
+                                                Expr::Number {
+                                                    value: get_sizeof(*base) as i64,
+                                                },
                                                 Type::TyInt { name: None },
                                             ),
                                             pos,
@@ -584,7 +627,7 @@ impl<'a, R: Read> Parser<'a, R> {
                             );
                         }
                         // ptr - num
-                        (Type::TyPtr { .. }, Type::TyInt { .. }) => {
+                        (Type::TyPtr { base, .. }, Type::TyInt { .. }) => {
                             // num * 8
                             right = WithPos::new(
                                 WithType::new(
@@ -593,7 +636,9 @@ impl<'a, R: Read> Parser<'a, R> {
                                         op: WithPos::new(ast::BinaryOperator::Mul, pos),
                                         right: Box::new(WithPos::new(
                                             WithType::new(
-                                                Expr::Number { value: 8 },
+                                                Expr::Number {
+                                                    value: get_sizeof(*base) as i64,
+                                                },
                                                 Type::TyInt { name: None },
                                             ),
                                             pos,
@@ -617,7 +662,7 @@ impl<'a, R: Read> Parser<'a, R> {
                             );
                         }
                         // ptr - ptr, which returns how many elements are between the two.
-                        (Type::TyPtr { .. }, Type::TyPtr { .. }) => {
+                        (Type::TyPtr { base, .. }, Type::TyPtr { .. }) => {
                             let left = WithPos::new(
                                 WithType::new(
                                     Expr::Binary {
@@ -636,7 +681,9 @@ impl<'a, R: Read> Parser<'a, R> {
                                         op: WithPos::new(ast::BinaryOperator::Div, pos),
                                         right: Box::new(WithPos::new(
                                             WithType::new(
-                                                Expr::Number { value: 8 },
+                                                Expr::Number {
+                                                    value: get_sizeof(*base) as i64,
+                                                },
                                                 Type::TyInt { name: None },
                                             ),
                                             pos,
@@ -857,7 +904,6 @@ impl<'a, R: Read> Parser<'a, R> {
         self.locals = HashMap::new();
 
         let ident;
-        let _params;
         match ty.clone() {
             Type::TyFunc {
                 name:
@@ -869,7 +915,27 @@ impl<'a, R: Read> Parser<'a, R> {
                 ..
             } => {
                 ident = ident_name;
-                _params = params.clone();
+                for p in params {
+                    match p.clone() {
+                        Type::TyInt {
+                            name:
+                                Some(Token {
+                                    pos: _,
+                                    token: Tok::Ident(param_name),
+                                }),
+                        } => {
+                            self.locals.insert(
+                                param_name.clone(),
+                                Rc::new(RefCell::new(Obj {
+                                    name: param_name,
+                                    offset: 0,
+                                    ty: p.clone(),
+                                })),
+                            );
+                        }
+                        _ => panic!(),
+                    }
+                }
             }
             _ => panic!("ident must have a type."),
         }
@@ -878,7 +944,7 @@ impl<'a, R: Read> Parser<'a, R> {
         let body = self.compound_stmt()?;
         Ok(ast::Function {
             name: ident,
-            params: _params,
+            params: self.locals.clone(),
             body,
             locals: self.locals.clone(),
             stack_size: 0,

@@ -1,6 +1,6 @@
 use crate::{
     ast::{self, Function},
-    sema::Type,
+    sema::{get_sizeof, Type},
     token::{Tok, Token},
 };
 
@@ -29,6 +29,26 @@ impl CodeGenerator {
     fn pop(&mut self, arg: String) {
         println!("  pop {}", arg);
         self.depth -= 1;
+    }
+
+    // Load a value from where %rax is pointing to.
+    fn load(&self, ty: &Type) {
+        match ty {
+            // If it is an array, do not attempt to load a value to the
+            // register because in general we can't load an entire array to a
+            // register. As a result, the result of an evaluation of an array
+            // becomes not the array itself but the address of the array.
+            // This is where "array is automatically converted to a pointer to
+            // the first element of the array in C" occurs.
+            Type::TyArray { .. } => (),
+            _ => println!("  mov (%rax), %rax"),
+        }
+    }
+
+    // Store %rax to an address that the stack top is pointing to.
+    fn store(&mut self) {
+        self.pop("%rdi".to_string());
+        println!("  mov %rax, (%rdi)");
     }
 
     fn gen_addr(&mut self, ast: &ast::ExprWithPos) {
@@ -117,7 +137,7 @@ impl CodeGenerator {
             }
             ast::Expr::Variable { .. } => {
                 self.gen_addr(ast);
-                println!("  mov (%rax), %rax");
+                self.load(&ast.node.ty);
             }
             ast::Expr::Assign {
                 l_value, r_value, ..
@@ -125,12 +145,11 @@ impl CodeGenerator {
                 self.gen_addr(l_value);
                 self.push();
                 self.gen_expr(r_value);
-                self.pop("%rdi".to_string());
-                println!("  mov %rax, (%rdi)");
+                self.store();
             }
             ast::Expr::Deref { expr, .. } => {
                 self.gen_expr(expr);
-                println!("  mov (%rax), %rax");
+                self.load(&ast.node.ty);
             }
             ast::Expr::Addr { expr, .. } => {
                 self.gen_addr(expr);
@@ -213,7 +232,7 @@ impl CodeGenerator {
         for f in ast {
             let mut offset = 0;
             for local in &mut f.locals.iter().sorted_by_key(|x| x.0).rev() {
-                offset += 8;
+                offset += get_sizeof(local.1.borrow().ty.clone());
                 local.1.borrow_mut().offset = -offset;
             }
             f.stack_size = self.align_to(offset, 16);
@@ -236,14 +255,14 @@ impl CodeGenerator {
             // Save passed-by-register arguments to the stack
             let mut i = 0;
             for p in &f.params {
-                match p {
-                    Type::TyInt { name } | Type::TyPtr { name, .. } => {
+                match p.1.borrow().ty.clone() {
+                    Type::TyInt { name } | Type::TyPtr { name, .. } | Type::TyArray { name, .. } => {
                         if let Some(Token {
                             token: Tok::Ident(ident),
                             ..
                         }) = name
                         {
-                            let offset = f.locals.get(ident).unwrap().borrow().offset;
+                            let offset = f.locals.get(&ident).unwrap().borrow().offset;
                             println!("  mov {}, {}(%rbp)", ARGREG[i], offset);
                             i += 1;
                         }

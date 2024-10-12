@@ -107,7 +107,7 @@ pub struct Obj {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Function {
     pub name: String,
-    pub params: Vec<Type>,
+    pub params: HashMap<String, Rc<RefCell<Obj>>>,
     pub body: StmtWithPos,
     pub locals: HashMap<String, Rc<RefCell<Obj>>>,
     pub stack_size: i32,

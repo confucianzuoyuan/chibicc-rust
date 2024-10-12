@@ -11,6 +11,11 @@ pub enum Type {
         base: Box<Type>,
         name: Option<Token>,
     },
+    TyArray {
+        name: Option<Token>,
+        base: Box<Type>,
+        array_len: i32,
+    },
     TyFunc {
         name: Option<Token>,
         params: Vec<Type>,
@@ -67,11 +72,11 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
                 e.node.ty = left.node.ty.clone();
             }
         }
-        ast::Expr::Assign { l_value, .. } => {
-            if e.node.ty == Type::TyPlaceholder {
-                e.node.ty = l_value.node.ty.clone();
-            }
-        }
+        ast::Expr::Assign { l_value, .. } => match e.node.ty {
+            Type::TyPlaceholder => e.node.ty = l_value.node.ty.clone(),
+            Type::TyArray { .. } => panic!("array type is not lvalue."),
+            _ => (),
+        },
         ast::Expr::Unary {
             op:
                 UnaryOperatorWithPos {
@@ -85,14 +90,23 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
             }
         }
         // "&" addr
-        ast::Expr::Addr { expr } => {
-            if e.node.ty == Type::TyPlaceholder {
-                e.node.ty = pointer_to(expr.node.ty.clone());
-            }
-        }
+        ast::Expr::Addr { expr } => match e.node.ty.clone() {
+            Type::TyPlaceholder => e.node.ty = pointer_to(expr.node.ty.clone()),
+            Type::TyArray {
+                name: _,
+                base,
+                array_len: _,
+            } => e.node.ty = pointer_to(*base),
+            _ => (),
+        },
         // "*" dereference
         ast::Expr::Deref { expr } => match expr.node.ty.clone() {
             Type::TyPtr { base, .. } => e.node.ty = *base,
+            Type::TyArray {
+                name: _,
+                base,
+                array_len: _,
+            } => e.node.ty = *base,
             _ => panic!("invalid pointer dereference: {:#?}", expr),
         },
         ast::Expr::FunctionCall { .. } => {
@@ -143,5 +157,18 @@ pub fn sema_stmt(node: &mut ast::StmtWithPos) {
             add_type(condition);
             sema_stmt(body);
         }
+    }
+}
+
+pub fn get_sizeof(ty: Type) -> i32 {
+    match ty {
+        Type::TyInt { .. } => 8,
+        Type::TyArray {
+            name: _,
+            base,
+            array_len,
+        } => get_sizeof(*base) * array_len,
+        Type::TyPtr { .. } => 8,
+        _ => 0,
     }
 }
