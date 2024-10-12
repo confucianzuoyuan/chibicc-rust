@@ -1,6 +1,10 @@
-use itertools::Itertools;
+use crate::{
+    ast::{self, Function},
+    sema::Type,
+    token::{Tok, Token},
+};
 
-use crate::ast::{self, Function};
+static ARGREG: [&str; 6] = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"];
 
 pub struct CodeGenerator {
     depth: u32,
@@ -133,14 +137,13 @@ impl CodeGenerator {
             }
             ast::Expr::FunctionCall { name, args } => {
                 if args.len() > 0 {
-                    let argreg = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"];
                     // 参数逆序入栈
                     for arg in args.iter().rev() {
                         self.gen_expr(arg);
                         self.push();
                     }
                     for i in 0..=args.len() - 1 {
-                        self.pop(argreg[i].to_string());
+                        self.pop(ARGREG[i].to_string());
                     }
                 }
 
@@ -229,6 +232,25 @@ impl CodeGenerator {
             println!("  push %rbp");
             println!("  mov %rsp, %rbp");
             println!("  sub ${}, %rsp", f.stack_size);
+
+            // Save passed-by-register arguments to the stack
+            let mut i = 0;
+            for p in &f.params {
+                match p {
+                    Type::TyInt { name } | Type::TyPtr { name, .. } => {
+                        if let Some(Token {
+                            token: Tok::Ident(ident),
+                            ..
+                        }) = name
+                        {
+                            let offset = f.locals.get(ident).unwrap().borrow().offset;
+                            println!("  mov {}, {}(%rbp)", ARGREG[i], offset);
+                            i += 1;
+                        }
+                    }
+                    _ => panic!(),
+                }
+            }
 
             // Emit code
             self.gen_stmt(&f.body);

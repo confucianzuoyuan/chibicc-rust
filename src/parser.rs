@@ -271,14 +271,34 @@ impl<'a, R: Read> Parser<'a, R> {
         Ok(Type::TyInt { name: None })
     }
 
-    /// type-suffix = ("(" func-params)?
+    /// type-suffix = ("(" func-params)? ")")?
+    /// func-params = param ("," param)*
+    /// param       = declspec declarator
     fn type_suffix(&mut self, ty: Type) -> Result<Type> {
         match self.peek()?.token {
             Tok::LeftParen => {
                 eat!(self, LeftParen);
-                eat!(self, RightParen);
+                let mut params = vec![];
+                loop {
+                    match self.peek()?.token {
+                        Tok::Comma => {
+                            eat!(self, Comma);
+                        }
+                        Tok::RightParen => {
+                            eat!(self, RightParen);
+                            break;
+                        }
+                        _ => {
+                            let basety = self.declspec()?;
+                            let ty = self.declarator(basety)?;
+                            params.push(ty);
+                        }
+                    }
+                }
+
                 Ok(Type::TyFunc {
                     name: None,
+                    params,
                     return_ty: Box::new(ty),
                 })
             }
@@ -324,7 +344,7 @@ impl<'a, R: Read> Parser<'a, R> {
                 Tok::RightBrace => {
                     eat!(self, RightBrace);
                     break;
-                },
+                }
                 Tok::KeywordInt => {
                     let mut declarations = self.declaration()?;
                     sema_stmt(&mut declarations);
@@ -837,6 +857,7 @@ impl<'a, R: Read> Parser<'a, R> {
         self.locals = HashMap::new();
 
         let ident;
+        let _params;
         match ty.clone() {
             Type::TyFunc {
                 name:
@@ -844,9 +865,11 @@ impl<'a, R: Read> Parser<'a, R> {
                         token: Tok::Ident(ident_name),
                         ..
                     }),
+                params,
                 ..
             } => {
                 ident = ident_name;
+                _params = params.clone();
             }
             _ => panic!("ident must have a type."),
         }
@@ -855,6 +878,7 @@ impl<'a, R: Read> Parser<'a, R> {
         let body = self.compound_stmt()?;
         Ok(ast::Function {
             name: ident,
+            params: _params,
             body,
             locals: self.locals.clone(),
             stack_size: 0,

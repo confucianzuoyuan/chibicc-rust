@@ -13,6 +13,7 @@ pub enum Type {
     },
     TyFunc {
         name: Option<Token>,
+        params: Vec<Type>,
         return_ty: Box<Type>,
     },
     TyPlaceholder,
