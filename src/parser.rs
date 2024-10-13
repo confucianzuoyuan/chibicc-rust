@@ -69,6 +69,7 @@ pub struct Parser<'a, R: Read> {
     /// All local variable instances created during parsing are
     /// accumulated to this map
     locals: HashMap<String, Rc<RefCell<Obj>>>,
+    globals: HashMap<String, Rc<RefCell<Obj>>>,
 }
 
 impl<'a, R: Read> Parser<'a, R> {
@@ -78,6 +79,7 @@ impl<'a, R: Read> Parser<'a, R> {
             lookahead: None,
             symbols,
             locals: HashMap::new(),
+            globals: HashMap::new(),
         }
     }
 
@@ -235,6 +237,7 @@ impl<'a, R: Read> Parser<'a, R> {
                                 name: ident.clone(),
                                 offset: 0,
                                 ty: ty.clone(),
+                                is_local: false,
                             })),
                         );
                     } else {
@@ -715,15 +718,7 @@ impl<'a, R: Read> Parser<'a, R> {
                 );
             }
             // ptr + num
-            (
-                Type::TyPtr { base, .. }
-                | Type::TyArray {
-                    name: _,
-                    base,
-                    array_len: _,
-                },
-                Type::TyInt { .. },
-            ) => {
+            (Type::TyPtr { base, .. } | Type::TyArray { base, .. }, Type::TyInt { .. }) => {
                 // num * 8
                 rhs = WithPos::new(
                     WithType::new(
@@ -906,6 +901,7 @@ impl<'a, R: Read> Parser<'a, R> {
                             name: name.clone(),
                             offset: 0,
                             ty: Type::TyPlaceholder,
+                            is_local: false,
                         })),
                     );
                 }
@@ -981,6 +977,7 @@ impl<'a, R: Read> Parser<'a, R> {
                                     name: param_name,
                                     offset: 0,
                                     ty: p.clone(),
+                                    is_local: false,
                                 })),
                             );
                         }

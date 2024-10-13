@@ -244,6 +244,7 @@ impl CodeGenerator {
 
         for f in ast {
             println!("  .globl {}", f.name);
+            println!("  .text");
             println!("{}:", f.name);
             self.current_fn = Some(f.clone());
 

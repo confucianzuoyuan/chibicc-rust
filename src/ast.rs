@@ -102,6 +102,7 @@ pub struct Obj {
     pub name: String,
     pub offset: i32,
     pub ty: Type,
+    pub is_local: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
