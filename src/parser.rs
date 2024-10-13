@@ -13,9 +13,9 @@ use crate::{
     token::{
         Tok::{
             self, Amp, BangEqual, Comma, Equal, EqualEqual, Greater, GreaterEqual, Ident,
-            KeywordElse, KeywordFor, KeywordIf, KeywordInt, KeywordReturn, KeywordSizeof,
-            KeywordWhile, LeftBrace, LeftBracket, LeftParen, Lesser, LesserEqual, Minus, Number,
-            Plus, RightBrace, RightBracket, RightParen, Semicolon, Slash, Star,
+            KeywordChar, KeywordElse, KeywordFor, KeywordIf, KeywordInt, KeywordReturn,
+            KeywordSizeof, KeywordWhile, LeftBrace, LeftBracket, LeftParen, Lesser, LesserEqual,
+            Minus, Number, Plus, RightBrace, RightBracket, RightParen, Semicolon, Slash, Star,
         },
         Token,
     },
@@ -228,6 +228,16 @@ impl<'a, R: Read> Parser<'a, R> {
                         } => {
                             ident = ident_name;
                         }
+                        Type::TyChar {
+                            name:
+                                Some(Token {
+                                    token: Tok::Ident(ident_name),
+                                    ..
+                                }),
+                            ..
+                        } => {
+                            ident = ident_name;
+                        }
                         _ => panic!("ident must have a type."),
                     }
                     if self.locals.get(&ident).is_none() {
@@ -278,10 +288,19 @@ impl<'a, R: Read> Parser<'a, R> {
         Ok(WithPos::new(Stmt::Block { body: decls }, Pos::dummy()))
     }
 
-    /// declspec = "int"
+    /// declspec = "int" | "char"
     fn declspec(&mut self) -> Result<Type> {
-        eat!(self, KeywordInt);
-        Ok(Type::TyInt { name: None })
+        match self.peek()?.token {
+            Tok::KeywordChar => {
+                eat!(self, KeywordChar);
+                Ok(Type::TyChar { name: None })
+            }
+            Tok::KeywordInt => {
+                eat!(self, KeywordInt);
+                Ok(Type::TyInt { name: None })
+            }
+            _ => panic!("unknown type name."),
+        }
     }
 
     /// func-params = (param ("," param)*)? ")"
@@ -356,6 +375,7 @@ impl<'a, R: Read> Parser<'a, R> {
                 ty = self.type_suffix(ty)?;
                 match ty {
                     Type::TyInt { ref mut name } => *name = Some(tok.clone()),
+                    Type::TyChar { ref mut name } => *name = Some(tok.clone()),
                     Type::TyPtr { ref mut name, .. } => *name = Some(tok.clone()),
                     Type::TyFunc { ref mut name, .. } => *name = Some(tok.clone()),
                     Type::TyArray { ref mut name, .. } => *name = Some(tok.clone()),
@@ -377,7 +397,7 @@ impl<'a, R: Read> Parser<'a, R> {
                     eat!(self, RightBrace);
                     break;
                 }
-                Tok::KeywordInt => {
+                Tok::KeywordInt | Tok::KeywordChar => {
                     let mut declarations = self.declaration()?;
                     sema_stmt(&mut declarations);
                     stmts.push(declarations);
@@ -518,7 +538,7 @@ impl<'a, R: Read> Parser<'a, R> {
 
                     match (expr.node.ty.clone(), right.node.ty.clone()) {
                         // num - num
-                        (Type::TyInt { .. }, Type::TyInt { .. }) => {
+                        (Type::TyInt { .. } | Type::TyChar { .. }, Type::TyInt { .. } | Type::TyChar { .. }) => {
                             expr = WithPos::new(
                                 WithType::new(
                                     Expr::Binary {
@@ -966,6 +986,13 @@ impl<'a, R: Read> Parser<'a, R> {
                 for p in params {
                     match p.clone() {
                         Type::TyInt {
+                            name:
+                                Some(Token {
+                                    pos: _,
+                                    token: Tok::Ident(param_name),
+                                }),
+                        }
+                        | Type::TyChar {
                             name:
                                 Some(Token {
                                     pos: _,

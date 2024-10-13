@@ -7,6 +7,9 @@ pub enum Type {
     TyInt {
         name: Option<Token>,
     },
+    TyChar {
+        name: Option<Token>,
+    },
     TyPtr {
         base: Box<Type>,
         name: Option<Token>,
@@ -167,6 +170,7 @@ pub fn sema_stmt(node: &mut ast::StmtWithPos) {
 pub fn get_sizeof(ty: Type) -> i32 {
     match ty {
         Type::TyInt { .. } => 8,
+        Type::TyChar { .. } => 1,
         Type::TyArray {
             name: _,
             base,

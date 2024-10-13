@@ -4,7 +4,8 @@ use crate::{
     token::{Tok, Token},
 };
 
-static ARGREG: [&str; 6] = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"];
+static ARGREG_64: [&str; 6] = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"];
+static ARGREG_8: [&str; 6] = ["%dil", "%sil", "%dl", "%cl", "%r8b", "%r9b"];
 
 pub struct CodeGenerator {
     depth: u32,
@@ -41,14 +42,24 @@ impl CodeGenerator {
             // This is where "array is automatically converted to a pointer to
             // the first element of the array in C" occurs.
             Type::TyArray { .. } => (),
-            _ => println!("  mov (%rax), %rax"),
+            _ => {
+                if get_sizeof(ty.clone()) == 1 {
+                    println!("  movsbq (%rax), %rax");
+                } else {
+                    println!("  mov (%rax), %rax");
+                }
+            }
         }
     }
 
     // Store %rax to an address that the stack top is pointing to.
-    fn store(&mut self) {
+    fn store(&mut self, ty: &Type) {
         self.pop("%rdi".to_string());
-        println!("  mov %rax, (%rdi)");
+        if get_sizeof(ty.clone()) == 1 {
+            println!("  mov %al, (%rdi)");
+        } else {
+            println!("  mov %rax, (%rdi)");
+        }
     }
 
     fn gen_addr(&mut self, ast: &ast::ExprWithPos) {
@@ -149,7 +160,7 @@ impl CodeGenerator {
                 self.gen_addr(l_value);
                 self.push();
                 self.gen_expr(r_value);
-                self.store();
+                self.store(&ast.node.ty);
             }
             ast::Expr::Deref { expr, .. } => {
                 self.gen_expr(expr);
@@ -166,7 +177,7 @@ impl CodeGenerator {
                         self.push();
                     }
                     for i in 0..=args.len() - 1 {
-                        self.pop(ARGREG[i].to_string());
+                        self.pop(ARGREG_64[i].to_string());
                     }
                 }
 
@@ -266,9 +277,11 @@ impl CodeGenerator {
 
             // Save passed-by-register arguments to the stack
             let mut i = 0;
-            for p in &f.params {
+            use itertools::Itertools;
+            for p in &mut f.params.iter().sorted_by_key(|x| x.0) {
                 match p.1.borrow().ty.clone() {
                     Type::TyInt { name }
+                    | Type::TyChar { name }
                     | Type::TyPtr { name, .. }
                     | Type::TyArray { name, .. } => {
                         if let Some(Token {
@@ -277,7 +290,11 @@ impl CodeGenerator {
                         }) = name
                         {
                             let offset = f.locals.get(&ident).unwrap().borrow().offset;
-                            println!("  mov {}, {}(%rbp)", ARGREG[i], offset);
+                            if get_sizeof(f.locals.get(&ident).unwrap().borrow().ty.clone()) == 1 {
+                                println!("  mov {}, {}(%rbp)", ARGREG_8[i], offset);
+                            } else {
+                                println!("  mov {}, {}(%rbp)", ARGREG_64[i], offset);
+                            }
                             i += 1;
                         }
                     }

@@ -126,6 +126,7 @@ impl<R: Read> Lexer<R> {
             "for" => Tok::KeywordFor,
             "while" => Tok::KeywordWhile,
             "int" => Tok::KeywordInt,
+            "char" => Tok::KeywordChar,
             "sizeof" => Tok::KeywordSizeof,
             _ => Tok::Ident(ident),
         };
