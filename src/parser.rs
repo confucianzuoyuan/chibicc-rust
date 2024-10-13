@@ -237,7 +237,7 @@ impl<'a, R: Read> Parser<'a, R> {
                                 name: ident.clone(),
                                 offset: 0,
                                 ty: ty.clone(),
-                                is_local: false,
+                                is_local: true,
                             })),
                         );
                     } else {
@@ -894,18 +894,14 @@ impl<'a, R: Read> Parser<'a, R> {
                     return self.funcall(name.clone());
                 }
                 // variable
-                if self.locals.get(&name).is_none() {
-                    self.locals.insert(
-                        name.clone(),
-                        Rc::new(RefCell::new(Obj {
-                            name: name.clone(),
-                            offset: 0,
-                            ty: Type::TyPlaceholder,
-                            is_local: false,
-                        })),
-                    );
+                let var;
+                if self.locals.get(&name).is_some() {
+                    var = self.locals.get(&name).unwrap().clone();
+                } else if self.globals.get(&name).is_some() {
+                    var = self.globals.get(&name).unwrap().clone();
+                } else {
+                    panic!("variable {} not defined.", name);
                 }
-                let var = self.locals.get(&name).unwrap().clone();
                 let _ty = var.borrow().ty.clone();
                 Ok(WithPos::new(
                     WithType::new(Expr::Variable { obj: var }, _ty),
@@ -944,9 +940,14 @@ impl<'a, R: Read> Parser<'a, R> {
         })
     }
 
-    fn function(&mut self) -> Result<Function> {
-        let mut ty = self.declspec()?;
-        ty = self.declarator(ty)?;
+    fn function(&mut self, ident: Token, ty: Type) -> Result<Function> {
+        let mut ty = ty.clone();
+        ty = self.type_suffix(ty)?;
+
+        match ty {
+            Type::TyFunc { ref mut name, .. } => *name = Some(ident),
+            _ => panic!("{:?} must be function name.", ident),
+        }
 
         self.locals = HashMap::new();
 
@@ -977,7 +978,7 @@ impl<'a, R: Read> Parser<'a, R> {
                                     name: param_name,
                                     offset: 0,
                                     ty: p.clone(),
-                                    is_local: false,
+                                    is_local: true,
                                 })),
                             );
                         }
@@ -1009,9 +1010,104 @@ impl<'a, R: Read> Parser<'a, R> {
                     ..
                 })
                 | Err(Error::Eof) => break,
-                _ => funcs.push(self.function()?),
+                _ => {
+                    let mut ty = self.declspec()?;
+                    loop {
+                        match self.peek()?.token {
+                            Tok::Star => {
+                                eat!(self, Star);
+                                ty = sema::pointer_to(ty);
+                            }
+                            _ => break,
+                        }
+                    }
+
+                    let ident = self.token()?;
+                    match ident.clone() {
+                        Token {
+                            token: Tok::Ident(_ident),
+                            ..
+                        } => match self.peek()?.token {
+                            // int **x;
+                            Tok::Semicolon => {
+                                eat!(self, Semicolon);
+                                self.globals.insert(
+                                    _ident.clone(),
+                                    Rc::new(RefCell::new(Obj {
+                                        name: _ident,
+                                        offset: 0,
+                                        ty,
+                                        is_local: false,
+                                    })),
+                                );
+                            }
+                            // int x, y, z;
+                            Tok::Comma => {
+                                // insert `x`
+                                self.globals.insert(
+                                    _ident.clone(),
+                                    Rc::new(RefCell::new(Obj {
+                                        name: _ident,
+                                        offset: 0,
+                                        ty: ty.clone(),
+                                        is_local: false,
+                                    })),
+                                );
+                                // insert y, z
+                                loop {
+                                    match self.peek()?.token {
+                                        Tok::Comma => {
+                                            eat!(self, Comma);
+                                            if let Token {
+                                                token: Tok::Ident(ident_name),
+                                                ..
+                                            } = self.token()?
+                                            {
+                                                self.globals.insert(
+                                                    ident_name.clone(),
+                                                    Rc::new(RefCell::new(Obj {
+                                                        name: ident_name,
+                                                        offset: 0,
+                                                        ty: ty.clone(),
+                                                        is_local: false,
+                                                    })),
+                                                );
+                                            } else {
+                                                panic!("must be ident after comma.");
+                                            }
+                                        }
+                                        Tok::Semicolon => {
+                                            eat!(self, Semicolon);
+                                            break;
+                                        }
+                                        _ => panic!(),
+                                    }
+                                }
+                            }
+                            // int x[12];
+                            Tok::LeftBracket => {
+                                ty = self.type_suffix(ty)?;
+                                eat!(self, Semicolon);
+                                self.globals.insert(
+                                    _ident.clone(),
+                                    Rc::new(RefCell::new(Obj {
+                                        name: _ident,
+                                        offset: 0,
+                                        ty,
+                                        is_local: false,
+                                    })),
+                                );
+                            }
+                            _ => funcs.push(self.function(ident, ty)?),
+                        },
+                        _ => panic!("must be ident."),
+                    }
+                }
             }
         }
-        Ok(funcs)
+        Ok(Program {
+            funcs,
+            globals: self.globals.clone(),
+        })
     }
 }

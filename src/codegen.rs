@@ -54,7 +54,11 @@ impl CodeGenerator {
     fn gen_addr(&mut self, ast: &ast::ExprWithPos) {
         match &ast.node.node {
             ast::Expr::Variable { obj, .. } => {
-                println!("  lea {}(%rbp), %rax", obj.borrow_mut().offset);
+                if obj.borrow().is_local {
+                    println!("  lea {}(%rbp), %rax", obj.borrow().offset);
+                } else {
+                    println!("  lea {}(%rip), %rax", obj.borrow().name);
+                }
             }
             ast::Expr::Deref { expr, .. } => self.gen_expr(expr),
             _ => panic!("not an lvalue"),
@@ -229,7 +233,7 @@ impl CodeGenerator {
 
     fn assign_lvar_offsets(&mut self, ast: &mut ast::Program) {
         use itertools::Itertools;
-        for f in ast {
+        for f in &mut ast.funcs {
             let mut offset = 0;
             for local in &mut f.locals.iter().sorted_by_key(|x| x.0).rev() {
                 offset += get_sizeof(local.1.borrow().ty.clone());
@@ -239,10 +243,17 @@ impl CodeGenerator {
         }
     }
 
-    pub fn codegen(&mut self, ast: &mut ast::Program) {
-        self.assign_lvar_offsets(ast);
+    fn emit_data(&mut self, ast: &mut ast::Program) {
+        for global in &mut ast.globals {
+            println!("  .data");
+            println!("  .globl {}", global.1.borrow().name);
+            println!("{}:", global.1.borrow().name);
+            println!("  .zero {}", get_sizeof(global.1.borrow().ty.clone()));
+        }
+    }
 
-        for f in ast {
+    fn emit_text(&mut self, ast: &mut ast::Program) {
+        for f in &mut ast.funcs {
             println!("  .globl {}", f.name);
             println!("  .text");
             println!("{}:", f.name);
@@ -257,7 +268,9 @@ impl CodeGenerator {
             let mut i = 0;
             for p in &f.params {
                 match p.1.borrow().ty.clone() {
-                    Type::TyInt { name } | Type::TyPtr { name, .. } | Type::TyArray { name, .. } => {
+                    Type::TyInt { name }
+                    | Type::TyPtr { name, .. }
+                    | Type::TyArray { name, .. } => {
                         if let Some(Token {
                             token: Tok::Ident(ident),
                             ..
@@ -282,5 +295,11 @@ impl CodeGenerator {
             println!("  pop %rbp");
             println!("  ret");
         }
+    }
+
+    pub fn codegen(&mut self, ast: &mut ast::Program) {
+        self.assign_lvar_offsets(ast);
+        self.emit_data(ast);
+        self.emit_text(ast);
     }
 }
