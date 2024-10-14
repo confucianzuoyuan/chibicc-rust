@@ -36,6 +36,9 @@ pub enum Expr {
         name: String,
         args: Vec<ExprWithPos>,
     },
+    StmtExpr {
+        body: Vec<StmtWithPos>,
+    },
 }
 
 pub type ExprWithPos = WithPos<ExprWithType>;

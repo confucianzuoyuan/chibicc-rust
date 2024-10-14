@@ -169,6 +169,11 @@ impl CodeGenerator {
             ast::Expr::Addr { expr, .. } => {
                 self.gen_addr(expr);
             }
+            ast::Expr::StmtExpr { body } => {
+                for n in body {
+                    self.gen_stmt(n);
+                }
+            }
             ast::Expr::FunctionCall { name, args } => {
                 if args.len() > 0 {
                     // 参数逆序入栈

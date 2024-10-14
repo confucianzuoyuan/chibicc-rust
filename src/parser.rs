@@ -880,15 +880,34 @@ impl<'a, R: Read> Parser<'a, R> {
         ))
     }
 
-    /// primary = "(" expr ")" | "sizeof" unary | ident args? | str | num
-    /// args = "(" ")"
+    /// primary = "(" "{" stmt+ "}" ")"
+    ///         | "(" expr ")"
+    ///         | "sizeof" unary
+    ///         | ident func-args?
+    ///         | str
+    ///         | num
     fn primary(&mut self) -> Result<ExprWithPos> {
         match self.peek()?.token {
             LeftParen => {
                 eat!(self, LeftParen);
-                let expr = self.expr()?;
-                eat!(self, RightParen);
-                Ok(expr)
+                match self.peek()?.token {
+                    // This is a GNU statement expression.
+                    Tok::LeftBrace => {
+                        let pos = eat!(self, LeftBrace);
+                        let stmt = self.compound_stmt()?.node;
+                        let node = match stmt {
+                            Stmt::Block { body } => Expr::StmtExpr { body: body.clone() },
+                            _ => panic!(),
+                        };
+                        eat!(self, RightParen);
+                        Ok(WithPos::new(WithType::new(node, Type::TyPlaceholder), pos))
+                    }
+                    _ => {
+                        let expr = self.expr()?;
+                        eat!(self, RightParen);
+                        Ok(expr)
+                    }
+                }
             }
             Number(_) => {
                 let value;

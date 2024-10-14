@@ -121,6 +121,17 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
                 e.node.ty = Type::TyInt { name: None }
             }
         }
+        ast::Expr::StmtExpr { body } => {
+            if body.len() > 0 {
+                let stmt = body.last().unwrap().node.clone();
+                match stmt {
+                    ast::Stmt::ExprStmt { expr } => e.node.ty = expr.node.ty,
+                    _ => panic!("statement expression returning void is not supported."),
+                }
+            } else {
+                panic!("statement expression returning void is not supported.");
+            }
+        }
     }
 }
 
