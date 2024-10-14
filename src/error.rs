@@ -18,6 +18,14 @@ pub enum Error {
         pos: Pos,
         start: char,
     },
+    Unclosed {
+        pos: Pos,
+        token: &'static str,
+    },
+    InvalidEscape {
+        escape: String,
+        pos: Pos,
+    },
     Eof,
 }
 
@@ -45,6 +53,16 @@ impl Error {
                     start,
                     terminal.end_bold()
                 );
+                pos.show(symbols, terminal);
+                highlight_line(pos, symbols, terminal)?;
+            }
+            Error::Unclosed { pos, token } => {
+                eprintln!("Unclosed {}{}", token, terminal.end_bold());
+                pos.show(symbols, terminal);
+                highlight_line(pos, symbols, terminal)?;
+            }
+            Error::InvalidEscape { ref escape, pos } => {
+                eprintln!("Invalid escape \\{}{}", escape, terminal.end_bold());
                 pos.show(symbols, terminal);
                 highlight_line(pos, symbols, terminal)?;
             }

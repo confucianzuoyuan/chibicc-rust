@@ -1,5 +1,5 @@
 use crate::{
-    ast::{self, Function},
+    ast::{self, Function, InitData},
     sema::{get_sizeof, Type},
     token::{Tok, Token},
 };
@@ -259,7 +259,14 @@ impl CodeGenerator {
             println!("  .data");
             println!("  .globl {}", global.1.borrow().name);
             println!("{}:", global.1.borrow().name);
-            println!("  .zero {}", get_sizeof(global.1.borrow().ty.clone()));
+            match &global.1.borrow().init_data {
+                Some(InitData::StringInitData(s)) => {
+                    for c in s.as_bytes() {
+                        println!("  .byte {}", c);
+                    }
+                }
+                _ => println!("  .zero {}", get_sizeof(global.1.borrow().ty.clone())),
+            }
         }
     }
 

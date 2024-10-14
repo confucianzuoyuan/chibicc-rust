@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, string};
 
 use crate::position::Pos;
 
@@ -27,6 +27,7 @@ pub enum Tok {
     Amp,
     Number(i64),
     Ident(String),
+    Str(String),
 
     KeywordReturn,
     KeywordIf,
@@ -82,6 +83,7 @@ impl Display for Tok {
                 Tok::KeywordChar => "char",
                 Tok::KeywordSizeof => "sizeof",
                 Tok::EndOfFile => "<eof>",
+                Tok::Str(ref string) => return format!("{:?}", string),
             };
             string.to_string()
         })();

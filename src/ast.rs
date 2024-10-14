@@ -96,11 +96,17 @@ pub enum Stmt {
 pub type StmtWithPos = WithPos<Stmt>;
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum InitData {
+    StringInitData(String),
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct Obj {
     pub name: String,
     pub offset: i32,
     pub ty: Type,
     pub is_local: bool,
+    pub init_data: Option<InitData>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

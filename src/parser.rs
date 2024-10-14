@@ -2,8 +2,8 @@ use std::{cell::RefCell, collections::HashMap, io::Read, rc::Rc, result};
 
 use crate::{
     ast::{
-        self, BinaryOperator, Expr, ExprWithPos, Function, Obj, Program, Stmt, StmtWithPos,
-        UnaryOperator,
+        self, BinaryOperator, Expr, ExprWithPos, Function, InitData, Obj, Program, Stmt,
+        StmtWithPos, UnaryOperator,
     },
     error::Error::{self, UnexpectedToken},
     lexer::Lexer,
@@ -15,7 +15,7 @@ use crate::{
             self, Amp, BangEqual, Comma, Equal, EqualEqual, Greater, GreaterEqual, Ident,
             KeywordChar, KeywordElse, KeywordFor, KeywordIf, KeywordInt, KeywordReturn,
             KeywordSizeof, KeywordWhile, LeftBrace, LeftBracket, LeftParen, Lesser, LesserEqual,
-            Minus, Number, Plus, RightBrace, RightBracket, RightParen, Semicolon, Slash, Star,
+            Minus, Number, Plus, RightBrace, RightBracket, RightParen, Semicolon, Slash, Star, Str,
         },
         Token,
     },
@@ -70,6 +70,7 @@ pub struct Parser<'a, R: Read> {
     /// accumulated to this map
     locals: HashMap<String, Rc<RefCell<Obj>>>,
     globals: HashMap<String, Rc<RefCell<Obj>>>,
+    unique_name_count: i32,
 }
 
 impl<'a, R: Read> Parser<'a, R> {
@@ -80,6 +81,7 @@ impl<'a, R: Read> Parser<'a, R> {
             symbols,
             locals: HashMap::new(),
             globals: HashMap::new(),
+            unique_name_count: 0,
         }
     }
 
@@ -248,6 +250,7 @@ impl<'a, R: Read> Parser<'a, R> {
                                 offset: 0,
                                 ty: ty.clone(),
                                 is_local: true,
+                                init_data: None,
                             })),
                         );
                     } else {
@@ -538,7 +541,10 @@ impl<'a, R: Read> Parser<'a, R> {
 
                     match (expr.node.ty.clone(), right.node.ty.clone()) {
                         // num - num
-                        (Type::TyInt { .. } | Type::TyChar { .. }, Type::TyInt { .. } | Type::TyChar { .. }) => {
+                        (
+                            Type::TyInt { .. } | Type::TyChar { .. },
+                            Type::TyInt { .. } | Type::TyChar { .. },
+                        ) => {
                             expr = WithPos::new(
                                 WithType::new(
                                     Expr::Binary {
@@ -874,7 +880,7 @@ impl<'a, R: Read> Parser<'a, R> {
         ))
     }
 
-    /// primary = "(" expr ")" | "sizeof" unary | ident args? | num
+    /// primary = "(" expr ")" | "sizeof" unary | ident args? | str | num
     /// args = "(" ")"
     fn primary(&mut self) -> Result<ExprWithPos> {
         match self.peek()?.token {
@@ -925,6 +931,35 @@ impl<'a, R: Read> Parser<'a, R> {
                 let _ty = var.borrow().ty.clone();
                 Ok(WithPos::new(
                     WithType::new(Expr::Variable { obj: var }, _ty),
+                    pos,
+                ))
+            }
+            Tok::Str(..) => {
+                let string;
+                let pos = eat!(self, Str, string);
+                let unique_name = format!(".L..{}", self.unique_name_count);
+                self.unique_name_count += 1;
+                self.globals.insert(
+                    unique_name.clone(),
+                    Rc::new(RefCell::new(Obj {
+                        name: unique_name.clone(),
+                        offset: 0,
+                        ty: Type::TyArray {
+                            name: None,
+                            base: Box::new(Type::TyChar { name: None }),
+                            array_len: string.len() as i32 + 1, // `+1` means add `'\0'`
+                        },
+                        is_local: false,
+                        init_data: Some(InitData::StringInitData(string)),
+                    })),
+                );
+                Ok(WithPos::new(
+                    WithType::new(
+                        Expr::Variable {
+                            obj: self.globals.get(&unique_name).unwrap().clone(),
+                        },
+                        self.globals.get(&unique_name).unwrap().borrow().ty.clone(),
+                    ),
                     pos,
                 ))
             }
@@ -1006,6 +1041,7 @@ impl<'a, R: Read> Parser<'a, R> {
                                     offset: 0,
                                     ty: p.clone(),
                                     is_local: true,
+                                    init_data: None,
                                 })),
                             );
                         }
@@ -1065,6 +1101,7 @@ impl<'a, R: Read> Parser<'a, R> {
                                         offset: 0,
                                         ty,
                                         is_local: false,
+                                        init_data: None,
                                     })),
                                 );
                             }
@@ -1078,6 +1115,7 @@ impl<'a, R: Read> Parser<'a, R> {
                                         offset: 0,
                                         ty: ty.clone(),
                                         is_local: false,
+                                        init_data: None,
                                     })),
                                 );
                                 // insert y, z
@@ -1097,6 +1135,7 @@ impl<'a, R: Read> Parser<'a, R> {
                                                         offset: 0,
                                                         ty: ty.clone(),
                                                         is_local: false,
+                                                        init_data: None,
                                                     })),
                                                 );
                                             } else {
@@ -1122,6 +1161,7 @@ impl<'a, R: Read> Parser<'a, R> {
                                         offset: 0,
                                         ty,
                                         is_local: false,
+                                        init_data: None,
                                     })),
                                 );
                             }

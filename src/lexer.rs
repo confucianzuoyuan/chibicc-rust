@@ -116,6 +116,17 @@ impl<R: Read> Lexer<R> {
         self.two_char_token(vec![('=', Tok::EqualEqual)], Tok::Equal)
     }
 
+    fn eat(&mut self, ch: char) -> Result<()> {
+        if self.current_char()? != ch {
+            panic!(
+                "Expected character `{}`, but found `{}`.",
+                ch,
+                self.current_char()?
+            );
+        }
+        self.advance()
+    }
+
     fn identifier(&mut self) -> Result<Token> {
         let ident = self.take_while(|ch| ch.is_alphanumeric() || ch == '_')?;
         let len = ident.len();
@@ -131,6 +142,102 @@ impl<R: Read> Lexer<R> {
             _ => Tok::Ident(ident),
         };
         self.make_token(token, len)
+    }
+
+    fn skip_until_slash(&mut self) -> Result<()> {
+        loop {
+            let ch = self.current_char()?;
+            if ch == '\\' {
+                self.advance()?;
+                break;
+            } else if !ch.is_whitespace() {
+                let mut pos = self.current_pos();
+                pos.length = 1;
+                return Err(Error::InvalidToken { pos, start: ch });
+            }
+            self.advance()?;
+        }
+        Ok(())
+    }
+
+    fn escape_ascii_code(&mut self, mut pos: Pos) -> Result<char> {
+        let buffer = self.take_while(char::is_numeric)?;
+        if buffer.len() == 3 {
+            let ascii_code = buffer.parse().unwrap();
+            match char::from_u32(ascii_code) {
+                Some(ch) => Ok(ch),
+                None => Err(Error::Msg(format!("Invalid ascii code {}", ascii_code))),
+            }
+        } else {
+            pos.length = buffer.len() + 1;
+            Err(Error::InvalidEscape {
+                escape: buffer,
+                pos,
+            })
+        }
+    }
+
+    fn escape_char(&mut self, mut pos: Pos) -> Result<char> {
+        let escaped_char = match self.current_char()? {
+            'n' => '\n',
+            't' => '\t',
+            '\\' => '\\',
+            '"' => '"',
+            ch if ch.is_digit(10) => return self.escape_ascii_code(pos),
+            escape => {
+                pos.length = 2;
+                return Err(Error::InvalidEscape {
+                    escape: escape.to_string(),
+                    pos,
+                });
+            }
+        };
+        self.advance()?;
+        Ok(escaped_char)
+    }
+
+    fn string(&mut self) -> Result<Token> {
+        let result = (|| {
+            self.save_start();
+            let mut string = String::new();
+            let start = self.current_pos().byte;
+            self.eat('"')?;
+            let mut ch = self.current_char()?;
+            while ch != '"' {
+                // look for escaped character.
+                if ch == '\\' {
+                    let pos = self.current_pos();
+                    self.advance()?;
+                    if self.current_char()?.is_whitespace() {
+                        self.skip_until_slash()?;
+                    } else {
+                        string.push(self.escape_char(pos)?);
+                    }
+                } else {
+                    string.push(ch);
+                    self.advance()?;
+                }
+                ch = self.current_char()?;
+            }
+            self.eat('"')?;
+            let len = self.current_pos().byte - start;
+            self.make_token(Tok::Str(string), len as usize)
+        })();
+        match result {
+            Err(Error::Eof)
+            | Ok(Token {
+                token: Tok::EndOfFile,
+                ..
+            }) => {
+                let mut pos = self.saved_pos;
+                pos.length = 1;
+                Err(Error::Unclosed {
+                    pos,
+                    token: "string",
+                })
+            }
+            _ => result,
+        }
     }
 
     pub fn token(&mut self) -> Result<Token> {
@@ -159,6 +266,7 @@ impl<R: Read> Lexer<R> {
                 b';' => self.simple_token(Tok::Semicolon),
                 b',' => self.simple_token(Tok::Comma),
                 b'&' => self.simple_token(Tok::Amp),
+                b'"' => self.string(),
                 b'\0' => self.simple_token(Tok::EndOfFile),
                 _ => {
                     let mut pos = self.current_pos();
