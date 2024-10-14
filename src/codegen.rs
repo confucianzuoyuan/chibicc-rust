@@ -261,8 +261,8 @@ impl CodeGenerator {
             println!("{}:", global.1.borrow().name);
             match &global.1.borrow().init_data {
                 Some(InitData::StringInitData(s)) => {
-                    for c in s.as_bytes() {
-                        println!("  .byte {}", c);
+                    for c in s.chars() {
+                        println!("  .byte {}", c as u8);
                     }
                     println!("  .byte {}", '\0');
                 }

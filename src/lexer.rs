@@ -177,6 +177,16 @@ impl<R: Read> Lexer<R> {
         }
     }
 
+    fn from_hex(&mut self, c: char) -> i32 {
+        if c >= '0' && c <= '9' {
+            return c as i32 - '0' as i32;
+        }
+        if c >= 'a' && c <= 'f' {
+            return c as i32 - 'a' as i32 + 10;
+        }
+        c as i32 - 'A' as i32 + 10
+    }
+
     fn escape_char(&mut self, pos: Pos) -> Result<char> {
         let escaped_char = match self.current_char()? {
             // Read an octal number.
@@ -191,7 +201,27 @@ impl<R: Read> Lexer<R> {
                         self.advance()?;
                     }
                 }
-                return Ok(c as u8 as char)
+                return Ok(c as u8 as char);
+            }
+            // Read a hexadecimal number.
+            'x' => {
+                self.advance()?;
+                if self.current_char()?.is_ascii_hexdigit() {
+                    let mut c = 0;
+                    loop {
+                        if self.current_char()?.is_ascii_hexdigit() {
+                            let _c = self.current_char()?;
+                            c = (c << 4) + self.from_hex(_c);
+                            self.advance()?;
+                        } else {
+                            break;
+                        }
+                    }
+
+                    return Ok(c as u8 as char);
+                } else {
+                    panic!("invalid hex escape sequence.");
+                }
             }
             'n' => '\n',
             't' => '\t',
