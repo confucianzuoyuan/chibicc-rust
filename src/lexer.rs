@@ -181,16 +181,17 @@ impl<R: Read> Lexer<R> {
         let escaped_char = match self.current_char()? {
             'n' => '\n',
             't' => '\t',
+            'r' => '\r',
+            'a' => '\x07',
+            'b' => '\x08',
+            // [GNU] \e for the ASCII escape character is a GNU C extension.
+            'e' => '\x1B',
+            'v' => '\x0B',
+            'f' => '\x0C',
             '\\' => '\\',
             '"' => '"',
             ch if ch.is_digit(10) => return self.escape_ascii_code(pos),
-            escape => {
-                pos.length = 2;
-                return Err(Error::InvalidEscape {
-                    escape: escape.to_string(),
-                    pos,
-                });
-            }
+            escape => return Ok(escape),
         };
         self.advance()?;
         Ok(escaped_char)
