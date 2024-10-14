@@ -264,6 +264,7 @@ impl CodeGenerator {
                     for c in s.as_bytes() {
                         println!("  .byte {}", c);
                     }
+                    println!("  .byte {}", '\0');
                 }
                 _ => println!("  .zero {}", get_sizeof(global.1.borrow().ty.clone())),
             }

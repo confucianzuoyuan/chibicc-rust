@@ -935,6 +935,8 @@ impl<'a, R: Read> Parser<'a, R> {
                 ))
             }
             Tok::Str(..) => {
+                // 字符串是全局的数据，所以需要给一个标签，这个标签是字符串的全局变量名称
+                // 字符串是字符数组类型，需要添加一个`'\0'`作为结束符。
                 let string;
                 let pos = eat!(self, Str, string);
                 let unique_name = format!(".L..{}", self.unique_name_count);
