@@ -1,5 +1,7 @@
 use std::{
-    fs, io::{self, BufRead, BufReader}, rc::Rc
+    fs,
+    io::{self, BufRead, BufReader},
+    rc::Rc,
 };
 
 use codegen::CodeGenerator;
@@ -35,45 +37,31 @@ fn drive(strings: Rc<Strings>, symbols: &mut Symbols<()>) -> Result<(), Error> {
     let mut args = std::env::args();
     args.next();
     if let Some(filename) = args.next() {
+        let mut source_code = String::new();
         if filename == "-".to_string() {
             let stdin = io::stdin();
             let handle = stdin.lock();
 
-            let mut source_code = String::new();
             for line in handle.lines() {
                 let line = line.expect("无法读取行。");
                 source_code.push_str(line.as_str());
             }
-
-            if source_code.as_bytes().last().unwrap() == &b'\n' {
-                source_code.push_str("\n");
-            } else {
-                source_code.push_str("\n\0");
-            }
-            let file = BufReader::new(source_code.as_bytes());
-            let file_symbol = symbols.symbol("stdin");
-            let lexer = Lexer::new(file, file_symbol);
-            let mut parser = Parser::new(lexer, symbols);
-            let mut ast = parser.parse()?;
-            let mut cg = CodeGenerator::new();
-
-            cg.codegen(&mut ast);
         } else {
-            let mut source_code = fs::read_to_string(filename.clone())?;
-            if source_code.as_bytes().last().unwrap() == &b'\n' {
-                source_code.push_str("\n");
-            } else {
-                source_code.push_str("\n\0");
-            }
-            let file = BufReader::new(source_code.as_bytes());
-            let file_symbol = symbols.symbol(filename.as_str());
-            let lexer = Lexer::new(file, file_symbol);
-            let mut parser = Parser::new(lexer, symbols);
-            let mut ast = parser.parse()?;
-            let mut cg = CodeGenerator::new();
-
-            cg.codegen(&mut ast);
+            source_code = fs::read_to_string(filename.clone())?;
         }
+        if source_code.as_bytes().last().unwrap() == &b'\n' {
+            source_code.push_str("\n");
+        } else {
+            source_code.push_str("\n\0");
+        }
+        let file = BufReader::new(source_code.as_bytes());
+        let file_symbol = symbols.symbol(filename.as_str());
+        let lexer = Lexer::new(file, file_symbol);
+        let mut parser = Parser::new(lexer, symbols);
+        let mut ast = parser.parse()?;
+        let mut cg = CodeGenerator::new();
+
+        cg.codegen(&mut ast);
     }
     Ok(())
 }
