@@ -177,8 +177,22 @@ impl<R: Read> Lexer<R> {
         }
     }
 
-    fn escape_char(&mut self, mut pos: Pos) -> Result<char> {
+    fn escape_char(&mut self, pos: Pos) -> Result<char> {
         let escaped_char = match self.current_char()? {
+            // Read an octal number.
+            '0'..='7' => {
+                let mut c = self.current_char()? as i32 - '0' as i32;
+                self.advance()?;
+                if self.current_char()? <= '7' && self.current_char()? >= '0' {
+                    c = (c << 3) + (self.current_char()? as i32 - '0' as i32);
+                    self.advance()?;
+                    if self.current_char()? <= '7' && self.current_char()? >= '0' {
+                        c = (c << 3) + (self.current_char()? as i32 - '0' as i32);
+                        self.advance()?;
+                    }
+                }
+                return Ok(c as u8 as char)
+            }
             'n' => '\n',
             't' => '\t',
             'r' => '\r',
