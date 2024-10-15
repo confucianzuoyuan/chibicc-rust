@@ -63,6 +63,7 @@ fn drive(strings: Rc<Strings>, symbols: &mut Symbols<()>) -> Result<(), Error> {
             for line in handle.lines() {
                 let line = line.expect("无法读取行。");
                 source_code.push_str(line.as_str());
+                source_code.push('\n');
             }
         } else {
             source_code = fs::read_to_string(filename)?;

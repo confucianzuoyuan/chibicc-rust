@@ -285,6 +285,55 @@ impl<R: Read> Lexer<R> {
         }
     }
 
+    fn comment(&mut self) -> Result<()> {
+        loop {
+            self.advance()?;
+            let ch = self.current_char()?;
+            if ch == '*' {
+                self.advance()?;
+                let ch = self.current_char()?;
+                if ch == '/' {
+                    self.advance()?;
+                    break;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn slash_or_comment(&mut self) -> Result<Token> {
+        self.save_start();
+        self.advance()?;
+        if self.current_char()? == '*' {
+            match self.comment() {
+                Err(Error::Eof) => {
+                    let mut pos = self.saved_pos;
+                    pos.length = 2;
+                    return Err(Error::Unclosed {
+                        pos,
+                        token: "comment",
+                    });
+                }
+                Err(error) => return Err(error),
+                _ => (),
+            }
+            self.token()
+        } else if self.current_char()? == '/' {
+            loop {
+                self.advance()?;
+                let ch = self.current_char()?;
+                if ch == '\n' {
+                    break;
+                } else {
+                    self.advance()?;
+                }
+            }
+            self.token()
+        } else {
+            self.make_token(Tok::Slash, 1)
+        }
+    }
+
     pub fn token(&mut self) -> Result<Token> {
         if let Some(&Ok(ch)) = self.bytes_iter.peek() {
             return match ch {
@@ -297,7 +346,7 @@ impl<R: Read> Lexer<R> {
                 b'+' => self.simple_token(Tok::Plus),
                 b'-' => self.simple_token(Tok::Minus),
                 b'*' => self.simple_token(Tok::Star),
-                b'/' => self.simple_token(Tok::Slash),
+                b'/' => self.slash_or_comment(),
                 b'(' => self.simple_token(Tok::LeftParen),
                 b')' => self.simple_token(Tok::RightParen),
                 b'{' => self.simple_token(Tok::LeftBrace),
