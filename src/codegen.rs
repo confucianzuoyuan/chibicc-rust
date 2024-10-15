@@ -1,3 +1,5 @@
+use std::io::Write;
+
 use crate::{
     ast::{self, Function, InitData},
     sema::{get_sizeof, Type},
@@ -11,29 +13,33 @@ pub struct CodeGenerator {
     depth: u32,
     label_count: u32,
     current_fn: Option<Function>,
+    output: Vec<String>,
+    out_writer: Box<dyn Write>,
 }
 
 impl CodeGenerator {
-    pub fn new() -> Self {
+    pub fn new(out_writer: Box<dyn Write>) -> Self {
         CodeGenerator {
             depth: 0,
             label_count: 1,
             current_fn: None,
+            output: Vec::new(),
+            out_writer,
         }
     }
 
     fn push(&mut self) {
-        println!("  push %rax");
+        self.output.push(format!("  push %rax"));
         self.depth += 1;
     }
 
     fn pop(&mut self, arg: String) {
-        println!("  pop {}", arg);
+        self.output.push(format!("  pop {}", arg));
         self.depth -= 1;
     }
 
     // Load a value from where %rax is pointing to.
-    fn load(&self, ty: &Type) {
+    fn load(&mut self, ty: &Type) {
         match ty {
             // If it is an array, do not attempt to load a value to the
             // register because in general we can't load an entire array to a
@@ -44,9 +50,9 @@ impl CodeGenerator {
             Type::TyArray { .. } => (),
             _ => {
                 if get_sizeof(ty.clone()) == 1 {
-                    println!("  movsbq (%rax), %rax");
+                    self.output.push(format!("  movsbq (%rax), %rax"));
                 } else {
-                    println!("  mov (%rax), %rax");
+                    self.output.push(format!("  mov (%rax), %rax"));
                 }
             }
         }
@@ -56,9 +62,9 @@ impl CodeGenerator {
     fn store(&mut self, ty: &Type) {
         self.pop("%rdi".to_string());
         if get_sizeof(ty.clone()) == 1 {
-            println!("  mov %al, (%rdi)");
+            self.output.push(format!("  mov %al, (%rdi)"));
         } else {
-            println!("  mov %rax, (%rdi)");
+            self.output.push(format!("  mov %rax, (%rdi)"));
         }
     }
 
@@ -66,9 +72,11 @@ impl CodeGenerator {
         match &ast.node.node {
             ast::Expr::Variable { obj, .. } => {
                 if obj.borrow().is_local {
-                    println!("  lea {}(%rbp), %rax", obj.borrow().offset);
+                    self.output
+                        .push(format!("  lea {}(%rbp), %rax", obj.borrow().offset));
                 } else {
-                    println!("  lea {}(%rip), %rax", obj.borrow().name);
+                    self.output
+                        .push(format!("  lea {}(%rip), %rax", obj.borrow().name));
                 }
             }
             ast::Expr::Deref { expr, .. } => self.gen_expr(expr),
@@ -81,7 +89,10 @@ impl CodeGenerator {
             ast::Stmt::ExprStmt { expr } => self.gen_expr(expr),
             ast::Stmt::Return { expr } => {
                 self.gen_expr(expr);
-                println!("  jmp .L.return.{}", self.current_fn.as_ref().unwrap().name);
+                self.output.push(format!(
+                    "  jmp .L.return.{}",
+                    self.current_fn.as_ref().unwrap().name
+                ));
             }
             ast::Stmt::Block { body } => {
                 for n in body {
@@ -97,15 +108,15 @@ impl CodeGenerator {
                 let c = self.label_count;
                 self.label_count += 1;
                 self.gen_expr(condition);
-                println!("  cmp $0, %rax");
-                println!("  je .L.else.{}", c);
+                self.output.push(format!("  cmp $0, %rax"));
+                self.output.push(format!("  je .L.else.{}", c));
                 self.gen_stmt(&then_clause);
-                println!("  jmp .L.end.{}", c);
-                println!(".L.else.{}:", c);
+                self.output.push(format!("  jmp .L.end.{}", c));
+                self.output.push(format!(".L.else.{}:", c));
                 if let Some(els) = else_clause {
                     self.gen_stmt(els);
                 }
-                println!(".L.end.{}:", c);
+                self.output.push(format!(".L.end.{}:", c));
             }
             ast::Stmt::ForStmt {
                 init,
@@ -116,39 +127,39 @@ impl CodeGenerator {
                 let c = self.label_count;
                 self.label_count += 1;
                 self.gen_stmt(init);
-                println!(".L.begin.{}:", c);
+                self.output.push(format!(".L.begin.{}:", c));
                 if let Some(cond) = condition {
                     self.gen_expr(cond);
-                    println!("  cmp $0, %rax");
-                    println!("  je .L.end.{}", c);
+                    self.output.push(format!("  cmp $0, %rax"));
+                    self.output.push(format!("  je .L.end.{}", c));
                 }
                 self.gen_stmt(body);
                 if let Some(inc) = increment {
                     self.gen_expr(inc);
                 }
-                println!("  jmp .L.begin.{}", c);
-                println!(".L.end.{}:", c);
+                self.output.push(format!("  jmp .L.begin.{}", c));
+                self.output.push(format!(".L.end.{}:", c));
             }
             ast::Stmt::WhileStmt { condition, body } => {
                 let c = self.label_count;
                 self.label_count += 1;
-                println!(".L.begin.{}:", c);
+                self.output.push(format!(".L.begin.{}:", c));
                 self.gen_expr(condition);
-                println!("  cmp $0, %rax");
-                println!("  je .L.end.{}", c);
+                self.output.push(format!("  cmp $0, %rax"));
+                self.output.push(format!("  je .L.end.{}", c));
                 self.gen_stmt(body);
-                println!(" jmp .L.begin.{}", c);
-                println!(".L.end.{}:", c);
+                self.output.push(format!(" jmp .L.begin.{}", c));
+                self.output.push(format!(".L.end.{}:", c));
             }
         }
     }
 
     fn gen_expr(&mut self, ast: &ast::ExprWithPos) {
         match &ast.node.node {
-            ast::Expr::Number { value, .. } => println!("  mov ${}, %rax", value),
+            ast::Expr::Number { value, .. } => self.output.push(format!("  mov ${}, %rax", value)),
             ast::Expr::Unary { expr, .. } => {
                 self.gen_expr(expr);
-                println!("  neg %rax");
+                self.output.push(format!("  neg %rax"));
             }
             ast::Expr::Variable { .. } => {
                 self.gen_addr(ast);
@@ -186,8 +197,8 @@ impl CodeGenerator {
                     }
                 }
 
-                println!("  mov $0, %rax");
-                println!("  call {}", name);
+                self.output.push(format!("  mov $0, %rax"));
+                self.output.push(format!("  call {}", name));
             }
             ast::Expr::Binary {
                 left, op, right, ..
@@ -199,42 +210,42 @@ impl CodeGenerator {
                 self.gen_expr(left);
                 self.pop("%rdi".to_string());
                 match op.node {
-                    ast::BinaryOperator::Add => println!("  add %rdi, %rax"),
-                    ast::BinaryOperator::Sub => println!("  sub %rdi, %rax"),
-                    ast::BinaryOperator::Mul => println!("  imul %rdi, %rax"),
+                    ast::BinaryOperator::Add => self.output.push(format!("  add %rdi, %rax")),
+                    ast::BinaryOperator::Sub => self.output.push(format!("  sub %rdi, %rax")),
+                    ast::BinaryOperator::Mul => self.output.push(format!("  imul %rdi, %rax")),
                     ast::BinaryOperator::Div => {
-                        println!("  cqo");
-                        println!("  idiv %rdi");
+                        self.output.push(format!("  cqo"));
+                        self.output.push(format!("  idiv %rdi"));
                     }
                     ast::BinaryOperator::Eq => {
-                        println!("  cmp %rdi, %rax");
-                        println!("  sete %al");
-                        println!("  movzb %al, %rax");
+                        self.output.push(format!("  cmp %rdi, %rax"));
+                        self.output.push(format!("  sete %al"));
+                        self.output.push(format!("  movzb %al, %rax"));
                     }
                     ast::BinaryOperator::Ne => {
-                        println!("  cmp %rdi, %rax");
-                        println!("  setne %al");
-                        println!("  movzb %al, %rax");
+                        self.output.push(format!("  cmp %rdi, %rax"));
+                        self.output.push(format!("  setne %al"));
+                        self.output.push(format!("  movzb %al, %rax"));
                     }
                     ast::BinaryOperator::Lt => {
-                        println!("  cmp %rdi, %rax");
-                        println!("  setl %al");
-                        println!("  movzb %al, %rax");
+                        self.output.push(format!("  cmp %rdi, %rax"));
+                        self.output.push(format!("  setl %al"));
+                        self.output.push(format!("  movzb %al, %rax"));
                     }
                     ast::BinaryOperator::Le => {
-                        println!("  cmp %rdi, %rax");
-                        println!("  setle %al");
-                        println!("  movzb %al, %rax");
+                        self.output.push(format!("  cmp %rdi, %rax"));
+                        self.output.push(format!("  setle %al"));
+                        self.output.push(format!("  movzb %al, %rax"));
                     }
                     ast::BinaryOperator::Gt => {
-                        println!("  cmp %rdi, %rax");
-                        println!("  setg %al");
-                        println!("  movzb %al, %rax");
+                        self.output.push(format!("  cmp %rdi, %rax"));
+                        self.output.push(format!("  setg %al"));
+                        self.output.push(format!("  movzb %al, %rax"));
                     }
                     ast::BinaryOperator::Ge => {
-                        println!("  cmp %rdi, %rax");
-                        println!("  setge %al");
-                        println!("  movzb %al, %rax");
+                        self.output.push(format!("  cmp %rdi, %rax"));
+                        self.output.push(format!("  setge %al"));
+                        self.output.push(format!("  movzb %al, %rax"));
                     }
                 }
             }
@@ -261,32 +272,36 @@ impl CodeGenerator {
 
     fn emit_data(&mut self, ast: &mut ast::Program) {
         for global in &mut ast.globals {
-            println!("  .data");
-            println!("  .globl {}", global.1.borrow().name);
-            println!("{}:", global.1.borrow().name);
+            self.output.push(format!("  .data"));
+            self.output
+                .push(format!("  .globl {}", global.1.borrow().name));
+            self.output.push(format!("{}:", global.1.borrow().name));
             match &global.1.borrow().init_data {
                 Some(InitData::StringInitData(s)) => {
                     for c in s.chars() {
-                        println!("  .byte {}", c as u8);
+                        self.output.push(format!("  .byte {}", c as u8));
                     }
-                    println!("  .byte {}", '\0');
+                    self.output.push(format!("  .byte {}", '\0'));
                 }
-                _ => println!("  .zero {}", get_sizeof(global.1.borrow().ty.clone())),
+                _ => self.output.push(format!(
+                    "  .zero {}",
+                    get_sizeof(global.1.borrow().ty.clone())
+                )),
             }
         }
     }
 
     fn emit_text(&mut self, ast: &mut ast::Program) {
         for f in &mut ast.funcs {
-            println!("  .globl {}", f.name);
-            println!("  .text");
-            println!("{}:", f.name);
+            self.output.push(format!("  .globl {}", f.name));
+            self.output.push(format!("  .text"));
+            self.output.push(format!("{}:", f.name));
             self.current_fn = Some(f.clone());
 
             // Prologue
-            println!("  push %rbp");
-            println!("  mov %rsp, %rbp");
-            println!("  sub ${}, %rsp", f.stack_size);
+            self.output.push(format!("  push %rbp"));
+            self.output.push(format!("  mov %rsp, %rbp"));
+            self.output.push(format!("  sub ${}, %rsp", f.stack_size));
 
             // Save passed-by-register arguments to the stack
             let mut i = 0;
@@ -304,9 +319,11 @@ impl CodeGenerator {
                         {
                             let offset = f.locals.get(&ident).unwrap().borrow().offset;
                             if get_sizeof(f.locals.get(&ident).unwrap().borrow().ty.clone()) == 1 {
-                                println!("  mov {}, {}(%rbp)", ARGREG_8[i], offset);
+                                self.output
+                                    .push(format!("  mov {}, {}(%rbp)", ARGREG_8[i], offset));
                             } else {
-                                println!("  mov {}, {}(%rbp)", ARGREG_64[i], offset);
+                                self.output
+                                    .push(format!("  mov {}, {}(%rbp)", ARGREG_64[i], offset));
                             }
                             i += 1;
                         }
@@ -320,10 +337,10 @@ impl CodeGenerator {
             assert!(self.depth == 0);
 
             // Epilogue
-            println!(".L.return.{}:", f.name);
-            println!("  mov %rbp, %rsp");
-            println!("  pop %rbp");
-            println!("  ret");
+            self.output.push(format!(".L.return.{}:", f.name));
+            self.output.push(format!("  mov %rbp, %rsp"));
+            self.output.push(format!("  pop %rbp"));
+            self.output.push(format!("  ret"));
         }
     }
 
@@ -331,5 +348,13 @@ impl CodeGenerator {
         self.assign_lvar_offsets(ast);
         self.emit_data(ast);
         self.emit_text(ast);
+
+        for i in &self.output {
+            let r = writeln!(self.out_writer, "{}", i);
+            match r {
+                Ok(_) => (),
+                _ => panic!("codegen error."),
+            }
+        }
     }
 }

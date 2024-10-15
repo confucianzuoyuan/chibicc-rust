@@ -3,6 +3,7 @@ chibicc-rust:
 
 test: chibicc-rust
 	sh ./test.sh
+	sh ./test-driver.sh
 
 clean:
 	cargo clean
