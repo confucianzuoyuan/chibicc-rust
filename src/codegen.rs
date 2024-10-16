@@ -259,12 +259,11 @@ impl CodeGenerator {
     }
 
     fn assign_lvar_offsets(&mut self, ast: &mut ast::Program) {
-        use itertools::Itertools;
         for f in &mut ast.funcs {
             let mut offset = 0;
-            for local in &mut f.locals.iter().sorted_by_key(|x| x.0).rev() {
-                offset += get_sizeof(local.1.borrow().ty.clone());
-                local.1.borrow_mut().offset = -offset;
+            for local in &mut f.locals {
+                offset += get_sizeof(local.borrow().ty.clone());
+                local.borrow_mut().offset = -offset;
             }
             f.stack_size = self.align_to(offset, 16);
         }
@@ -274,9 +273,9 @@ impl CodeGenerator {
         for global in &mut ast.globals {
             self.output.push(format!("  .data"));
             self.output
-                .push(format!("  .globl {}", global.1.borrow().name));
-            self.output.push(format!("{}:", global.1.borrow().name));
-            match &global.1.borrow().init_data {
+                .push(format!("  .globl {}", global.borrow().name));
+            self.output.push(format!("{}:", global.borrow().name));
+            match &global.borrow().init_data {
                 Some(InitData::StringInitData(s)) => {
                     for c in s.chars() {
                         self.output.push(format!("  .byte {}", c as u8));
@@ -285,7 +284,7 @@ impl CodeGenerator {
                 }
                 _ => self.output.push(format!(
                     "  .zero {}",
-                    get_sizeof(global.1.borrow().ty.clone())
+                    get_sizeof(global.borrow().ty.clone())
                 )),
             }
         }
@@ -305,31 +304,16 @@ impl CodeGenerator {
 
             // Save passed-by-register arguments to the stack
             let mut i = 0;
-            use itertools::Itertools;
-            for p in &mut f.params.iter().sorted_by_key(|x| x.0) {
-                match p.1.borrow().ty.clone() {
-                    Type::TyInt { name }
-                    | Type::TyChar { name }
-                    | Type::TyPtr { name, .. }
-                    | Type::TyArray { name, .. } => {
-                        if let Some(Token {
-                            token: Tok::Ident(ident),
-                            ..
-                        }) = name
-                        {
-                            let offset = f.locals.get(&ident).unwrap().borrow().offset;
-                            if get_sizeof(f.locals.get(&ident).unwrap().borrow().ty.clone()) == 1 {
-                                self.output
-                                    .push(format!("  mov {}, {}(%rbp)", ARGREG_8[i], offset));
-                            } else {
-                                self.output
-                                    .push(format!("  mov {}, {}(%rbp)", ARGREG_64[i], offset));
-                            }
-                            i += 1;
-                        }
-                    }
-                    _ => panic!(),
+            for p in &mut f.params.iter().rev() {
+                let offset = p.borrow().offset;
+                if get_sizeof(p.borrow().ty.clone()) == 1 {
+                    self.output
+                        .push(format!("  mov {}, {}(%rbp)", ARGREG_8[i], offset));
+                } else {
+                    self.output
+                        .push(format!("  mov {}, {}(%rbp)", ARGREG_64[i], offset));
                 }
+                i += 1;
             }
 
             // Emit code

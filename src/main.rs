@@ -76,7 +76,7 @@ fn drive(strings: Rc<Strings>, symbols: &mut Symbols<()>) -> Result<(), Error> {
         let file = BufReader::new(source_code.as_bytes());
         let file_symbol = symbols.symbol(filename);
         let lexer = Lexer::new(file, file_symbol);
-        let mut parser = Parser::new(lexer, symbols);
+        let mut parser = Parser::new(lexer, symbols, strings);
         let mut ast = parser.parse()?;
         let mut cg = CodeGenerator::new(out_writer);
 

@@ -115,14 +115,14 @@ pub struct Obj {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Function {
     pub name: String,
-    pub params: HashMap<String, Rc<RefCell<Obj>>>,
+    pub params: Vec<Rc<RefCell<Obj>>>,
     pub body: StmtWithPos,
-    pub locals: HashMap<String, Rc<RefCell<Obj>>>,
+    pub locals: Vec<Rc<RefCell<Obj>>>,
     pub stack_size: i32,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Program {
     pub funcs: Vec<Function>,
-    pub globals: HashMap<String, Rc<RefCell<Obj>>>,
+    pub globals: Vec<Rc<RefCell<Obj>>>,
 }
