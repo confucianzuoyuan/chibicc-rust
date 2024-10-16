@@ -69,13 +69,6 @@ impl<T> WithPos<T> {
     pub fn new(node: T, pos: Pos) -> Self {
         Self { node, pos }
     }
-
-    pub fn dummy(node: T) -> Self {
-        Self {
-            node,
-            pos: Pos::dummy(),
-        }
-    }
 }
 
 impl<T: PartialEq> PartialEq for WithPos<T> {

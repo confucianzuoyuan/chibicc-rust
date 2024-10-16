@@ -1,4 +1,4 @@
-use std::{fmt::Display, string};
+use std::fmt::Display;
 
 use crate::position::Pos;
 

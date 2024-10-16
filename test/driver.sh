@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 tmp=`mktemp -d /tmp/chibicc-test-XXXXXX`
 trap 'rm -rf $tmp' INT TERM HUP EXIT
 echo > $tmp/empty.c
@@ -14,7 +14,7 @@ check() {
 
 # -o
 rm -f $tmp/out
-./target/debug/chibicc-rust -o $tmp/out $tmp/empty.c
+./chibicc -o $tmp/out $tmp/empty.c
 [ -f $tmp/out ]
 check -o
 

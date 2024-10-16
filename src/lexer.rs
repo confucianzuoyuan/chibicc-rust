@@ -410,4 +410,16 @@ impl<R: Read> Lexer<R> {
         };
         self.make_token(token, len)
     }
+
+    pub fn lex(&mut self) -> Result<Vec<Token>> {
+        let mut tokens = vec![];
+        loop {
+            let tok = self.token()?;
+            tokens.push(tok.clone());
+            if tok.token == Tok::EndOfFile {
+                break;
+            }
+        }
+        Ok(tokens)
+    }
 }

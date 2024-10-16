@@ -2,10 +2,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::position::WithPos;
-
 pub type Symbol = i64;
-pub type SymbolWithPos = WithPos<Symbol>;
 
 #[derive(Debug)]
 pub struct Strings {
@@ -19,11 +16,6 @@ impl Strings {
             next_symbol: RefCell::new(0),
             strings: RefCell::new(HashMap::new()),
         }
-    }
-
-    pub fn get(&self, symbol: Symbol) -> Option<String> {
-        let strings = self.strings.borrow();
-        strings.get(&symbol).map(Clone::clone)
     }
 }
 
@@ -75,18 +67,8 @@ impl<T> Symbols<T> {
         self.table.get(&symbol).and_then(|vec| vec.last())
     }
 
-    pub fn look_mut(&mut self, symbol: Symbol) -> Option<&mut T> {
-        self.table.get_mut(&symbol).and_then(|vec| vec.last_mut())
-    }
-
     pub fn name(&self, symbol: Symbol) -> String {
         self.strings.strings.borrow()[&symbol].to_string()
-    }
-
-    pub fn replace(&mut self, symbol: Symbol, data: T) {
-        let bindings = self.table.entry(symbol).or_insert_with(Vec::new);
-        bindings.pop().expect("Call enter() before replace()");
-        bindings.push(data);
     }
 
     pub fn symbol(&mut self, string: &str) -> Symbol {

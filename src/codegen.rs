@@ -3,7 +3,6 @@ use std::io::Write;
 use crate::{
     ast::{self, Function, InitData},
     sema::{get_sizeof, Type},
-    token::{Tok, Token},
 };
 
 static ARGREG_64: [&str; 6] = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"];
@@ -280,7 +279,6 @@ impl CodeGenerator {
                     for c in s.chars() {
                         self.output.push(format!("  .byte {}", c as u8));
                     }
-                    self.output.push(format!("  .byte {}", '\0'));
                 }
                 _ => self.output.push(format!(
                     "  .zero {}",
