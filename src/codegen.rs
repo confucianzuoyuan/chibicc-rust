@@ -14,16 +14,20 @@ pub struct CodeGenerator {
     current_fn: Option<Function>,
     output: Vec<String>,
     out_writer: Box<dyn Write>,
+
+    file_path: String,
 }
 
 impl CodeGenerator {
-    pub fn new(out_writer: Box<dyn Write>) -> Self {
+    pub fn new(out_writer: Box<dyn Write>, file_path: String) -> Self {
         CodeGenerator {
             depth: 0,
             label_count: 1,
             current_fn: None,
             output: Vec::new(),
             out_writer,
+
+            file_path,
         }
     }
 
@@ -84,6 +88,7 @@ impl CodeGenerator {
     }
 
     fn gen_stmt(&mut self, ast: &ast::StmtWithPos) {
+        self.output.push(format!("  .loc 1 {}", ast.pos.line));
         match &ast.node {
             ast::Stmt::ExprStmt { expr } => self.gen_expr(expr),
             ast::Stmt::Return { expr } => {
@@ -154,6 +159,7 @@ impl CodeGenerator {
     }
 
     fn gen_expr(&mut self, ast: &ast::ExprWithPos) {
+        self.output.push(format!("  .loc 1 {}", ast.pos.line));
         match &ast.node.node {
             ast::Expr::Number { value, .. } => self.output.push(format!("  mov ${}, %rax", value)),
             ast::Expr::Unary { expr, .. } => {
@@ -327,6 +333,11 @@ impl CodeGenerator {
     }
 
     pub fn codegen(&mut self, ast: &mut ast::Program) {
+        let r = writeln!(self.out_writer, ".file 1 \"{}\"", self.file_path);
+        match r {
+            Ok(_) => (),
+            _ => panic!("codegen error."),
+        }
         self.assign_lvar_offsets(ast);
         self.emit_data(ast);
         self.emit_text(ast);

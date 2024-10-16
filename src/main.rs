@@ -1,5 +1,8 @@
 use std::{
-    fs::{self, File}, io::{self, BufRead, BufReader, Write}, path::Path, rc::Rc
+    fs::{self, File},
+    io::{self, BufRead, BufReader, Write},
+    path::Path,
+    rc::Rc,
 };
 
 use codegen::CodeGenerator;
@@ -79,7 +82,16 @@ fn drive(strings: Rc<Strings>, symbols: &mut Symbols<()>) -> Result<(), Error> {
         let tokens = lexer.lex()?;
         let mut parser = Parser::new(tokens, symbols, strings);
         let mut ast = parser.parse()?;
-        let mut cg = CodeGenerator::new(out_writer);
+        // 获取绝对路径
+        let abs_path = fs::canonicalize(filename);
+        let abs_path = match abs_path {
+            Ok(p) => match p.to_str() {
+                Some(_path) => _path.to_string(),
+                _ => filename.to_string(),
+            },
+            _ => filename.to_string(),
+        };
+        let mut cg = CodeGenerator::new(out_writer, abs_path);
 
         cg.codegen(&mut ast);
     } else {
