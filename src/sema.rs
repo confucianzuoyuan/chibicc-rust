@@ -132,6 +132,11 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
                 panic!("statement expression returning void is not supported.");
             }
         }
+        ast::Expr::CommaExpr { right, .. } => {
+            if e.node.ty == Type::TyPlaceholder {
+                e.node.ty = right.node.ty.clone();
+            }
+        }
     }
 }
 

@@ -83,6 +83,10 @@ impl CodeGenerator {
                 }
             }
             ast::Expr::Deref { expr, .. } => self.gen_expr(expr),
+            ast::Expr::CommaExpr { left, right } => {
+                self.gen_expr(&left);
+                self.gen_addr(&right);
+            }
             _ => panic!("not an lvalue"),
         }
     }
@@ -189,6 +193,10 @@ impl CodeGenerator {
                 for n in body {
                     self.gen_stmt(n);
                 }
+            }
+            ast::Expr::CommaExpr { left, right } => {
+                self.gen_expr(&left);
+                self.gen_expr(&right);
             }
             ast::Expr::FunctionCall { name, args } => {
                 if args.len() > 0 {

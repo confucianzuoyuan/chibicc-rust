@@ -382,9 +382,25 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// expr = assign
+    /// expr = assign ("," expr)?
     fn expr(&mut self) -> Result<ExprWithPos> {
-        self.assign()
+        let node = self.assign()?;
+        match self.peek()?.token {
+            Tok::Comma => {
+                let pos = eat!(self, Comma);
+                Ok(WithPos::new(
+                    WithType::new(
+                        Expr::CommaExpr {
+                            left: Box::new(node),
+                            right: Box::new(self.expr()?),
+                        },
+                        Type::TyPlaceholder,
+                    ),
+                    pos,
+                ))
+            }
+            _ => Ok(node),
+        }
     }
 
     /// assign = equality ("=" assign)?

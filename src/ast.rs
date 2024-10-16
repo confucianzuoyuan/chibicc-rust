@@ -39,6 +39,10 @@ pub enum Expr {
     StmtExpr {
         body: Vec<StmtWithPos>,
     },
+    CommaExpr {
+        left: Box<ExprWithPos>,
+        right: Box<ExprWithPos>,
+    },
 }
 
 pub type ExprWithPos = WithPos<ExprWithType>;
