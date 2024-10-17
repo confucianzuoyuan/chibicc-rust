@@ -7,7 +7,7 @@ use crate::{
     },
     error::Error::{self, UnexpectedToken},
     position::{Pos, WithPos},
-    sema::{self, add_type, get_sizeof, sema_stmt, Type, WithType},
+    sema::{self, add_type, align_to, get_sizeof, sema_stmt, Type, WithType},
     symbol::{Strings, Symbols},
     token::{
         Tok::{
@@ -218,7 +218,7 @@ impl<'a> Parser<'a> {
 
                     let lhs = WithPos::new(
                         WithType::new(Expr::Variable { obj: var }, ty.clone()),
-                        Pos::dummy(),
+                        self.peek()?.pos,
                     );
                     let rhs = self.assign()?;
                     let node = WithPos::new(
@@ -229,16 +229,16 @@ impl<'a> Parser<'a> {
                             },
                             ty.clone(),
                         ),
-                        Pos::dummy(),
+                        self.peek()?.pos,
                     );
 
-                    let expr_stmt = WithPos::new(Stmt::ExprStmt { expr: node }, Pos::dummy());
+                    let expr_stmt = WithPos::new(Stmt::ExprStmt { expr: node }, self.peek()?.pos);
                     decls.push(expr_stmt);
                 }
             }
         }
 
-        Ok(WithPos::new(Stmt::Block { body: decls }, Pos::dummy()))
+        Ok(WithPos::new(Stmt::Block { body: decls }, self.peek()?.pos))
     }
 
     /// struct-decl = "{" struct-members
@@ -281,16 +281,25 @@ impl<'a> Parser<'a> {
             }
         }
 
+        let mut struct_align = 1;
         let mut offset = 0;
         for mem in members.clone() {
+            offset = align_to(offset, sema::get_align(mem.borrow().ty.clone()));
             mem.borrow_mut().offset = offset;
             offset += get_sizeof(mem.borrow().ty.clone());
+
+            if struct_align < sema::get_align(mem.borrow().ty.clone()) {
+                struct_align = sema::get_align(mem.borrow().ty.clone());
+            }
         }
+
+        eprintln!("struct_align: {}", struct_align);
 
         Ok(Type::TyStruct {
             name: None,
             members,
-            type_size: offset,
+            type_size: sema::align_to(offset, struct_align),
+            align: struct_align,
         })
     }
 
@@ -423,7 +432,7 @@ impl<'a> Parser<'a> {
             }
         }
         self.var_env.end_scope();
-        Ok(WithPos::new(Stmt::Block { body: stmts }, Pos::dummy()))
+        Ok(WithPos::new(Stmt::Block { body: stmts }, self.peek()?.pos))
     }
 
     /// expr-stmt = expr? ";"

@@ -31,6 +31,7 @@ pub enum Type {
         name: Option<Token>,
         members: Vec<Rc<RefCell<Member>>>,
         type_size: i32,
+        align: i32,
     },
     TyPlaceholder,
 }
@@ -215,5 +216,22 @@ pub fn get_sizeof(ty: Type) -> i32 {
         Type::TyPtr { .. } => 8,
         Type::TyStruct { type_size, .. } => type_size,
         _ => 0,
+    }
+}
+
+// Round up `n` to the nearest multiple of `align`. For instance,
+// align_to(5, 8) returns 8 and align_to(11, 8) returns 16.
+pub fn align_to(n: i32, align: i32) -> i32 {
+    (n + align - 1) / align * align
+}
+
+pub fn get_align(ty: Type) -> i32 {
+    match ty {
+        Type::TyStruct { align, .. } => align,
+        Type::TyInt { .. } => 8,
+        Type::TyChar { .. } => 1,
+        Type::TyArray { base, .. } => get_align(*base),
+        Type::TyPtr { .. } => 8,
+        _ => panic!("type {:?} has no align infomation.", ty),
     }
 }

@@ -24,10 +24,6 @@ impl Pos {
         }
     }
 
-    pub fn dummy() -> Self {
-        Self::new(u32::MAX, u32::MAX, u64::MAX, 0, 0)
-    }
-
     pub fn grow(&self, pos: Pos) -> Self {
         Pos {
             byte: self.byte,

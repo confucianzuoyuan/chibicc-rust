@@ -2,7 +2,7 @@ use std::io::Write;
 
 use crate::{
     ast::{self, Function, InitData},
-    sema::{get_sizeof, Type},
+    sema::{self, get_sizeof, Type},
 };
 
 static ARGREG_64: [&str; 6] = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"];
@@ -271,12 +271,6 @@ impl CodeGenerator {
         }
     }
 
-    // Round up `n` to the nearest multiple of `align`. For instance,
-    // align_to(5, 8) returns 8 and align_to(11, 8) returns 16.
-    fn align_to(&self, n: i32, align: i32) -> i32 {
-        (n + align - 1) / align * align
-    }
-
     fn assign_lvar_offsets(&mut self, ast: &mut ast::Program) {
         for f in &mut ast.funcs {
             let mut offset = 0;
@@ -284,7 +278,7 @@ impl CodeGenerator {
                 offset += get_sizeof(local.borrow().ty.clone());
                 local.borrow_mut().offset = -offset;
             }
-            f.stack_size = self.align_to(offset, 16);
+            f.stack_size = sema::align_to(offset, 16);
         }
     }
 
