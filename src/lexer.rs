@@ -143,6 +143,7 @@ impl<R: Read> Lexer<R> {
             "int" => Tok::KeywordInt,
             "char" => Tok::KeywordChar,
             "long" => Tok::KeywordLong,
+            "short" => Tok::KeywordShort,
             "sizeof" => Tok::KeywordSizeof,
             "struct" => Tok::KeywordStruct,
             "union" => Tok::KeywordUnion,

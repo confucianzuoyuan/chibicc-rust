@@ -7,6 +7,9 @@ use crate::token::Token;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Type {
+    TyShort {
+        name: Option<Token>,
+    },
     TyLong {
         name: Option<Token>,
     },
@@ -217,6 +220,7 @@ pub fn get_sizeof(ty: Type) -> i32 {
     match ty {
         Type::TyLong { .. } => 8,
         Type::TyInt { .. } => 4,
+        Type::TyShort { .. } => 2,
         Type::TyChar { .. } => 1,
         Type::TyArray {
             name: _,
@@ -242,6 +246,7 @@ pub fn get_align(ty: Type) -> i32 {
         Type::TyUnion { align, .. } => align,
         Type::TyLong { .. } => 8,
         Type::TyInt { .. } => 4,
+        Type::TyShort { .. } => 2,
         Type::TyChar { .. } => 1,
         Type::TyArray { base, .. } => get_align(*base),
         Type::TyPtr { .. } => 8,

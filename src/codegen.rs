@@ -7,6 +7,7 @@ use crate::{
 
 static ARGREG_64: [&str; 6] = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"];
 static ARGREG_32: [&str; 6] = ["%edi", "%esi", "%edx", "%ecx", "%r8d", "%r9d"];
+static ARGREG_16: [&str; 6] = ["%di", "%si", "%dx", "%cx", "%r8w", "%r9w"];
 static ARGREG_8: [&str; 6] = ["%dil", "%sil", "%dl", "%cl", "%r8b", "%r9b"];
 
 pub struct CodeGenerator {
@@ -56,6 +57,7 @@ impl CodeGenerator {
             Type::TyUnion { .. } => (),
             _ => match get_sizeof(ty.clone()) {
                 1 => self.output.push(format!("  movsbq (%rax), %rax")),
+                2 => self.output.push(format!("  movswq (%rax), %rax")),
                 4 => self.output.push(format!("  movsxd (%rax), %rax")),
                 _ => self.output.push(format!("  mov (%rax), %rax")),
             },
@@ -74,6 +76,7 @@ impl CodeGenerator {
             }
             _ => match get_sizeof(ty.clone()) {
                 1 => self.output.push(format!("  mov %al, (%rdi)")),
+                2 => self.output.push(format!("  mov %ax, (%rdi)")),
                 4 => self.output.push(format!("  mov %eax, (%rdi)")),
                 _ => self.output.push(format!("  mov %rax, (%rdi)")),
             },
@@ -85,6 +88,9 @@ impl CodeGenerator {
             1 => self
                 .output
                 .push(format!("  mov {}, {}(%rbp)", ARGREG_8[r as usize], offset)),
+            2 => self
+                .output
+                .push(format!("  mov {}, {}(%rbp)", ARGREG_16[r as usize], offset)),
             4 => self
                 .output
                 .push(format!("  mov {}, {}(%rbp)", ARGREG_32[r as usize], offset)),
