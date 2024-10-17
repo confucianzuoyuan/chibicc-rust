@@ -276,6 +276,7 @@ impl CodeGenerator {
             let mut offset = 0;
             for local in &mut f.locals {
                 offset += get_sizeof(local.borrow().ty.clone());
+                offset = sema::align_to(offset, sema::get_align(local.borrow().ty.clone()));
                 local.borrow_mut().offset = -offset;
             }
             f.stack_size = sema::align_to(offset, 16);
