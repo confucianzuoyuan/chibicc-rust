@@ -33,6 +33,12 @@ pub enum Type {
         type_size: i32,
         align: i32,
     },
+    TyUnion {
+        name: Option<Token>,
+        members: Vec<Rc<RefCell<Member>>>,
+        type_size: i32,
+        align: i32,
+    },
     TyPlaceholder,
 }
 
@@ -215,6 +221,7 @@ pub fn get_sizeof(ty: Type) -> i32 {
         } => get_sizeof(*base) * array_len,
         Type::TyPtr { .. } => 8,
         Type::TyStruct { type_size, .. } => type_size,
+        Type::TyUnion { type_size, .. } => type_size,
         _ => 0,
     }
 }
@@ -228,6 +235,7 @@ pub fn align_to(n: i32, align: i32) -> i32 {
 pub fn get_align(ty: Type) -> i32 {
     match ty {
         Type::TyStruct { align, .. } => align,
+        Type::TyUnion { align, .. } => align,
         Type::TyInt { .. } => 8,
         Type::TyChar { .. } => 1,
         Type::TyArray { base, .. } => get_align(*base),

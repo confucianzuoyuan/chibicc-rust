@@ -13,9 +13,9 @@ use crate::{
         Tok::{
             self, Amp, BangEqual, Comma, Dot, Equal, EqualEqual, Greater, GreaterEqual, Ident,
             KeywordChar, KeywordElse, KeywordFor, KeywordIf, KeywordInt, KeywordReturn,
-            KeywordSizeof, KeywordStruct, KeywordWhile, LeftBrace, LeftBracket, LeftParen, Lesser,
-            LesserEqual, Minus, MinusGreater, Number, Plus, RightBrace, RightBracket, RightParen,
-            Semicolon, Slash, Star, Str,
+            KeywordSizeof, KeywordStruct, KeywordUnion, KeywordWhile, LeftBrace, LeftBracket,
+            LeftParen, Lesser, LesserEqual, Minus, MinusGreater, Number, Plus, RightBrace,
+            RightBracket, RightParen, Semicolon, Slash, Star, Str,
         },
         Token,
     },
@@ -333,6 +333,97 @@ impl<'a> Parser<'a> {
         Ok(struct_ty)
     }
 
+    /// union-decl = "{" struct-members
+    /// union-members = (declspec declarator (","  declarator)* ";")*
+    fn union_decl(&mut self) -> Result<Type> {
+        // Read a union tag.
+        let tag = match self.peek()?.token {
+            Tok::Ident(..) => {
+                let ident;
+                eat!(self, Ident, ident);
+                Some(ident)
+            }
+            _ => None,
+        };
+
+        match self.peek()?.token {
+            Tok::LeftBrace => {
+                eat!(self, LeftBrace);
+            }
+            _ => {
+                if let Some(union_tag) = tag {
+                    let ty = self.struct_tag_env.look(self.symbols.symbol(&union_tag));
+                    if let Some(_ty) = ty {
+                        return Ok(_ty.clone());
+                    } else {
+                        panic!("unknown union type: {}", union_tag);
+                    }
+                }
+            }
+        }
+
+        // Construct a union object.
+        let mut members = vec![];
+        loop {
+            match self.peek()?.token {
+                Tok::RightBrace => {
+                    eat!(self, RightBrace);
+                    break;
+                }
+                _ => {
+                    let basety = self.declspec()?;
+                    loop {
+                        match self.peek()?.token {
+                            Tok::Semicolon => {
+                                eat!(self, Semicolon);
+                                break;
+                            }
+                            Tok::Comma => {
+                                eat!(self, Comma);
+                            }
+                            _ => {
+                                let member_ty = self.declarator(basety.clone())?;
+                                let member_name = self.get_ident_token(member_ty.clone())?;
+                                let member = Rc::new(RefCell::new(sema::Member {
+                                    ty: member_ty,
+                                    name: member_name,
+                                    offset: 0,
+                                }));
+                                members.push(member);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // If union, we don't have to assign offsets because they
+        // are already initialized to zero. We need to compute the
+        // alignment and the size though.
+        let mut union_align = 1;
+        let mut type_size = 0;
+        for mem in members.clone() {
+            if union_align < sema::get_align(mem.borrow().ty.clone()) {
+                union_align = sema::get_align(mem.borrow().ty.clone());
+            }
+            if type_size < sema::get_sizeof(mem.borrow().ty.clone()) {
+                type_size = sema::get_sizeof(mem.borrow().ty.clone());
+            }
+        }
+
+        let union_ty = Type::TyUnion {
+            name: None,
+            members,
+            type_size: sema::align_to(type_size, union_align),
+            align: union_align,
+        };
+        if let Some(struct_tag) = tag {
+            self.struct_tag_env
+                .enter(self.symbols.symbol(&struct_tag), union_ty.clone());
+        }
+        Ok(union_ty)
+    }
+
     /// declspec = "int" | "char" | struct-decl
     fn declspec(&mut self) -> Result<Type> {
         match self.peek()?.token {
@@ -347,6 +438,10 @@ impl<'a> Parser<'a> {
             Tok::KeywordStruct => {
                 eat!(self, KeywordStruct);
                 self.struct_decl()
+            }
+            Tok::KeywordUnion => {
+                eat!(self, KeywordUnion);
+                self.union_decl()
             }
             _ => panic!("unknown type name."),
         }
@@ -429,6 +524,7 @@ impl<'a> Parser<'a> {
                     Type::TyFunc { ref mut name, .. } => *name = Some(tok.clone()),
                     Type::TyArray { ref mut name, .. } => *name = Some(tok.clone()),
                     Type::TyStruct { ref mut name, .. } => *name = Some(tok.clone()),
+                    Type::TyUnion { ref mut name, .. } => *name = Some(tok.clone()),
                     _ => (),
                 }
             }
@@ -450,7 +546,7 @@ impl<'a> Parser<'a> {
                     eat!(self, RightBrace);
                     break;
                 }
-                Tok::KeywordInt | Tok::KeywordChar | Tok::KeywordStruct => {
+                Tok::KeywordInt | Tok::KeywordChar | Tok::KeywordStruct | Tok::KeywordUnion => {
                     let mut declarations = self.declaration()?;
                     sema_stmt(&mut declarations);
                     stmts.push(declarations);
@@ -889,7 +985,7 @@ impl<'a> Parser<'a> {
 
     fn struct_ref(&mut self, node: ExprWithPos) -> Result<ExprWithPos> {
         match node.node.ty.clone() {
-            Type::TyStruct { members, .. } => {
+            Type::TyStruct { members, .. } | Type::TyUnion { members, .. } => {
                 let mem_ident;
                 let pos = eat!(self, Ident, mem_ident);
                 let mut mem_found = None;
@@ -922,7 +1018,7 @@ impl<'a> Parser<'a> {
                     pos,
                 ))
             }
-            _ => panic!("must be struct type."),
+            _ => panic!("must be struct or union type."),
         }
     }
 
@@ -1212,6 +1308,7 @@ impl<'a> Parser<'a> {
             | Type::TyChar { name: Some(t), .. }
             | Type::TyPtr { name: Some(t), .. }
             | Type::TyStruct { name: Some(t), .. }
+            | Type::TyUnion { name: Some(t), .. }
             | Type::TyFunc { name: Some(t), .. } => Ok(t),
             _ => panic!("ty {:?} has no token.", ty),
         }
@@ -1260,6 +1357,14 @@ impl<'a> Parser<'a> {
                 ..
             }
             | Type::TyStruct {
+                name:
+                    Some(Token {
+                        token: Tok::Ident(param_name),
+                        ..
+                    }),
+                ..
+            }
+            | Type::TyUnion {
                 name:
                     Some(Token {
                         token: Tok::Ident(param_name),

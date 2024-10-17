@@ -40,6 +40,7 @@ pub enum Tok {
     KeywordChar,
     KeywordSizeof,
     KeywordStruct,
+    KeywordUnion,
 
     EndOfFile,
 }
@@ -88,6 +89,7 @@ impl Display for Tok {
                 Tok::KeywordChar => "char",
                 Tok::KeywordSizeof => "sizeof",
                 Tok::KeywordStruct => "struct",
+                Tok::KeywordUnion => "union",
                 Tok::EndOfFile => "<eof>",
                 Tok::Str(ref string) => return format!("{:?}", string),
             };

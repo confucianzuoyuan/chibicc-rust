@@ -144,6 +144,7 @@ impl<R: Read> Lexer<R> {
             "char" => Tok::KeywordChar,
             "sizeof" => Tok::KeywordSizeof,
             "struct" => Tok::KeywordStruct,
+            "union" => Tok::KeywordUnion,
             _ => Tok::Ident(ident),
         };
         self.make_token(token, len)
