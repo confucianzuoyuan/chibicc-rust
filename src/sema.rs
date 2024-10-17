@@ -1,3 +1,6 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use crate::ast::BinaryOperator::{Add, Div, Eq, Ge, Gt, Le, Lt, Mul, Ne, Sub};
 use crate::ast::{self, BinaryOperatorWithPos, UnaryOperatorWithPos};
 use crate::token::Token;
@@ -24,7 +27,19 @@ pub enum Type {
         params: Vec<Type>,
         return_ty: Box<Type>,
     },
+    TyStruct {
+        name: Option<Token>,
+        members: Vec<Rc<RefCell<Member>>>,
+        type_size: i32,
+    },
     TyPlaceholder,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Member {
+    pub ty: Type,
+    pub name: Token,
+    pub offset: i32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -137,6 +152,11 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
                 e.node.ty = right.node.ty.clone();
             }
         }
+        ast::Expr::MemberExpr { member, .. } => {
+            if e.node.ty == Type::TyPlaceholder {
+                e.node.ty = member.borrow().ty.clone();
+            }
+        }
     }
 }
 
@@ -193,6 +213,7 @@ pub fn get_sizeof(ty: Type) -> i32 {
             array_len,
         } => get_sizeof(*base) * array_len,
         Type::TyPtr { .. } => 8,
+        Type::TyStruct { type_size, .. } => type_size,
         _ => 0,
     }
 }

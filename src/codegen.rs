@@ -64,6 +64,7 @@ impl CodeGenerator {
     // Store %rax to an address that the stack top is pointing to.
     fn store(&mut self, ty: &Type) {
         self.pop("%rdi".to_string());
+        eprintln!("{:?}", ty);
         if get_sizeof(ty.clone()) == 1 {
             self.output.push(format!("  mov %al, (%rdi)"));
         } else {
@@ -86,6 +87,11 @@ impl CodeGenerator {
             ast::Expr::CommaExpr { left, right } => {
                 self.gen_expr(&left);
                 self.gen_addr(&right);
+            }
+            ast::Expr::MemberExpr { strct, member } => {
+                self.gen_addr(&strct);
+                self.output
+                    .push(format!("  add ${}, %rax", member.borrow().offset));
             }
             _ => panic!("not an lvalue"),
         }
@@ -170,7 +176,7 @@ impl CodeGenerator {
                 self.gen_expr(expr);
                 self.output.push(format!("  neg %rax"));
             }
-            ast::Expr::Variable { .. } => {
+            ast::Expr::Variable { .. } | ast::Expr::MemberExpr { .. } => {
                 self.gen_addr(ast);
                 self.load(&ast.node.ty);
             }

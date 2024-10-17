@@ -11,10 +11,11 @@ use crate::{
     symbol::{Strings, Symbols},
     token::{
         Tok::{
-            self, Amp, BangEqual, Comma, Equal, EqualEqual, Greater, GreaterEqual, Ident,
+            self, Amp, BangEqual, Comma, Dot, Equal, EqualEqual, Greater, GreaterEqual, Ident,
             KeywordChar, KeywordElse, KeywordFor, KeywordIf, KeywordInt, KeywordReturn,
-            KeywordSizeof, KeywordWhile, LeftBrace, LeftBracket, LeftParen, Lesser, LesserEqual,
-            Minus, Number, Plus, RightBrace, RightBracket, RightParen, Semicolon, Slash, Star, Str,
+            KeywordSizeof, KeywordStruct, KeywordWhile, LeftBrace, LeftBracket, LeftParen, Lesser,
+            LesserEqual, Minus, Number, Plus, RightBrace, RightBracket, RightParen, Semicolon,
+            Slash, Star, Str,
         },
         Token,
     },
@@ -240,7 +241,60 @@ impl<'a> Parser<'a> {
         Ok(WithPos::new(Stmt::Block { body: decls }, Pos::dummy()))
     }
 
-    /// declspec = "int" | "char"
+    /// struct-decl = "{" struct-members
+    /// struct-members = (declspec declarator (","  declarator)* ";")*
+    fn struct_decl(&mut self) -> Result<Type> {
+        eat!(self, LeftBrace);
+
+        // Construct a struct object.
+        let mut members = vec![];
+        loop {
+            match self.peek()?.token {
+                Tok::RightBrace => {
+                    eat!(self, RightBrace);
+                    break;
+                }
+                _ => {
+                    let basety = self.declspec()?;
+                    loop {
+                        match self.peek()?.token {
+                            Tok::Semicolon => {
+                                eat!(self, Semicolon);
+                                break;
+                            }
+                            Tok::Comma => {
+                                eat!(self, Comma);
+                            }
+                            _ => {
+                                let member_ty = self.declarator(basety.clone())?;
+                                let member_name = self.get_ident_token(member_ty.clone())?;
+                                let member = Rc::new(RefCell::new(sema::Member {
+                                    ty: member_ty,
+                                    name: member_name,
+                                    offset: 0,
+                                }));
+                                members.push(member);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut offset = 0;
+        for mem in members.clone() {
+            mem.borrow_mut().offset = offset;
+            offset += get_sizeof(mem.borrow().ty.clone());
+        }
+
+        Ok(Type::TyStruct {
+            name: None,
+            members,
+            type_size: offset,
+        })
+    }
+
+    /// declspec = "int" | "char" | struct-decl
     fn declspec(&mut self) -> Result<Type> {
         match self.peek()?.token {
             Tok::KeywordChar => {
@@ -250,6 +304,10 @@ impl<'a> Parser<'a> {
             Tok::KeywordInt => {
                 eat!(self, KeywordInt);
                 Ok(Type::TyInt { name: None })
+            }
+            Tok::KeywordStruct => {
+                eat!(self, KeywordStruct);
+                self.struct_decl()
             }
             _ => panic!("unknown type name."),
         }
@@ -331,6 +389,7 @@ impl<'a> Parser<'a> {
                     Type::TyPtr { ref mut name, .. } => *name = Some(tok.clone()),
                     Type::TyFunc { ref mut name, .. } => *name = Some(tok.clone()),
                     Type::TyArray { ref mut name, .. } => *name = Some(tok.clone()),
+                    Type::TyStruct { ref mut name, .. } => *name = Some(tok.clone()),
                     _ => (),
                 }
             }
@@ -351,7 +410,7 @@ impl<'a> Parser<'a> {
                     eat!(self, RightBrace);
                     break;
                 }
-                Tok::KeywordInt | Tok::KeywordChar => {
+                Tok::KeywordInt | Tok::KeywordChar | Tok::KeywordStruct => {
                     let mut declarations = self.declaration()?;
                     sema_stmt(&mut declarations);
                     stmts.push(declarations);
@@ -406,6 +465,7 @@ impl<'a> Parser<'a> {
     /// assign = equality ("=" assign)?
     fn assign(&mut self) -> Result<ExprWithPos> {
         let mut expr = self.equality()?;
+        add_type(&mut expr);
         match self.peek()?.token {
             Tok::Equal => {
                 let pos = eat!(self, Equal);
@@ -413,10 +473,10 @@ impl<'a> Parser<'a> {
                 expr = WithPos::new(
                     WithType::new(
                         Expr::Assign {
-                            l_value: Box::new(expr),
+                            l_value: Box::new(expr.clone()),
                             r_value: Box::new(r_value),
                         },
-                        Type::TyPlaceholder,
+                        expr.node.ty,
                     ),
                     pos,
                 )
@@ -786,7 +846,7 @@ impl<'a> Parser<'a> {
         Ok(lhs)
     }
 
-    /// postfix = primary ("[" expr "]")*
+    /// postfix = primary ("[" expr "]" | "." ident)*
     fn postfix(&mut self) -> Result<ExprWithPos> {
         let mut node = self.primary()?;
 
@@ -806,6 +866,46 @@ impl<'a> Parser<'a> {
                         ),
                         pos,
                     )
+                }
+                Tok::Dot => {
+                    eat!(self, Dot);
+                    add_type(&mut node);
+                    match node.node.ty.clone() {
+                        Type::TyStruct { ref members, .. } => {
+                            let mem_ident;
+                            let pos = eat!(self, Ident, mem_ident);
+                            let mut mem_found = None;
+                            for mem in members {
+                                match mem.borrow().name.token.clone() {
+                                    Tok::Ident(tok_name) => {
+                                        if mem_ident == tok_name {
+                                            mem_found = Some(mem);
+                                            break;
+                                        }
+                                    }
+                                    _ => (),
+                                }
+                            }
+
+                            node = WithPos::new(
+                                WithType::new(
+                                    Expr::MemberExpr {
+                                        strct: Box::new(node),
+                                        member: match mem_found {
+                                            Some(m) => m.clone(),
+                                            None => panic!(),
+                                        },
+                                    },
+                                    match mem_found {
+                                        Some(m) => m.borrow().ty.clone(),
+                                        None => panic!(),
+                                    },
+                                ),
+                                pos,
+                            )
+                        }
+                        _ => panic!("not a struct."),
+                    }
                 }
                 _ => break,
             }
@@ -1047,6 +1147,7 @@ impl<'a> Parser<'a> {
             | Type::TyInt { name: Some(t), .. }
             | Type::TyChar { name: Some(t), .. }
             | Type::TyPtr { name: Some(t), .. }
+            | Type::TyStruct { name: Some(t), .. }
             | Type::TyFunc { name: Some(t), .. } => Ok(t),
             _ => panic!("ty {:?} has no token.", ty),
         }
@@ -1087,6 +1188,14 @@ impl<'a> Parser<'a> {
                 ..
             }
             | Type::TyFunc {
+                name:
+                    Some(Token {
+                        token: Tok::Ident(param_name),
+                        ..
+                    }),
+                ..
+            }
+            | Type::TyStruct {
                 name:
                     Some(Token {
                         token: Tok::Ident(param_name),

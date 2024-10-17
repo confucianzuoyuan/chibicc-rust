@@ -2,7 +2,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use crate::{
     position::WithPos,
-    sema::{Type, WithType},
+    sema::{Member, Type, WithType},
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -42,6 +42,11 @@ pub enum Expr {
     CommaExpr {
         left: Box<ExprWithPos>,
         right: Box<ExprWithPos>,
+    },
+    /// . (struct member access)
+    MemberExpr {
+        strct: Box<ExprWithPos>,
+        member: Rc<RefCell<Member>>,
     },
 }
 

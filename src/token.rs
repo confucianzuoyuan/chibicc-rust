@@ -25,6 +25,7 @@ pub enum Tok {
     Semicolon,
     Comma,
     Amp,
+    Dot,
     Number(i64),
     Ident(String),
     Str(String),
@@ -37,6 +38,7 @@ pub enum Tok {
     KeywordInt,
     KeywordChar,
     KeywordSizeof,
+    KeywordStruct,
 
     EndOfFile,
 }
@@ -72,6 +74,7 @@ impl Display for Tok {
                 Tok::Semicolon => ";",
                 Tok::Comma => ",",
                 Tok::Amp => "&",
+                Tok::Dot => ".",
                 Tok::Number(i) => return i.to_string(),
                 Tok::Ident(ref ident) => ident,
                 Tok::KeywordReturn => "return",
@@ -82,6 +85,7 @@ impl Display for Tok {
                 Tok::KeywordInt => "int",
                 Tok::KeywordChar => "char",
                 Tok::KeywordSizeof => "sizeof",
+                Tok::KeywordStruct => "struct",
                 Tok::EndOfFile => "<eof>",
                 Tok::Str(ref string) => return format!("{:?}", string),
             };

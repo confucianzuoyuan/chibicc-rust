@@ -139,6 +139,7 @@ impl<R: Read> Lexer<R> {
             "int" => Tok::KeywordInt,
             "char" => Tok::KeywordChar,
             "sizeof" => Tok::KeywordSizeof,
+            "struct" => Tok::KeywordStruct,
             _ => Tok::Ident(ident),
         };
         self.make_token(token, len)
@@ -360,6 +361,7 @@ impl<R: Read> Lexer<R> {
                 b';' => self.simple_token(Tok::Semicolon),
                 b',' => self.simple_token(Tok::Comma),
                 b'&' => self.simple_token(Tok::Amp),
+                b'.' => self.simple_token(Tok::Dot),
                 b'"' => self.string(),
                 b'\0' => self.simple_token(Tok::EndOfFile),
                 _ => {
