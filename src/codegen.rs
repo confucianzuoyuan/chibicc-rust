@@ -51,6 +51,8 @@ impl CodeGenerator {
             // This is where "array is automatically converted to a pointer to
             // the first element of the array in C" occurs.
             Type::TyArray { .. } => (),
+            Type::TyStruct { .. } => (),
+            Type::TyUnion { .. } => (),
             _ => {
                 if get_sizeof(ty.clone()) == 1 {
                     self.output.push(format!("  movsbq (%rax), %rax"));
@@ -64,11 +66,20 @@ impl CodeGenerator {
     // Store %rax to an address that the stack top is pointing to.
     fn store(&mut self, ty: &Type) {
         self.pop("%rdi".to_string());
-        eprintln!("{:?}", ty);
-        if get_sizeof(ty.clone()) == 1 {
-            self.output.push(format!("  mov %al, (%rdi)"));
-        } else {
-            self.output.push(format!("  mov %rax, (%rdi)"));
+        match ty {
+            Type::TyStruct { type_size, .. } | Type::TyUnion { type_size, .. } => {
+                for i in 0..=type_size - 1 {
+                    self.output.push(format!("  mov {}(%rax), %r8b", i));
+                    self.output.push(format!("  mov %r8b, {}(%rdi)", i));
+                }
+            }
+            _ => {
+                if get_sizeof(ty.clone()) == 1 {
+                    self.output.push(format!("  mov %al, (%rdi)"));
+                } else {
+                    self.output.push(format!("  mov %rax, (%rdi)"));
+                }
+            }
         }
     }
 
