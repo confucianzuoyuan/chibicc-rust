@@ -1,3 +1,3 @@
 int main() {
-  return ({ struct {int a; char b;} x; sizeof(x); });
+  return ({ struct t {char a[2];}; { struct t {char a[4];}; } struct t y; sizeof(y); });
 }

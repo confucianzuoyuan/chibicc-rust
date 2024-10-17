@@ -74,11 +74,13 @@ pub struct Parser<'a> {
     unique_name_count: i32,
 
     var_env: Symbols<Rc<RefCell<Obj>>>,
+    struct_tag_env: Symbols<Type>,
 }
 
 impl<'a> Parser<'a> {
     pub fn new(tokens: Vec<Token>, symbols: &'a mut Symbols<()>, strings: Rc<Strings>) -> Self {
         let var_env = Symbols::new(Rc::clone(&strings));
+        let struct_tag_env = Symbols::new(Rc::clone(&strings));
         Parser {
             tokens,
             current_pos: 0,
@@ -89,6 +91,7 @@ impl<'a> Parser<'a> {
             unique_name_count: 0,
 
             var_env,
+            struct_tag_env,
         }
     }
 
@@ -244,7 +247,31 @@ impl<'a> Parser<'a> {
     /// struct-decl = "{" struct-members
     /// struct-members = (declspec declarator (","  declarator)* ";")*
     fn struct_decl(&mut self) -> Result<Type> {
-        eat!(self, LeftBrace);
+        // Read a struct tag.
+        let tag = match self.peek()?.token {
+            Tok::Ident(..) => {
+                let ident;
+                eat!(self, Ident, ident);
+                Some(ident)
+            }
+            _ => None,
+        };
+
+        match self.peek()?.token {
+            Tok::LeftBrace => {
+                eat!(self, LeftBrace);
+            }
+            _ => {
+                if let Some(struct_tag) = tag {
+                    let ty = self.struct_tag_env.look(self.symbols.symbol(&struct_tag));
+                    if let Some(_ty) = ty {
+                        return Ok(_ty.clone());
+                    } else {
+                        panic!("unknown struct type: {}", struct_tag);
+                    }
+                }
+            }
+        }
 
         // Construct a struct object.
         let mut members = vec![];
@@ -293,14 +320,17 @@ impl<'a> Parser<'a> {
             }
         }
 
-        eprintln!("struct_align: {}", struct_align);
-
-        Ok(Type::TyStruct {
+        let struct_ty = Type::TyStruct {
             name: None,
             members,
             type_size: sema::align_to(offset, struct_align),
             align: struct_align,
-        })
+        };
+        if let Some(struct_tag) = tag {
+            self.struct_tag_env
+                .enter(self.symbols.symbol(&struct_tag), struct_ty.clone());
+        }
+        Ok(struct_ty)
     }
 
     /// declspec = "int" | "char" | struct-decl
@@ -413,6 +443,7 @@ impl<'a> Parser<'a> {
         let mut stmts = vec![];
 
         self.var_env.begin_scope();
+        self.struct_tag_env.begin_scope();
         loop {
             match self.peek()?.token {
                 Tok::RightBrace => {
@@ -431,6 +462,7 @@ impl<'a> Parser<'a> {
                 }
             }
         }
+        self.struct_tag_env.end_scope();
         self.var_env.end_scope();
         Ok(WithPos::new(Stmt::Block { body: stmts }, self.peek()?.pos))
     }
@@ -1096,6 +1128,7 @@ impl<'a> Parser<'a> {
         self.locals = Vec::new();
 
         self.var_env.begin_scope();
+        self.struct_tag_env.begin_scope();
 
         let ident;
         match ty.clone() {
@@ -1122,7 +1155,10 @@ impl<'a> Parser<'a> {
 
         eat!(self, LeftBrace);
         let body = self.compound_stmt()?;
+
+        self.struct_tag_env.end_scope();
         self.var_env.end_scope();
+        
         self.functions.push(ast::Function {
             name: ident,
             params,
