@@ -12,10 +12,10 @@ use crate::{
     token::{
         Tok::{
             self, Amp, BangEqual, Comma, Dot, Equal, EqualEqual, Greater, GreaterEqual, Ident,
-            KeywordChar, KeywordElse, KeywordFor, KeywordIf, KeywordInt, KeywordReturn,
-            KeywordSizeof, KeywordStruct, KeywordUnion, KeywordWhile, LeftBrace, LeftBracket,
-            LeftParen, Lesser, LesserEqual, Minus, MinusGreater, Number, Plus, RightBrace,
-            RightBracket, RightParen, Semicolon, Slash, Star, Str,
+            KeywordChar, KeywordElse, KeywordFor, KeywordIf, KeywordInt, KeywordLong,
+            KeywordReturn, KeywordSizeof, KeywordStruct, KeywordUnion, KeywordWhile, LeftBrace,
+            LeftBracket, LeftParen, Lesser, LesserEqual, Minus, MinusGreater, Number, Plus,
+            RightBrace, RightBracket, RightParen, Semicolon, Slash, Star, Str,
         },
         Token,
     },
@@ -435,6 +435,10 @@ impl<'a> Parser<'a> {
                 eat!(self, KeywordInt);
                 Ok(Type::TyInt { name: None })
             }
+            Tok::KeywordLong => {
+                eat!(self, KeywordLong);
+                Ok(Type::TyLong { name: None })
+            }
             Tok::KeywordStruct => {
                 eat!(self, KeywordStruct);
                 self.struct_decl()
@@ -520,6 +524,7 @@ impl<'a> Parser<'a> {
                 match ty {
                     Type::TyInt { ref mut name } => *name = Some(tok.clone()),
                     Type::TyChar { ref mut name } => *name = Some(tok.clone()),
+                    Type::TyLong { ref mut name } => *name = Some(tok.clone()),
                     Type::TyPtr { ref mut name, .. } => *name = Some(tok.clone()),
                     Type::TyFunc { ref mut name, .. } => *name = Some(tok.clone()),
                     Type::TyArray { ref mut name, .. } => *name = Some(tok.clone()),
@@ -546,7 +551,11 @@ impl<'a> Parser<'a> {
                     eat!(self, RightBrace);
                     break;
                 }
-                Tok::KeywordInt | Tok::KeywordChar | Tok::KeywordStruct | Tok::KeywordUnion => {
+                Tok::KeywordLong
+                | Tok::KeywordInt
+                | Tok::KeywordChar
+                | Tok::KeywordStruct
+                | Tok::KeywordUnion => {
                     let mut declarations = self.declaration()?;
                     sema_stmt(&mut declarations);
                     stmts.push(declarations);
@@ -707,17 +716,17 @@ impl<'a> Parser<'a> {
                     match (expr.node.ty.clone(), right.node.ty.clone()) {
                         // num - num
                         (
-                            Type::TyInt { .. } | Type::TyChar { .. },
-                            Type::TyInt { .. } | Type::TyChar { .. },
+                            Type::TyInt { .. } | Type::TyChar { .. } | Type::TyLong { .. },
+                            Type::TyInt { .. } | Type::TyChar { .. } | Type::TyLong { .. },
                         ) => {
                             expr = WithPos::new(
                                 WithType::new(
                                     Expr::Binary {
-                                        left: Box::new(expr),
+                                        left: Box::new(expr.clone()),
                                         op: WithPos::new(ast::BinaryOperator::Sub, pos),
                                         right: Box::new(right),
                                     },
-                                    Type::TyInt { name: None },
+                                    expr.node.ty.clone(),
                                 ),
                                 pos,
                             );
@@ -1306,6 +1315,7 @@ impl<'a> Parser<'a> {
             Type::TyArray { name: Some(t), .. }
             | Type::TyInt { name: Some(t), .. }
             | Type::TyChar { name: Some(t), .. }
+            | Type::TyLong { name: Some(t), .. }
             | Type::TyPtr { name: Some(t), .. }
             | Type::TyStruct { name: Some(t), .. }
             | Type::TyUnion { name: Some(t), .. }
@@ -1333,6 +1343,14 @@ impl<'a> Parser<'a> {
                 ..
             }
             | Type::TyChar {
+                name:
+                    Some(Token {
+                        token: Tok::Ident(param_name),
+                        ..
+                    }),
+                ..
+            }
+            | Type::TyLong {
                 name:
                     Some(Token {
                         token: Tok::Ident(param_name),
