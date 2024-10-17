@@ -14,8 +14,8 @@ use crate::{
             self, Amp, BangEqual, Comma, Dot, Equal, EqualEqual, Greater, GreaterEqual, Ident,
             KeywordChar, KeywordElse, KeywordFor, KeywordIf, KeywordInt, KeywordReturn,
             KeywordSizeof, KeywordStruct, KeywordWhile, LeftBrace, LeftBracket, LeftParen, Lesser,
-            LesserEqual, Minus, Number, Plus, RightBrace, RightBracket, RightParen, Semicolon,
-            Slash, Star, Str,
+            LesserEqual, Minus, MinusGreater, Number, Plus, RightBrace, RightBracket, RightParen,
+            Semicolon, Slash, Star, Str,
         },
         Token,
     },
@@ -887,7 +887,46 @@ impl<'a> Parser<'a> {
         Ok(lhs)
     }
 
-    /// postfix = primary ("[" expr "]" | "." ident)*
+    fn struct_ref(&mut self, node: ExprWithPos) -> Result<ExprWithPos> {
+        match node.node.ty.clone() {
+            Type::TyStruct { members, .. } => {
+                let mem_ident;
+                let pos = eat!(self, Ident, mem_ident);
+                let mut mem_found = None;
+                for mem in members {
+                    match mem.borrow().name.token.clone() {
+                        Tok::Ident(tok_name) => {
+                            if mem_ident == tok_name {
+                                mem_found = Some(mem.clone());
+                                break;
+                            }
+                        }
+                        _ => (),
+                    }
+                }
+
+                Ok(WithPos::new(
+                    WithType::new(
+                        Expr::MemberExpr {
+                            strct: Box::new(node),
+                            member: match mem_found.clone() {
+                                Some(m) => m.clone(),
+                                None => panic!(),
+                            },
+                        },
+                        match mem_found.clone() {
+                            Some(m) => m.borrow().ty.clone(),
+                            None => panic!(),
+                        },
+                    ),
+                    pos,
+                ))
+            }
+            _ => panic!("must be struct type."),
+        }
+    }
+
+    /// postfix = primary ("[" expr "]" | "." ident | "->" ident)*
     fn postfix(&mut self) -> Result<ExprWithPos> {
         let mut node = self.primary()?;
 
@@ -911,42 +950,22 @@ impl<'a> Parser<'a> {
                 Tok::Dot => {
                     eat!(self, Dot);
                     add_type(&mut node);
-                    match node.node.ty.clone() {
-                        Type::TyStruct { ref members, .. } => {
-                            let mem_ident;
-                            let pos = eat!(self, Ident, mem_ident);
-                            let mut mem_found = None;
-                            for mem in members {
-                                match mem.borrow().name.token.clone() {
-                                    Tok::Ident(tok_name) => {
-                                        if mem_ident == tok_name {
-                                            mem_found = Some(mem);
-                                            break;
-                                        }
-                                    }
-                                    _ => (),
-                                }
-                            }
-
-                            node = WithPos::new(
-                                WithType::new(
-                                    Expr::MemberExpr {
-                                        strct: Box::new(node),
-                                        member: match mem_found {
-                                            Some(m) => m.clone(),
-                                            None => panic!(),
-                                        },
-                                    },
-                                    match mem_found {
-                                        Some(m) => m.borrow().ty.clone(),
-                                        None => panic!(),
-                                    },
-                                ),
-                                pos,
-                            )
-                        }
-                        _ => panic!("not a struct."),
-                    }
+                    node = self.struct_ref(node)?;
+                }
+                Tok::MinusGreater => {
+                    // x->y is short for (*x).y
+                    let pos = eat!(self, MinusGreater);
+                    node = WithPos::new(
+                        WithType::new(
+                            Expr::Deref {
+                                expr: Box::new(node),
+                            },
+                            Type::TyPlaceholder,
+                        ),
+                        pos,
+                    );
+                    add_type(&mut node);
+                    node = self.struct_ref(node)?;
                 }
                 _ => break,
             }
@@ -1158,7 +1177,7 @@ impl<'a> Parser<'a> {
 
         self.struct_tag_env.end_scope();
         self.var_env.end_scope();
-        
+
         self.functions.push(ast::Function {
             name: ident,
             params,

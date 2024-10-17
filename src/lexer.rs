@@ -100,6 +100,10 @@ impl<R: Read> Lexer<R> {
         Ok(buffer)
     }
 
+    fn minus_or_minus_greater(&mut self) -> Result<Token> {
+        self.two_char_token(vec![('>', Tok::MinusGreater)], Tok::Minus)
+    }
+
     fn greater_or_greater_equal(&mut self) -> Result<Token> {
         self.two_char_token(vec![('=', Tok::GreaterEqual)], Tok::Greater)
     }
@@ -345,7 +349,7 @@ impl<R: Read> Lexer<R> {
                 b'a'..=b'z' | b'A'..=b'Z' | b'_' => self.identifier(),
                 b'0'..=b'9' => self.number(),
                 b'+' => self.simple_token(Tok::Plus),
-                b'-' => self.simple_token(Tok::Minus),
+                b'-' => self.minus_or_minus_greater(),
                 b'*' => self.simple_token(Tok::Star),
                 b'/' => self.slash_or_comment(),
                 b'(' => self.simple_token(Tok::LeftParen),
