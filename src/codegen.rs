@@ -6,6 +6,7 @@ use crate::{
 };
 
 static ARGREG_64: [&str; 6] = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"];
+static ARGREG_32: [&str; 6] = ["%edi", "%esi", "%edx", "%ecx", "%r8d", "%r9d"];
 static ARGREG_8: [&str; 6] = ["%dil", "%sil", "%dl", "%cl", "%r8b", "%r9b"];
 
 pub struct CodeGenerator {
@@ -53,13 +54,11 @@ impl CodeGenerator {
             Type::TyArray { .. } => (),
             Type::TyStruct { .. } => (),
             Type::TyUnion { .. } => (),
-            _ => {
-                if get_sizeof(ty.clone()) == 1 {
-                    self.output.push(format!("  movsbq (%rax), %rax"));
-                } else {
-                    self.output.push(format!("  mov (%rax), %rax"));
-                }
-            }
+            _ => match get_sizeof(ty.clone()) {
+                1 => self.output.push(format!("  movsbq (%rax), %rax")),
+                4 => self.output.push(format!("  movsxd (%rax), %rax")),
+                _ => self.output.push(format!("  mov (%rax), %rax")),
+            },
         }
     }
 
@@ -73,13 +72,26 @@ impl CodeGenerator {
                     self.output.push(format!("  mov %r8b, {}(%rdi)", i));
                 }
             }
-            _ => {
-                if get_sizeof(ty.clone()) == 1 {
-                    self.output.push(format!("  mov %al, (%rdi)"));
-                } else {
-                    self.output.push(format!("  mov %rax, (%rdi)"));
-                }
-            }
+            _ => match get_sizeof(ty.clone()) {
+                1 => self.output.push(format!("  mov %al, (%rdi)")),
+                4 => self.output.push(format!("  mov %eax, (%rdi)")),
+                _ => self.output.push(format!("  mov %rax, (%rdi)")),
+            },
+        }
+    }
+
+    fn store_gp(&mut self, r: i32, offset: i32, sz: i32) {
+        match sz {
+            1 => self
+                .output
+                .push(format!("  mov {}, {}(%rbp)", ARGREG_8[r as usize], offset)),
+            4 => self
+                .output
+                .push(format!("  mov {}, {}(%rbp)", ARGREG_32[r as usize], offset)),
+            8 => self
+                .output
+                .push(format!("  mov {}, {}(%rbp)", ARGREG_64[r as usize], offset)),
+            _ => unreachable!(),
         }
     }
 
@@ -330,13 +342,7 @@ impl CodeGenerator {
             let mut i = 0;
             for p in &mut f.params.iter().rev() {
                 let offset = p.borrow().offset;
-                if get_sizeof(p.borrow().ty.clone()) == 1 {
-                    self.output
-                        .push(format!("  mov {}, {}(%rbp)", ARGREG_8[i], offset));
-                } else {
-                    self.output
-                        .push(format!("  mov {}, {}(%rbp)", ARGREG_64[i], offset));
-                }
+                self.store_gp(i, offset, get_sizeof(p.borrow().ty.clone()));
                 i += 1;
             }
 

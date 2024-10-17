@@ -212,7 +212,7 @@ pub fn sema_stmt(node: &mut ast::StmtWithPos) {
 
 pub fn get_sizeof(ty: Type) -> i32 {
     match ty {
-        Type::TyInt { .. } => 8,
+        Type::TyInt { .. } => 4,
         Type::TyChar { .. } => 1,
         Type::TyArray {
             name: _,
@@ -236,7 +236,7 @@ pub fn get_align(ty: Type) -> i32 {
     match ty {
         Type::TyStruct { align, .. } => align,
         Type::TyUnion { align, .. } => align,
-        Type::TyInt { .. } => 8,
+        Type::TyInt { .. } => 4,
         Type::TyChar { .. } => 1,
         Type::TyArray { base, .. } => get_align(*base),
         Type::TyPtr { .. } => 8,
