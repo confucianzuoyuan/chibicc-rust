@@ -629,7 +629,7 @@ impl<'a> Parser<'a> {
             Tok::LeftParen => {
                 eat!(self, LeftParen);
                 match self.peek()?.token {
-                    Tok::Ident(..) => match self.peek_next()?.token {
+                    Tok::Ident(..) => match self.peek_next_one()?.token {
                         Tok::RightParen => {
                             let tok = self.token()?;
                             eat!(self, RightParen);
@@ -1324,8 +1324,42 @@ impl<'a> Parser<'a> {
         ))
     }
 
+    /// abstract-declarator = "*"* ("(" abstract-declarator ")")? type-suffix
+    fn abstract_declarator(&mut self, mut ty: Type) -> Result<Type> {
+        loop {
+            match self.peek()?.token {
+                Tok::Star => {
+                    eat!(self, Star);
+                    ty = sema::pointer_to(ty);
+                }
+                _ => break,
+            }
+        }
+
+        match self.peek()?.token {
+            Tok::LeftParen => {
+                eat!(self, LeftParen);
+                self.abstract_declarator(Type::TyPlaceholder)?;
+                eat!(self, RightParen);
+                ty = self.type_suffix(ty)?;
+                Ok(Type::TyPtr {
+                    base: Box::new(ty),
+                    name: None,
+                })
+            }
+            _ => self.type_suffix(ty),
+        }
+    }
+
+    /// type-name = declspec abstract-declarator
+    fn typename(&mut self) -> Result<Type> {
+        let ty = self.declspec(&mut None)?;
+        self.abstract_declarator(ty)
+    }
+
     /// primary = "(" "{" stmt+ "}" ")"
     ///         | "(" expr ")"
+    ///         | "sizeof" "(" type-name ")"
     ///         | "sizeof" unary
     ///         | ident func-args?
     ///         | str
@@ -1363,17 +1397,54 @@ impl<'a> Parser<'a> {
             }
             Tok::KeywordSizeof => {
                 let pos = eat!(self, KeywordSizeof);
-                let mut node = self.unary()?;
-                add_type(&mut node);
-                Ok(WithPos::new(
-                    WithType::new(
-                        Expr::Number {
-                            value: get_sizeof(node.node.ty.clone()) as i64,
-                        },
-                        Type::TyInt { name: None },
-                    ),
-                    pos,
-                ))
+                match self.peek()?.token {
+                    Tok::LeftParen => {
+                        let tok = self.peek_next_one()?.token.clone();
+                        // sizeof(int **)
+                        if self.is_typename(tok)? {
+                            eat!(self, LeftParen);
+                            let ty = self.typename()?;
+                            eat!(self, RightParen);
+                            Ok(WithPos::new(
+                                WithType::new(
+                                    Expr::Number {
+                                        value: get_sizeof(ty) as i64,
+                                    },
+                                    Type::TyInt { name: None },
+                                ),
+                                pos,
+                            ))
+                        }
+                        // sizeof(x)
+                        else {
+                            let mut node = self.unary()?;
+                            add_type(&mut node);
+                            Ok(WithPos::new(
+                                WithType::new(
+                                    Expr::Number {
+                                        value: get_sizeof(node.node.ty.clone()) as i64,
+                                    },
+                                    Type::TyInt { name: None },
+                                ),
+                                pos,
+                            ))
+                        }
+                    }
+                    // sizeof x
+                    _ => {
+                        let mut node = self.unary()?;
+                        add_type(&mut node);
+                        Ok(WithPos::new(
+                            WithType::new(
+                                Expr::Number {
+                                    value: get_sizeof(node.node.ty.clone()) as i64,
+                                },
+                                Type::TyInt { name: None },
+                            ),
+                            pos,
+                        ))
+                    }
+                }
             }
             Tok::Ident(_) => {
                 let name;
@@ -1428,7 +1499,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn peek_next(&mut self) -> std::result::Result<&Token, &Error> {
+    fn peek_next_one(&mut self) -> std::result::Result<&Token, &Error> {
         if let Some(tok) = self.tokens.get(self.current_pos + 1) {
             Ok(tok)
         } else {
