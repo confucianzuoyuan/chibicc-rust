@@ -429,39 +429,98 @@ impl<'a> Parser<'a> {
         Ok(union_ty)
     }
 
-    /// declspec = "int" | "char" | struct-decl
+    /// declspec = ("void" | "char" | "short" | "int" | "long"
+    ///             | struct-decl | union-decl)+
+    ///
+    /// The order of typenames in a type-specifier doesn't matter. For
+    /// example, `int long static` means the same as `static long int`.
+    /// That can also be written as `static long` because you can omit
+    /// `int` if `long` or `short` are specified. However, something like
+    /// `char int` is not a valid type specifier. We have to accept only a
+    /// limited combinations of the typenames.
+    ///
+    /// In this function, we count the number of occurrences of each typename
+    /// while keeping the "current" type object that the typenames up
+    /// until that point represent. When we reach a non-typename token,
+    /// we returns the current type object.
     fn declspec(&mut self) -> Result<Type> {
-        match self.peek()?.token {
-            Tok::KeywordVoid => {
-                eat!(self, KeywordVoid);
-                Ok(Type::TyVoid { name: None })
-            }
-            Tok::KeywordChar => {
-                eat!(self, KeywordChar);
-                Ok(Type::TyChar { name: None })
-            }
-            Tok::KeywordInt => {
-                eat!(self, KeywordInt);
-                Ok(Type::TyInt { name: None })
-            }
-            Tok::KeywordShort => {
-                eat!(self, KeywordShort);
-                Ok(Type::TyShort { name: None })
-            }
-            Tok::KeywordLong => {
-                eat!(self, KeywordLong);
-                Ok(Type::TyLong { name: None })
-            }
-            Tok::KeywordStruct => {
-                eat!(self, KeywordStruct);
-                self.struct_decl()
-            }
-            Tok::KeywordUnion => {
-                eat!(self, KeywordUnion);
-                self.union_decl()
-            }
-            _ => panic!("unknown type name."),
+        // We use a single integer as counters for all typenames.
+        // For example, bits 0 and 1 represents how many times we saw the
+        // keyword "void" so far. With this, we can use a switch statement
+        // as you can see below.
+        enum Counter {
+            VOID = 1 << 0,
+            CHAR = 1 << 2,
+            SHORT = 1 << 4,
+            INT = 1 << 6,
+            LONG = 1 << 8,
+            OTHER = 1 << 10,
         }
+
+        let mut counter = 0;
+        let mut ty = Type::TyPlaceholder;
+
+        loop {
+            let tok = self.peek()?.token.clone();
+            if !self.is_typename(tok)? {
+                break;
+            }
+            match self.peek()?.token {
+                Tok::KeywordStruct => {
+                    eat!(self, KeywordStruct);
+                    ty = self.struct_decl()?;
+                    counter += Counter::OTHER as i32;
+                    continue;
+                }
+                Tok::KeywordUnion => {
+                    eat!(self, KeywordUnion);
+                    ty = self.union_decl()?;
+                    counter += Counter::OTHER as i32;
+                    continue;
+                }
+                Tok::KeywordVoid => {
+                    eat!(self, KeywordVoid);
+                    counter += Counter::VOID as i32;
+                }
+                Tok::KeywordChar => {
+                    eat!(self, KeywordChar);
+                    counter += Counter::CHAR as i32;
+                }
+                Tok::KeywordInt => {
+                    eat!(self, KeywordInt);
+                    counter += Counter::INT as i32;
+                }
+                Tok::KeywordShort => {
+                    eat!(self, KeywordShort);
+                    counter += Counter::SHORT as i32;
+                }
+                Tok::KeywordLong => {
+                    eat!(self, KeywordLong);
+                    counter += Counter::LONG as i32;
+                }
+                _ => unreachable!(),
+            }
+
+            if counter == Counter::VOID as i32 {
+                ty = Type::TyVoid { name: None };
+            } else if counter == Counter::CHAR as i32 {
+                ty = Type::TyChar { name: None };
+            } else if counter == Counter::SHORT as i32 {
+                ty = Type::TyShort { name: None };
+            } else if counter == Counter::SHORT as i32 + Counter::INT as i32 {
+                ty = Type::TyShort { name: None };
+            } else if counter == Counter::INT as i32 {
+                ty = Type::TyInt { name: None };
+            } else if counter == Counter::LONG as i32 + Counter::INT as i32 {
+                ty = Type::TyLong { name: None };
+            } else if counter == Counter::LONG as i32 {
+                ty = Type::TyLong { name: None };
+            } else {
+                panic!("invalid type.");
+            }
+        }
+
+        Ok(ty)
     }
 
     /// func-params = (param ("," param)*)? ")"
@@ -605,6 +664,19 @@ impl<'a> Parser<'a> {
         Ok(ty)
     }
 
+    fn is_typename(&self, tok: Tok) -> Result<bool> {
+        match tok {
+            Tok::KeywordLong
+            | Tok::KeywordInt
+            | Tok::KeywordChar
+            | Tok::KeywordShort
+            | Tok::KeywordStruct
+            | Tok::KeywordUnion
+            | Tok::KeywordVoid => Ok(true),
+            _ => Ok(false),
+        }
+    }
+
     /// compound-stmt = (declaration | stmt)* "}"
     fn compound_stmt(&mut self) -> Result<StmtWithPos> {
         let mut stmts = vec![];
@@ -617,21 +689,17 @@ impl<'a> Parser<'a> {
                     eat!(self, RightBrace);
                     break;
                 }
-                Tok::KeywordLong
-                | Tok::KeywordInt
-                | Tok::KeywordChar
-                | Tok::KeywordShort
-                | Tok::KeywordStruct
-                | Tok::KeywordUnion
-                | Tok::KeywordVoid => {
-                    let mut declarations = self.declaration()?;
-                    sema_stmt(&mut declarations);
-                    stmts.push(declarations);
-                }
                 _ => {
-                    let mut stmt = self.stmt()?;
-                    sema_stmt(&mut stmt);
-                    stmts.push(stmt);
+                    let tok = self.peek()?.token.clone();
+                    if self.is_typename(tok)? {
+                        let mut declarations = self.declaration()?;
+                        sema_stmt(&mut declarations);
+                        stmts.push(declarations);
+                    } else {
+                        let mut stmt = self.stmt()?;
+                        sema_stmt(&mut stmt);
+                        stmts.push(stmt);
+                    }
                 }
             }
         }
