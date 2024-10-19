@@ -511,7 +511,11 @@ impl<'a> Parser<'a> {
                 ty = Type::TyShort { name: None };
             } else if counter == Counter::INT as i32 {
                 ty = Type::TyInt { name: None };
+            } else if counter == Counter::LONG as i32 + Counter::LONG as i32 + Counter::INT as i32 {
+                ty = Type::TyLong { name: None };
             } else if counter == Counter::LONG as i32 + Counter::INT as i32 {
+                ty = Type::TyLong { name: None };
+            } else if counter == Counter::LONG as i32 + Counter::LONG as i32 {
                 ty = Type::TyLong { name: None };
             } else if counter == Counter::LONG as i32 {
                 ty = Type::TyLong { name: None };
