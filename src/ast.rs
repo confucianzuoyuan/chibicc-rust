@@ -128,6 +128,7 @@ pub struct Function {
     pub body: StmtWithPos,
     pub locals: Vec<Rc<RefCell<Obj>>>,
     pub stack_size: i32,
+    pub is_definition: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -1319,6 +1319,14 @@ impl<'a> Parser<'a> {
             _ => panic!("{:?} must be function name.", self.get_ident(ty)?),
         }
 
+        let is_definition = match self.peek()?.token {
+            Tok::Semicolon => {
+                eat!(self, Semicolon);
+                false
+            }
+            _ => true,
+        };
+
         self.locals = Vec::new();
 
         self.var_env.begin_scope();
@@ -1347,8 +1355,13 @@ impl<'a> Parser<'a> {
         // 先将函数的参数拷贝一份，因为后面在解析函数体时会加入新的局部变量
         let params = self.locals.clone();
 
-        eat!(self, LeftBrace);
-        let body = self.compound_stmt()?;
+        let body;
+        if is_definition {
+            eat!(self, LeftBrace);
+            body = self.compound_stmt()?;
+        } else {
+            body = WithPos::new(Stmt::NullStmt, self.peek()?.pos);
+        }
 
         self.struct_tag_env.end_scope();
         self.var_env.end_scope();
@@ -1359,6 +1372,7 @@ impl<'a> Parser<'a> {
             body,
             locals: self.locals.clone(),
             stack_size: 0,
+            is_definition: is_definition,
         });
         Ok(self.current_pos)
     }
