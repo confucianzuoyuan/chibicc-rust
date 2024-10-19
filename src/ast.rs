@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, fmt::Display, rc::Rc};
 
 use crate::{
     position::WithPos,
@@ -53,6 +53,51 @@ pub enum Expr {
 pub type ExprWithPos = WithPos<ExprWithType>;
 pub type ExprWithType = WithType<Expr>;
 
+impl Display for ExprWithPos {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let string = (|| {
+            let string = match self {
+                WithPos {
+                    node: WithType { node, .. },
+                    ..
+                } => match node {
+                    Expr::Number { value } => value.to_string(),
+                    Expr::Binary { left, op, right } => {
+                        return format!("{} {} {}", left, op, right)
+                    }
+                    Expr::Addr { expr } => return format!("get address of {}", expr),
+                    Expr::Assign { l_value, r_value } => {
+                        return format!("#{} assign to {}#", r_value, l_value)
+                    }
+                    Expr::CommaExpr { left, right } => return format!("{}, {}", left, right),
+                    Expr::Deref { expr } => return format!("deref {}", expr),
+                    Expr::FunctionCall { name, args } => {
+                        let mut r = format!("funname {} args: ", name);
+                        for arg in args {
+                            r.push_str(format!(" {}", arg).as_str());
+                        }
+                        return r;
+                    }
+                    Expr::MemberExpr { strct, member } => return format!("{}.{:?}", strct, member),
+                    Expr::StmtExpr { body } => {
+                        let mut r = format!("stmt-expr");
+                        for stmt in body {
+                            r.push_str(format!(" {}", stmt).as_str());
+                        }
+                        return r;
+                    }
+                    Expr::Variable { obj } => {
+                        return format!("var expr {}", obj.borrow());
+                    }
+                    Expr::Unary { op, expr } => return format!("{}{}", op, expr),
+                },
+            };
+            string.to_string()
+        })();
+        write!(f, "{}", string)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum BinaryOperator {
     Add,
@@ -69,12 +114,49 @@ pub enum BinaryOperator {
 
 pub type BinaryOperatorWithPos = WithPos<BinaryOperator>;
 
+impl Display for BinaryOperatorWithPos {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let string = (|| {
+            let string = match *self {
+                WithPos { node, .. } => match node {
+                    BinaryOperator::Add => "+",
+                    BinaryOperator::Div => "/",
+                    BinaryOperator::Eq => "==",
+                    BinaryOperator::Ge => ">=",
+                    BinaryOperator::Gt => ">",
+                    BinaryOperator::Le => "<=",
+                    BinaryOperator::Lt => "<",
+                    BinaryOperator::Mul => "*",
+                    BinaryOperator::Ne => "!=",
+                    BinaryOperator::Sub => "-",
+                },
+            };
+            string.to_string()
+        })();
+        write!(f, "{}", string)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum UnaryOperator {
     Neg,
 }
 
 pub type UnaryOperatorWithPos = WithPos<UnaryOperator>;
+
+impl Display for UnaryOperatorWithPos {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let string = (|| {
+            let string = match *self {
+                WithPos { node, .. } => match node {
+                    UnaryOperator::Neg => "-",
+                },
+            };
+            string.to_string()
+        })();
+        write!(f, "{}", string)
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Stmt {
@@ -107,6 +189,32 @@ pub enum Stmt {
 
 pub type StmtWithPos = WithPos<Stmt>;
 
+impl Display for StmtWithPos {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let string = (|| {
+            let string = match self {
+                WithPos { node, .. } => match node.clone() {
+                    Stmt::Block { body } => {
+                        let mut r = format!("block: ");
+                        for stmt in body {
+                            r.push_str(format!("{} ", stmt).as_str());
+                        }
+                        return r;
+                    }
+                    Stmt::ExprStmt { expr } => return format!("expr-stmt: {}", expr),
+                    Stmt::ForStmt { .. } => return format!("{:?}", node),
+                    Stmt::NullStmt => "null stmt.",
+                    Stmt::IfStmt { .. } => return format!("{:?}", node),
+                    Stmt::Return { expr } => return format!("return {}", expr),
+                    Stmt::WhileStmt { .. } => return format!("{:?}", node),
+                },
+            };
+            string.to_string()
+        })();
+        writeln!(f, "{}", string)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum InitData {
     StringInitData(String),
@@ -119,6 +227,18 @@ pub struct Obj {
     pub ty: Type,
     pub is_local: bool,
     pub init_data: Option<InitData>,
+}
+
+impl Display for Obj {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum VarAttr {
+    Typedef { type_def: Option<Type> },
+    Placeholder,
 }
 
 #[derive(Clone, Debug, PartialEq)]

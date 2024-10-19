@@ -3,7 +3,7 @@ use std::{cell::RefCell, rc::Rc, result};
 use crate::{
     ast::{
         self, BinaryOperator, Expr, ExprWithPos, Function, InitData, Obj, Program, Stmt,
-        StmtWithPos, UnaryOperator,
+        StmtWithPos, UnaryOperator, VarAttr,
     },
     error::Error::{self, UnexpectedToken},
     position::{Pos, WithPos},
@@ -13,10 +13,10 @@ use crate::{
         Tok::{
             self, Amp, BangEqual, Comma, Dot, Equal, EqualEqual, Greater, GreaterEqual, Ident,
             KeywordChar, KeywordElse, KeywordFor, KeywordIf, KeywordInt, KeywordLong,
-            KeywordReturn, KeywordShort, KeywordSizeof, KeywordStruct, KeywordUnion, KeywordVoid,
-            KeywordWhile, LeftBrace, LeftBracket, LeftParen, Lesser, LesserEqual, Minus,
-            MinusGreater, Number, Plus, RightBrace, RightBracket, RightParen, Semicolon, Slash,
-            Star, Str,
+            KeywordReturn, KeywordShort, KeywordSizeof, KeywordStruct, KeywordTypedef,
+            KeywordUnion, KeywordVoid, KeywordWhile, LeftBrace, LeftBracket, LeftParen, Lesser,
+            LesserEqual, Minus, MinusGreater, Number, Plus, RightBrace, RightBracket, RightParen,
+            Semicolon, Slash, Star, Str,
         },
         Token,
     },
@@ -76,12 +76,14 @@ pub struct Parser<'a> {
 
     var_env: Symbols<Rc<RefCell<Obj>>>,
     struct_tag_env: Symbols<Type>,
+    var_attr_env: Symbols<VarAttr>,
 }
 
 impl<'a> Parser<'a> {
     pub fn new(tokens: Vec<Token>, symbols: &'a mut Symbols<()>, strings: Rc<Strings>) -> Self {
         let var_env = Symbols::new(Rc::clone(&strings));
         let struct_tag_env = Symbols::new(Rc::clone(&strings));
+        let var_attr_env = Symbols::new(Rc::clone(&strings));
         Parser {
             tokens,
             current_pos: 0,
@@ -93,6 +95,7 @@ impl<'a> Parser<'a> {
 
             var_env,
             struct_tag_env,
+            var_attr_env,
         }
     }
 
@@ -194,9 +197,7 @@ impl<'a> Parser<'a> {
     }
 
     /// declaration = declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
-    fn declaration(&mut self) -> Result<StmtWithPos> {
-        let basety = self.declspec()?;
-
+    fn declaration(&mut self, basety: Type) -> Result<StmtWithPos> {
         let mut decls = vec![];
 
         loop {
@@ -287,7 +288,7 @@ impl<'a> Parser<'a> {
                     break;
                 }
                 _ => {
-                    let basety = self.declspec()?;
+                    let basety = self.declspec(&mut None)?;
                     loop {
                         match self.peek()?.token {
                             Tok::Semicolon => {
@@ -376,7 +377,7 @@ impl<'a> Parser<'a> {
                     break;
                 }
                 _ => {
-                    let basety = self.declspec()?;
+                    let basety = self.declspec(&mut None)?;
                     loop {
                         match self.peek()?.token {
                             Tok::Semicolon => {
@@ -443,7 +444,7 @@ impl<'a> Parser<'a> {
     /// while keeping the "current" type object that the typenames up
     /// until that point represent. When we reach a non-typename token,
     /// we returns the current type object.
-    fn declspec(&mut self) -> Result<Type> {
+    fn declspec(&mut self, attr: &mut Option<VarAttr>) -> Result<Type> {
         // We use a single integer as counters for all typenames.
         // For example, bits 0 and 1 represents how many times we saw the
         // keyword "void" so far. With this, we can use a switch statement
@@ -458,25 +459,56 @@ impl<'a> Parser<'a> {
         }
 
         let mut counter = 0;
-        let mut ty = Type::TyPlaceholder;
+        // typedef t; t为int
+        let mut ty = Type::TyInt { name: None };
 
         loop {
             let tok = self.peek()?.token.clone();
             if !self.is_typename(tok)? {
                 break;
             }
-            match self.peek()?.token {
+            match self.peek()?.token.clone() {
+                Tok::KeywordTypedef => {
+                    eat!(self, KeywordTypedef);
+                    if attr.is_some() {
+                        *attr = Some(VarAttr::Typedef { type_def: None });
+                        continue;
+                    } else {
+                        panic!("storage class specifier is not allowed in this context.");
+                    }
+                }
                 Tok::KeywordStruct => {
+                    if counter > 0 {
+                        break;
+                    }
                     eat!(self, KeywordStruct);
                     ty = self.struct_decl()?;
                     counter += Counter::OTHER as i32;
                     continue;
                 }
                 Tok::KeywordUnion => {
+                    if counter > 0 {
+                        break;
+                    }
                     eat!(self, KeywordUnion);
                     ty = self.union_decl()?;
                     counter += Counter::OTHER as i32;
                     continue;
+                }
+                Tok::Ident(name) => {
+                    if counter > 0 {
+                        break;
+                    }
+                    match self.var_attr_env.look(self.symbols.symbol(&name)) {
+                        Some(VarAttr::Typedef {
+                            type_def: Some(_ty),
+                        }) => {
+                            ty = _ty.clone();
+                            counter += Counter::OTHER as i32;
+                            continue;
+                        }
+                        _ => panic!(),
+                    }
                 }
                 Tok::KeywordVoid => {
                     eat!(self, KeywordVoid);
@@ -541,7 +573,7 @@ impl<'a> Parser<'a> {
                     break;
                 }
                 _ => {
-                    let basety = self.declspec()?;
+                    let basety = self.declspec(&mut None)?;
                     let ty = self.declarator(basety)?;
                     params.push(ty);
                 }
@@ -668,7 +700,7 @@ impl<'a> Parser<'a> {
         Ok(ty)
     }
 
-    fn is_typename(&self, tok: Tok) -> Result<bool> {
+    fn is_typename(&mut self, tok: Tok) -> Result<bool> {
         match tok {
             Tok::KeywordLong
             | Tok::KeywordInt
@@ -676,7 +708,16 @@ impl<'a> Parser<'a> {
             | Tok::KeywordShort
             | Tok::KeywordStruct
             | Tok::KeywordUnion
+            | Tok::KeywordTypedef
             | Tok::KeywordVoid => Ok(true),
+            Tok::Ident(name) => {
+                let symbol = self.symbols.symbol(&name);
+                let t = self.var_attr_env.look(symbol);
+                match t {
+                    Some(VarAttr::Typedef { .. }) => Ok(true),
+                    _ => Ok(false),
+                }
+            }
             _ => Ok(false),
         }
     }
@@ -687,6 +728,7 @@ impl<'a> Parser<'a> {
 
         self.var_env.begin_scope();
         self.struct_tag_env.begin_scope();
+        self.var_attr_env.begin_scope();
         loop {
             match self.peek()?.token {
                 Tok::RightBrace => {
@@ -694,11 +736,33 @@ impl<'a> Parser<'a> {
                     break;
                 }
                 _ => {
+                    // { typedef int t; t t=1; t; }
                     let tok = self.peek()?.token.clone();
+                    match tok.clone() {
+                        Tok::Ident(name) => {
+                            let sym = self.symbols.symbol(&name);
+                            if self.var_env.look(sym).is_some() {
+                                let mut stmt = self.stmt()?;
+                                sema_stmt(&mut stmt);
+                                stmts.push(stmt);
+                                continue;
+                            }
+                        }
+                        _ => (),
+                    }
                     if self.is_typename(tok)? {
-                        let mut declarations = self.declaration()?;
-                        sema_stmt(&mut declarations);
-                        stmts.push(declarations);
+                        let mut attr = Some(VarAttr::Placeholder);
+                        let basety = self.declspec(&mut attr)?;
+                        match attr {
+                            Some(VarAttr::Typedef { .. }) => {
+                                self.parse_typedef(basety)?;
+                                continue;
+                            }
+                            _ => (),
+                        }
+                        let mut declaration = self.declaration(basety)?;
+                        sema_stmt(&mut declaration);
+                        stmts.push(declaration);
                     } else {
                         let mut stmt = self.stmt()?;
                         sema_stmt(&mut stmt);
@@ -707,6 +771,7 @@ impl<'a> Parser<'a> {
                 }
             }
         }
+        self.var_attr_env.end_scope();
         self.struct_tag_env.end_scope();
         self.var_env.end_scope();
         Ok(WithPos::new(Stmt::Block { body: stmts }, self.peek()?.pos))
@@ -1415,6 +1480,7 @@ impl<'a> Parser<'a> {
 
         self.var_env.begin_scope();
         self.struct_tag_env.begin_scope();
+        self.var_attr_env.begin_scope();
 
         let ident;
         match ty.clone() {
@@ -1447,6 +1513,7 @@ impl<'a> Parser<'a> {
             body = WithPos::new(Stmt::NullStmt, self.peek()?.pos);
         }
 
+        self.var_attr_env.end_scope();
         self.struct_tag_env.end_scope();
         self.var_env.end_scope();
 
@@ -1624,6 +1691,29 @@ impl<'a> Parser<'a> {
         Ok(self.current_pos)
     }
 
+    fn parse_typedef(&mut self, basety: Type) -> Result<()> {
+        loop {
+            match self.peek()?.token {
+                Tok::Semicolon => {
+                    eat!(self, Semicolon);
+                    break;
+                }
+                Tok::Comma => {
+                    eat!(self, Comma);
+                }
+                _ => {
+                    let ty = self.declarator(basety.clone())?;
+                    let ident = self.get_ident(ty.clone())?;
+                    self.var_attr_env.enter(
+                        self.symbols.symbol(&ident),
+                        VarAttr::Typedef { type_def: Some(ty) },
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// program = function-definition*
     pub fn parse(&mut self) -> Result<Program> {
         self.globals = vec![];
@@ -1635,7 +1725,15 @@ impl<'a> Parser<'a> {
                 }) => break,
                 _ => {
                     // int ...., 获取基本类型 int
-                    let basety = self.declspec()?;
+                    let mut attr = Some(VarAttr::Placeholder);
+                    let basety = self.declspec(&mut attr)?;
+                    match attr {
+                        Some(VarAttr::Typedef { .. }) => {
+                            self.parse_typedef(basety)?;
+                            continue;
+                        }
+                        _ => (),
+                    }
                     // 保存当前的位置
                     let pos = self.current_pos.clone();
                     if self.is_function()? {
