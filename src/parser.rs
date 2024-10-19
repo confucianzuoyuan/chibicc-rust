@@ -508,7 +508,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// declarator = "*"* ident type-suffix
+    /// declarator = "*"* ("(" ident ")" | "(" declarator ")" | ident) type-suffix
     fn declarator(&mut self, ty: Type) -> Result<Type> {
         let mut ty = ty.clone();
         loop {
@@ -522,6 +522,56 @@ impl<'a> Parser<'a> {
         }
 
         match self.peek()?.token {
+            Tok::LeftParen => {
+                eat!(self, LeftParen);
+                match self.peek()?.token {
+                    Tok::Ident(..) => match self.peek_next()?.token {
+                        Tok::RightParen => {
+                            let tok = self.token()?;
+                            eat!(self, RightParen);
+                            let mut ty = self.type_suffix(ty)?;
+                            match ty {
+                                Type::TyInt { ref mut name }
+                                | Type::TyChar { ref mut name }
+                                | Type::TyShort { ref mut name }
+                                | Type::TyLong { ref mut name }
+                                | Type::TyPtr { ref mut name, .. }
+                                | Type::TyFunc { ref mut name, .. }
+                                | Type::TyArray { ref mut name, .. }
+                                | Type::TyStruct { ref mut name, .. }
+                                | Type::TyUnion { ref mut name, .. } => *name = Some(tok.clone()),
+                                _ => (),
+                            }
+                            return Ok(ty);
+                        }
+                        _ => {
+                            let mut _ty = self.declarator(ty.clone())?;
+                            eat!(self, RightParen);
+                            let ty = self.type_suffix(ty)?;
+                            match _ty {
+                                Type::TyPtr { ref mut base, .. }
+                                | Type::TyArray { ref mut base, .. } => {
+                                    *base = Box::new(ty);
+                                }
+                                _ => panic!(),
+                            }
+                            return Ok(_ty);
+                        }
+                    },
+                    _ => {
+                        let mut _ty = self.declarator(ty.clone())?;
+                        eat!(self, RightParen);
+                        let ty = self.type_suffix(ty)?;
+                        match _ty {
+                            Type::TyPtr { ref mut base, .. } => {
+                                *base = Box::new(ty);
+                            }
+                            _ => panic!(),
+                        }
+                        return Ok(_ty);
+                    }
+                }
+            }
             Tok::Ident(..) => {
                 let tok = self.token()?;
                 ty = self.type_suffix(ty)?;
@@ -1223,6 +1273,14 @@ impl<'a> Parser<'a> {
 
     fn peek(&mut self) -> std::result::Result<&Token, &Error> {
         if let Some(tok) = self.tokens.get(self.current_pos) {
+            Ok(tok)
+        } else {
+            panic!()
+        }
+    }
+
+    fn peek_next(&mut self) -> std::result::Result<&Token, &Error> {
+        if let Some(tok) = self.tokens.get(self.current_pos + 1) {
             Ok(tok)
         } else {
             panic!()

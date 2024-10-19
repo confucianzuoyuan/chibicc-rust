@@ -107,9 +107,9 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
                 e.node.ty = left.node.ty.clone();
             }
         }
-        ast::Expr::Assign { l_value, .. } => match e.node.ty {
+        ast::Expr::Assign { l_value, .. } => match l_value.node.ty {
             Type::TyPlaceholder => e.node.ty = l_value.node.ty.clone(),
-            Type::TyArray { .. } => panic!("array type is not lvalue."),
+            Type::TyArray { .. } => panic!("array type is not lvalue. {:?}", l_value.node.ty),
             _ => (),
         },
         ast::Expr::Unary {
