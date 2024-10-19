@@ -13,9 +13,10 @@ use crate::{
         Tok::{
             self, Amp, BangEqual, Comma, Dot, Equal, EqualEqual, Greater, GreaterEqual, Ident,
             KeywordChar, KeywordElse, KeywordFor, KeywordIf, KeywordInt, KeywordLong,
-            KeywordReturn, KeywordShort, KeywordSizeof, KeywordStruct, KeywordUnion, KeywordWhile,
-            LeftBrace, LeftBracket, LeftParen, Lesser, LesserEqual, Minus, MinusGreater, Number,
-            Plus, RightBrace, RightBracket, RightParen, Semicolon, Slash, Star, Str,
+            KeywordReturn, KeywordShort, KeywordSizeof, KeywordStruct, KeywordUnion, KeywordVoid,
+            KeywordWhile, LeftBrace, LeftBracket, LeftParen, Lesser, LesserEqual, Minus,
+            MinusGreater, Number, Plus, RightBrace, RightBracket, RightParen, Semicolon, Slash,
+            Star, Str,
         },
         Token,
     },
@@ -209,6 +210,10 @@ impl<'a> Parser<'a> {
                 }
                 _ => {
                     let ty = self.declarator(basety.clone())?;
+                    match ty {
+                        Type::TyVoid { name } => panic!("{:#?} variable declared void.", name),
+                        _ => (),
+                    }
                     let ident = self.get_ident(ty.clone())?;
                     let var = self.new_local_variable(ident, ty.clone())?;
 
@@ -427,6 +432,10 @@ impl<'a> Parser<'a> {
     /// declspec = "int" | "char" | struct-decl
     fn declspec(&mut self) -> Result<Type> {
         match self.peek()?.token {
+            Tok::KeywordVoid => {
+                eat!(self, KeywordVoid);
+                Ok(Type::TyVoid { name: None })
+            }
             Tok::KeywordChar => {
                 eat!(self, KeywordChar);
                 Ok(Type::TyChar { name: None })
@@ -532,6 +541,7 @@ impl<'a> Parser<'a> {
                             let mut ty = self.type_suffix(ty)?;
                             match ty {
                                 Type::TyInt { ref mut name }
+                                | Type::TyVoid { ref mut name }
                                 | Type::TyChar { ref mut name }
                                 | Type::TyShort { ref mut name }
                                 | Type::TyLong { ref mut name }
@@ -577,6 +587,7 @@ impl<'a> Parser<'a> {
                 ty = self.type_suffix(ty)?;
                 match ty {
                     Type::TyInt { ref mut name }
+                    | Type::TyVoid { ref mut name }
                     | Type::TyChar { ref mut name }
                     | Type::TyShort { ref mut name }
                     | Type::TyLong { ref mut name }
@@ -611,7 +622,8 @@ impl<'a> Parser<'a> {
                 | Tok::KeywordChar
                 | Tok::KeywordShort
                 | Tok::KeywordStruct
-                | Tok::KeywordUnion => {
+                | Tok::KeywordUnion
+                | Tok::KeywordVoid => {
                     let mut declarations = self.declaration()?;
                     sema_stmt(&mut declarations);
                     stmts.push(declarations);

@@ -7,6 +7,9 @@ use crate::token::Token;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Type {
+    TyVoid {
+        name: Option<Token>,
+    },
     TyShort {
         name: Option<Token>,
     },
@@ -141,7 +144,10 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
                 name: _,
                 base,
                 array_len: _,
-            } => e.node.ty = *base,
+            } => match *base {
+                Type::TyVoid { name } => panic!("{:?} dereferencing a void pointer.", name),
+                _ => e.node.ty = *base,
+            },
             _ => panic!("invalid pointer dereference: {:#?}", expr),
         },
         ast::Expr::FunctionCall { .. } => {
@@ -218,6 +224,7 @@ pub fn sema_stmt(node: &mut ast::StmtWithPos) {
 
 pub fn get_sizeof(ty: Type) -> i32 {
     match ty {
+        Type::TyVoid { .. } => 1,
         Type::TyLong { .. } => 8,
         Type::TyInt { .. } => 4,
         Type::TyShort { .. } => 2,
@@ -242,6 +249,7 @@ pub fn align_to(n: i32, align: i32) -> i32 {
 
 pub fn get_align(ty: Type) -> i32 {
     match ty {
+        Type::TyVoid { .. } => 1,
         Type::TyStruct { align, .. } => align,
         Type::TyUnion { align, .. } => align,
         Type::TyLong { .. } => 8,
