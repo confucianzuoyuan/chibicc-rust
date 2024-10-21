@@ -1329,6 +1329,21 @@ impl<'a> Parser<'a> {
 
     /// funcall = ident "(" (assign ("," assign)*)? ")"
     fn funcall(&mut self, funname: String) -> Result<ExprWithPos> {
+        let mut func_found = None;
+        for f in &self.functions {
+            if f.name == funname {
+                func_found = Some(f.clone());
+                break;
+            }
+        }
+
+        if func_found.is_none() {
+            return Err(Error::ImplicitDeclarationOfFunction {
+                name: funname,
+                pos: self.peek()?.pos,
+            });
+        }
+
         let pos = eat!(self, LeftParen);
         let mut args = vec![];
 
@@ -1355,7 +1370,10 @@ impl<'a> Parser<'a> {
                     name: funname,
                     args,
                 },
-                Type::TyInt { name: None },
+                match func_found.unwrap().ty {
+                    Type::TyFunc { return_ty, .. } => *return_ty,
+                    _ => unreachable!(),
+                },
             ),
             pos,
         ))
@@ -1605,6 +1623,17 @@ impl<'a> Parser<'a> {
                 ..
             } => {
                 ident = ident_name;
+                let pos = self.peek()?.pos.clone();
+                // 为了处理fib这样的递归调用，需要先把函数声明记录下来。
+                self.functions.push(ast::Function {
+                    name: ident.clone(),
+                    params: vec![],
+                    body: WithPos::new(Stmt::NullStmt, pos),
+                    locals: vec![],
+                    stack_size: 0,
+                    is_definition: false,
+                    ty: ty.clone(),
+                });
                 for p in params {
                     let param_name = self.get_ident(p.clone())?;
                     self.new_local_variable(param_name, p)?;
@@ -1635,6 +1664,7 @@ impl<'a> Parser<'a> {
             locals: self.locals.clone(),
             stack_size: 0,
             is_definition: is_definition,
+            ty,
         });
         Ok(self.current_pos)
     }

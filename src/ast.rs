@@ -256,6 +256,7 @@ pub struct Function {
     pub locals: Vec<Rc<RefCell<Obj>>>,
     pub stack_size: i32,
     pub is_definition: bool,
+    pub ty: Type,
 }
 
 #[derive(Clone, Debug, PartialEq)]

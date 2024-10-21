@@ -409,6 +409,9 @@ impl CodeGenerator {
 
     fn emit_text(&mut self, ast: &mut ast::Program) {
         for f in &mut ast.funcs {
+            if !f.is_definition {
+                continue;
+            }
             self.output.push(format!("  .globl {}", f.name));
             self.output.push(format!("  .text"));
             self.output.push(format!("{}:", f.name));
