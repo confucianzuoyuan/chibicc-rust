@@ -1020,9 +1020,9 @@ impl<'a> Parser<'a> {
         Ok(expr)
     }
 
-    /// mul = unary ("*" unary | "/" unary)*
+    /// mul = cast ("*" cast | "/" cast)*
     fn mul(&mut self) -> Result<ExprWithPos> {
-        let mut expr = self.unary()?;
+        let mut expr = self.cast()?;
 
         loop {
             let op = match self.peek_token() {
@@ -1030,7 +1030,7 @@ impl<'a> Parser<'a> {
                 Ok(&Tok::Slash) => WithPos::new(BinaryOperator::Div, eat!(self, Slash)),
                 _ => break,
             };
-            let mut right = Box::new(self.unary()?);
+            let mut right = Box::new(self.cast()?);
             add_type(&mut expr);
             add_type(&mut right);
             let pos = expr.pos.grow(right.pos);
@@ -1049,17 +1049,17 @@ impl<'a> Parser<'a> {
         Ok(expr)
     }
 
-    /// unary = ("+" | "-" | "*" | "&") unary
+    /// unary = ("+" | "-" | "*" | "&") cast
     ///       | primary
     fn unary(&mut self) -> Result<ExprWithPos> {
         match self.peek()?.token {
             Plus => {
                 eat!(self, Plus);
-                Ok(self.unary()?)
+                Ok(self.cast()?)
             }
             Minus => {
                 let op = WithPos::new(UnaryOperator::Neg, eat!(self, Minus));
-                let expr = self.unary()?;
+                let expr = self.cast()?;
                 let pos = expr.pos.grow(expr.pos);
                 Ok(WithPos::new(
                     WithType::new(
@@ -1074,7 +1074,7 @@ impl<'a> Parser<'a> {
             }
             Amp => {
                 let pos = eat!(self, Amp);
-                let mut expr = self.unary()?;
+                let mut expr = self.cast()?;
                 add_type(&mut expr);
                 Ok(WithPos::new(
                     WithType::new(
@@ -1088,7 +1088,7 @@ impl<'a> Parser<'a> {
             }
             Star => {
                 let pos = eat!(self, Star);
-                let mut expr = self.unary()?;
+                let mut expr = self.cast()?;
                 add_type(&mut expr);
                 Ok(WithPos::new(
                     WithType::new(
@@ -1101,6 +1101,34 @@ impl<'a> Parser<'a> {
                 ))
             }
             _ => self.postfix(),
+        }
+    }
+
+    /// cast = "(" type-name ")" cast | unary
+    fn cast(&mut self) -> Result<ExprWithPos> {
+        match self.peek()?.token {
+            Tok::LeftParen => {
+                let next_one_tok = self.peek_next_one()?.token.clone();
+                if self.is_typename(next_one_tok)? {
+                    let pos = eat!(self, LeftParen);
+                    let ty = self.typename()?;
+                    eat!(self, RightParen);
+                    let node = WithPos::new(
+                        WithType::new(
+                            Expr::CastExpr {
+                                expr: Box::new(self.cast()?),
+                                ty: ty.clone(),
+                            },
+                            ty,
+                        ),
+                        pos,
+                    );
+                    Ok(node)
+                } else {
+                    self.unary()
+                }
+            }
+            _ => self.unary(),
         }
     }
 

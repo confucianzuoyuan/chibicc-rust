@@ -10,6 +10,44 @@ static ARGREG_32: [&str; 6] = ["%edi", "%esi", "%edx", "%ecx", "%r8d", "%r9d"];
 static ARGREG_16: [&str; 6] = ["%di", "%si", "%dx", "%cx", "%r8w", "%r9w"];
 static ARGREG_8: [&str; 6] = ["%dil", "%sil", "%dl", "%cl", "%r8b", "%r9b"];
 
+/// The table for type casts
+static I32_TO_I8: &str = "movsbl %al, %eax";
+static I32_TO_I16: &str = "movswl %ax, %eax";
+static I32_TO_I64: &str = "movsxd %eax, %rax";
+
+static CAST_TABLE: [[Option<&str>; 4]; 4] = [
+    [None, None, None, Some(I32_TO_I64)],            // i8
+    [Some(I32_TO_I8), None, None, Some(I32_TO_I64)], // i16
+    [Some(I32_TO_I8), Some(I32_TO_I16), None, Some(I32_TO_I64)], // i32
+    [Some(I32_TO_I8), Some(I32_TO_I16), None, None], // i64
+];
+
+#[derive(Debug)]
+pub enum TypeId {
+    I8,
+    I16,
+    I32,
+    I64,
+}
+
+pub fn typeid_to_usize(t: TypeId) -> usize {
+    match t {
+        TypeId::I8 => 0,
+        TypeId::I16 => 1,
+        TypeId::I32 => 2,
+        TypeId::I64 => 3,
+    }
+}
+
+pub fn get_type_id(ty: Type) -> TypeId {
+    match ty {
+        Type::TyChar { .. } => TypeId::I8,
+        Type::TyShort { .. } => TypeId::I16,
+        Type::TyInt { .. } => TypeId::I32,
+        _ => TypeId::I64,
+    }
+}
+
 pub struct CodeGenerator {
     depth: u32,
     label_count: u32,
@@ -98,6 +136,21 @@ impl CodeGenerator {
                 .output
                 .push(format!("  mov {}, {}(%rbp)", ARGREG_64[r as usize], offset)),
             _ => unreachable!(),
+        }
+    }
+
+    pub fn cast(&mut self, from: Type, to: Type) {
+        match to {
+            Type::TyVoid { .. } => (),
+            _ => {
+                let t1 = get_type_id(from);
+                let t2 = get_type_id(to);
+                let t1 = typeid_to_usize(t1);
+                let t2 = typeid_to_usize(t2);
+                if let Some(_cast) = CAST_TABLE[t1][t2] {
+                    self.output.push(format!("  {}", _cast));
+                }
+            }
         }
     }
 
@@ -208,6 +261,10 @@ impl CodeGenerator {
             ast::Expr::Variable { .. } | ast::Expr::MemberExpr { .. } => {
                 self.gen_addr(ast);
                 self.load(&ast.node.ty);
+            }
+            ast::Expr::CastExpr { expr, ty } => {
+                self.gen_expr(&expr);
+                self.cast(expr.node.ty.clone(), ty.clone());
             }
             ast::Expr::Assign {
                 l_value, r_value, ..

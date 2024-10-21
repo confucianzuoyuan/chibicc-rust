@@ -48,6 +48,10 @@ pub enum Expr {
         strct: Box<ExprWithPos>,
         member: Rc<RefCell<Member>>,
     },
+    CastExpr {
+        expr: Box<ExprWithPos>,
+        ty: Type,
+    },
 }
 
 pub type ExprWithPos = WithPos<ExprWithType>;
@@ -90,6 +94,9 @@ impl Display for ExprWithPos {
                         return format!("var expr {}", obj.borrow());
                     }
                     Expr::Unary { op, expr } => return format!("{}{}", op, expr),
+                    Expr::CastExpr { expr, ty } => {
+                        return format!("cast expr {} to type {:?}", expr, ty);
+                    }
                 },
             };
             string.to_string()

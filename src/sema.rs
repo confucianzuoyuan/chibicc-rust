@@ -176,6 +176,7 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
                 e.node.ty = member.borrow().ty.clone();
             }
         }
+        ast::Expr::CastExpr { .. } => (),
     }
 }
 
