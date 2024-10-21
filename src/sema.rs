@@ -194,7 +194,7 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
             },
             _ => panic!("invalid pointer dereference: {:#?}", expr),
         },
-        ast::Expr::FunctionCall { .. } => e.node.ty = Type::TyInt { name: None },
+        ast::Expr::FunctionCall { .. } => (),
         ast::Expr::StmtExpr { body } => {
             if body.len() > 0 {
                 let stmt = body.last().unwrap().node.clone();

@@ -77,6 +77,9 @@ pub struct Parser<'a> {
     var_env: Symbols<Rc<RefCell<Obj>>>,
     struct_tag_env: Symbols<Type>,
     var_attr_env: Symbols<VarAttr>,
+
+    // Points to the function object the parser is currently parsing.
+    current_fn: Option<Function>,
 }
 
 impl<'a> Parser<'a> {
@@ -96,6 +99,8 @@ impl<'a> Parser<'a> {
             var_env,
             struct_tag_env,
             var_attr_env,
+
+            current_fn: None,
         }
     }
 
@@ -111,6 +116,23 @@ impl<'a> Parser<'a> {
                 let pos = eat!(self, KeywordReturn);
                 let mut expr = self.expr()?;
                 add_type(&mut expr);
+                let return_ty = match self.current_fn.clone() {
+                    Some(ast::Function {
+                        ty: Type::TyFunc { return_ty, .. },
+                        ..
+                    }) => return_ty,
+                    _ => unreachable!(),
+                };
+                expr = WithPos::new(
+                    WithType::new(
+                        Expr::CastExpr {
+                            expr: Box::new(expr),
+                            ty: *return_ty.clone(),
+                        },
+                        *return_ty.clone(),
+                    ),
+                    pos,
+                );
                 let node = WithPos::new(Stmt::Return { expr }, pos);
                 eat!(self, Semicolon);
                 Ok(node)
@@ -1364,7 +1386,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        Ok(WithPos::new(
+        let node = WithPos::new(
             WithType::new(
                 Expr::FunctionCall {
                     name: funname,
@@ -1376,7 +1398,8 @@ impl<'a> Parser<'a> {
                 },
             ),
             pos,
-        ))
+        );
+        Ok(node)
     }
 
     /// abstract-declarator = "*"* ("(" abstract-declarator ")")? type-suffix
@@ -1634,6 +1657,17 @@ impl<'a> Parser<'a> {
                     is_definition: false,
                     ty: ty.clone(),
                 });
+
+                self.current_fn = Some(ast::Function {
+                    name: ident.clone(),
+                    params: vec![],
+                    body: WithPos::new(Stmt::NullStmt, pos),
+                    locals: vec![],
+                    stack_size: 0,
+                    is_definition: false,
+                    ty: ty.clone(),
+                });
+
                 for p in params {
                     let param_name = self.get_ident(p.clone())?;
                     self.new_local_variable(param_name, p)?;
