@@ -1381,7 +1381,21 @@ impl<'a> Parser<'a> {
                 _ => {
                     let mut arg_exp = self.assign()?;
                     add_type(&mut arg_exp);
-                    args.push(arg_exp);
+                    args.push(match arg_exp.node.ty.clone() {
+                        Type::TyStruct { .. } | Type::TyUnion { .. } => {
+                            panic!("passing struct or union is not supported yet.")
+                        }
+                        _ => WithPos::new(
+                            WithType::new(
+                                Expr::CastExpr {
+                                    expr: Box::new(arg_exp.clone()),
+                                    ty: arg_exp.node.ty.clone(),
+                                },
+                                arg_exp.node.ty,
+                            ),
+                            pos,
+                        ),
+                    });
                 }
             }
         }
