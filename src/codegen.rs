@@ -93,9 +93,14 @@ impl CodeGenerator {
             Type::TyArray { .. } => (),
             Type::TyStruct { .. } => (),
             Type::TyUnion { .. } => (),
+            // When we load a char or a short value to a register, we always
+            // extend them to the size of int, so we can assume the lower half of
+            // a register always contains a valid value. The upper half of a
+            // register for char, short and int may contain garbage. When we load
+            // a long value to a register, it simply occupies the entire register.
             _ => match get_sizeof(ty.clone()) {
-                1 => self.output.push(format!("  movsbq (%rax), %rax")),
-                2 => self.output.push(format!("  movswq (%rax), %rax")),
+                1 => self.output.push(format!("  movsbl (%rax), %eax")),
+                2 => self.output.push(format!("  movswl (%rax), %eax")),
                 4 => self.output.push(format!("  movsxd (%rax), %rax")),
                 _ => self.output.push(format!("  mov (%rax), %rax")),
             },

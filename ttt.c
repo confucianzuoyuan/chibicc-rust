@@ -1,3 +1,3 @@
 int main() {
-  return sizeof(int(*)[4]);
+  return sizeof(-10 + (long)5);
 }

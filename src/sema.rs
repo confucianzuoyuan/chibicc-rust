@@ -2,7 +2,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::ast::BinaryOperator::{Add, Div, Eq, Ge, Gt, Le, Lt, Mul, Ne, Sub};
-use crate::ast::{self, BinaryOperatorWithPos, UnaryOperatorWithPos};
+use crate::ast::{self, BinaryOperatorWithPos, Expr, ExprWithPos, UnaryOperatorWithPos};
+use crate::position::WithPos;
 use crate::token::Token;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -77,25 +78,58 @@ pub fn pointer_to(base: Type) -> Type {
     }
 }
 
+pub fn get_common_type(ty1: Type, ty2: Type) -> Type {
+    match (ty1.clone(), ty2.clone()) {
+        (Type::TyArray { base, .. } | Type::TyPtr { base, .. }, _) => pointer_to(*base),
+        _ if get_sizeof(ty1) == 8 || get_sizeof(ty2) == 8 => Type::TyLong { name: None },
+        _ => Type::TyInt { name: None },
+    }
+}
+
+/// For many binary operators, we implicitly promote operands so that
+/// both operands have the same type. Any integral type smaller than
+/// int is always promoted to int. If the type of one operand is larger
+/// than the other's (e.g. "long" vs. "int"), the smaller operand will
+/// be promoted to match with the other.
+///
+/// This operation is called the "usual arithmetic conversion".
+pub fn usual_arith_conv(lhs: &mut ExprWithPos, rhs: &mut ExprWithPos) {
+    let ty = get_common_type(lhs.node.ty.clone(), rhs.node.ty.clone());
+    *lhs = WithPos::new(
+        WithType::new(
+            Expr::CastExpr {
+                expr: Box::new(lhs.clone()),
+                ty: ty.clone(),
+            },
+            ty.clone(),
+        ),
+        lhs.pos,
+    );
+    *rhs = WithPos::new(
+        WithType::new(
+            Expr::CastExpr {
+                expr: Box::new(rhs.clone()),
+                ty: ty.clone(),
+            },
+            ty.clone(),
+        ),
+        rhs.pos,
+    );
+}
+
 pub fn add_type(e: &mut ast::ExprWithPos) {
-    match &e.node.node {
+    match &mut e.node.node {
         ast::Expr::Binary {
             op:
                 BinaryOperatorWithPos {
                     node: Eq | Ne | Lt | Le | Ge | Gt,
                     ..
                 },
-            ..
-        }
-        | ast::Expr::Number { .. } => {
-            if e.node.ty == Type::TyPlaceholder {
-                e.node.ty = Type::TyInt { name: None };
-            }
-        }
-        ast::Expr::Variable { obj } => {
-            if e.node.ty == Type::TyPlaceholder {
-                e.node.ty = obj.borrow().ty.clone();
-            }
+            ref mut left,
+            ref mut right,
+        } => {
+            usual_arith_conv(left, right);
+            e.node.ty = Type::TyInt { name: None };
         }
         ast::Expr::Binary {
             op:
@@ -103,13 +137,20 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
                     node: Add | Sub | Mul | Div,
                     ..
                 },
-            left,
-            ..
+            ref mut left,
+            ref mut right,
         } => {
-            if e.node.ty == Type::TyPlaceholder {
-                e.node.ty = left.node.ty.clone();
+            usual_arith_conv(left, right);
+            e.node.ty = left.node.ty.clone();
+        }
+        ast::Expr::Number { value } => {
+            if *value == *value as i32 as i64 {
+                e.node.ty = Type::TyInt { name: None };
+            } else {
+                e.node.ty = Type::TyLong { name: None };
             }
         }
+        ast::Expr::Variable { obj } => e.node.ty = obj.borrow().ty.clone(),
         ast::Expr::Assign { l_value, .. } => match l_value.node.ty {
             Type::TyPlaceholder => e.node.ty = l_value.node.ty.clone(),
             Type::TyArray { .. } => panic!("array type is not lvalue. {:?}", l_value.node.ty),
@@ -123,9 +164,12 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
                 },
             expr,
         } => {
-            if e.node.ty == Type::TyPlaceholder {
-                e.node.ty = expr.node.ty.clone();
-            }
+            let ty = get_common_type(Type::TyInt { name: None }, expr.node.ty.clone());
+            expr.node.node = Expr::CastExpr {
+                expr: expr.clone(),
+                ty: ty.clone(),
+            };
+            e.node.ty = ty.clone();
         }
         // "&" addr
         ast::Expr::Addr { expr } => match e.node.ty.clone() {
@@ -150,11 +194,7 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
             },
             _ => panic!("invalid pointer dereference: {:#?}", expr),
         },
-        ast::Expr::FunctionCall { .. } => {
-            if e.node.ty == Type::TyPlaceholder {
-                e.node.ty = Type::TyInt { name: None }
-            }
-        }
+        ast::Expr::FunctionCall { .. } => e.node.ty = Type::TyInt { name: None },
         ast::Expr::StmtExpr { body } => {
             if body.len() > 0 {
                 let stmt = body.last().unwrap().node.clone();
@@ -166,16 +206,9 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
                 panic!("statement expression returning void is not supported.");
             }
         }
-        ast::Expr::CommaExpr { right, .. } => {
-            if e.node.ty == Type::TyPlaceholder {
-                e.node.ty = right.node.ty.clone();
-            }
-        }
-        ast::Expr::MemberExpr { member, .. } => {
-            if e.node.ty == Type::TyPlaceholder {
-                e.node.ty = member.borrow().ty.clone();
-            }
-        }
+        ast::Expr::CommaExpr { right, .. } => e.node.ty = right.node.ty.clone(),
+        ast::Expr::MemberExpr { member, .. } => e.node.ty = member.borrow().ty.clone(),
+
         ast::Expr::CastExpr { .. } => (),
     }
 }

@@ -943,7 +943,7 @@ impl<'a> Parser<'a> {
                             );
                         }
                         // ptr - num
-                        (Type::TyPtr { base, .. }, Type::TyInt { .. }) => {
+                        (Type::TyPtr { base, .. }, Type::TyInt { .. } | Type::TyLong { .. }) => {
                             // num * 8
                             right = WithPos::new(
                                 WithType::new(
@@ -986,7 +986,7 @@ impl<'a> Parser<'a> {
                                         op: WithPos::new(ast::BinaryOperator::Sub, pos),
                                         right: Box::new(right),
                                     },
-                                    Type::TyInt { name: None },
+                                    Type::TyLong { name: None },
                                 ),
                                 pos,
                             );
@@ -1143,21 +1143,27 @@ impl<'a> Parser<'a> {
 
         match (lhs.node.ty.clone(), rhs.node.ty.clone()) {
             // num + num
-            (Type::TyInt { .. }, Type::TyInt { .. }) => {
+            (
+                Type::TyInt { .. } | Type::TyLong { .. },
+                Type::TyInt { .. } | Type::TyLong { .. },
+            ) => {
                 lhs = WithPos::new(
                     WithType::new(
                         Expr::Binary {
-                            left: Box::new(lhs),
+                            left: Box::new(lhs.clone()),
                             op: WithPos::new(ast::BinaryOperator::Add, pos),
                             right: Box::new(rhs),
                         },
-                        Type::TyInt { name: None },
+                        lhs.node.ty.clone(),
                     ),
                     pos,
                 );
             }
             // ptr + num
-            (Type::TyPtr { base, .. } | Type::TyArray { base, .. }, Type::TyInt { .. }) => {
+            (
+                Type::TyPtr { base, .. } | Type::TyArray { base, .. },
+                Type::TyInt { .. } | Type::TyLong { .. },
+            ) => {
                 // num * 8
                 rhs = WithPos::new(
                     WithType::new(
@@ -1191,7 +1197,10 @@ impl<'a> Parser<'a> {
                 );
             }
             // num + ptr
-            (Type::TyInt { .. }, Type::TyPtr { base, .. } | Type::TyArray { base, .. }) => {
+            (
+                Type::TyInt { .. } | Type::TyLong { .. },
+                Type::TyPtr { base, .. } | Type::TyArray { base, .. },
+            ) => {
                 // num * 8
                 lhs = WithPos::new(
                     WithType::new(
@@ -1418,10 +1427,12 @@ impl<'a> Parser<'a> {
             Number(_) => {
                 let value;
                 let pos = eat!(self, Number, value);
-                Ok(WithPos::new(
-                    WithType::new(Expr::Number { value }, Type::TyInt { name: None }),
+                let mut node = WithPos::new(
+                    WithType::new(Expr::Number { value }, Type::TyLong { name: None }),
                     pos,
-                ))
+                );
+                add_type(&mut node);
+                Ok(node)
             }
             Tok::KeywordSizeof => {
                 let pos = eat!(self, KeywordSizeof);
@@ -1447,7 +1458,7 @@ impl<'a> Parser<'a> {
                         else {
                             let mut node = self.unary()?;
                             add_type(&mut node);
-                            Ok(WithPos::new(
+                            node = WithPos::new(
                                 WithType::new(
                                     Expr::Number {
                                         value: get_sizeof(node.node.ty.clone()) as i64,
@@ -1455,7 +1466,8 @@ impl<'a> Parser<'a> {
                                     Type::TyInt { name: None },
                                 ),
                                 pos,
-                            ))
+                            );
+                            Ok(node)
                         }
                     }
                     // sizeof x
