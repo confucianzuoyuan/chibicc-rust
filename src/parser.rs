@@ -955,12 +955,12 @@ impl<'a> Parser<'a> {
                                                 Expr::Number {
                                                     value: get_sizeof(*base) as i64,
                                                 },
-                                                Type::TyInt { name: None },
+                                                Type::TyLong { name: None },
                                             ),
                                             pos,
                                         )),
                                     },
-                                    Type::TyInt { name: None },
+                                    Type::TyLong { name: None },
                                 ),
                                 pos,
                             );
@@ -1141,12 +1141,12 @@ impl<'a> Parser<'a> {
                                     Expr::Number {
                                         value: get_sizeof(*base) as i64,
                                     },
-                                    Type::TyInt { name: None },
+                                    Type::TyLong { name: None },
                                 ),
                                 pos,
                             )),
                         },
-                        Type::TyInt { name: None },
+                        Type::TyLong { name: None },
                     ),
                     pos,
                 );
@@ -1175,12 +1175,12 @@ impl<'a> Parser<'a> {
                                     Expr::Number {
                                         value: get_sizeof(*base) as i64,
                                     },
-                                    Type::TyInt { name: None },
+                                    Type::TyLong { name: None },
                                 ),
                                 pos,
                             )),
                         },
-                        Type::TyInt { name: None },
+                        Type::TyLong { name: None },
                     ),
                     pos,
                 );

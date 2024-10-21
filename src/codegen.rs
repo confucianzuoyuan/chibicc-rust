@@ -257,41 +257,54 @@ impl CodeGenerator {
                 self.push();
                 self.gen_expr(left);
                 self.pop("%rdi".to_string());
+                let (ax, di) = match (left.node.ty.clone(), right.node.ty.clone()) {
+                    (Type::TyLong { .. } | Type::TyArray { .. } | Type::TyPtr { .. }, _) => {
+                        ("%rax", "%rdi")
+                    }
+                    (_, Type::TyLong { .. } | Type::TyArray { .. } | Type::TyPtr { .. }) => {
+                        ("%rax", "%rdi")
+                    }
+                    _ => ("%eax", "%edi"),
+                };
                 match op.node {
-                    ast::BinaryOperator::Add => self.output.push(format!("  add %rdi, %rax")),
-                    ast::BinaryOperator::Sub => self.output.push(format!("  sub %rdi, %rax")),
-                    ast::BinaryOperator::Mul => self.output.push(format!("  imul %rdi, %rax")),
+                    ast::BinaryOperator::Add => self.output.push(format!("  add {}, {}", di, ax)),
+                    ast::BinaryOperator::Sub => self.output.push(format!("  sub {}, {}", di, ax)),
+                    ast::BinaryOperator::Mul => self.output.push(format!("  imul {}, {}", di, ax)),
                     ast::BinaryOperator::Div => {
-                        self.output.push(format!("  cqo"));
-                        self.output.push(format!("  idiv %rdi"));
+                        if get_sizeof(left.node.ty.clone()) == 8 {
+                            self.output.push(format!("  cqo"));
+                        } else {
+                            self.output.push(format!("  cdq"));
+                        }
+                        self.output.push(format!("  idiv {}", di));
                     }
                     ast::BinaryOperator::Eq => {
-                        self.output.push(format!("  cmp %rdi, %rax"));
+                        self.output.push(format!("  cmp {}, {}", di, ax));
                         self.output.push(format!("  sete %al"));
                         self.output.push(format!("  movzb %al, %rax"));
                     }
                     ast::BinaryOperator::Ne => {
-                        self.output.push(format!("  cmp %rdi, %rax"));
+                        self.output.push(format!("  cmp {}, {}", di, ax));
                         self.output.push(format!("  setne %al"));
                         self.output.push(format!("  movzb %al, %rax"));
                     }
                     ast::BinaryOperator::Lt => {
-                        self.output.push(format!("  cmp %rdi, %rax"));
+                        self.output.push(format!("  cmp {}, {}", di, ax));
                         self.output.push(format!("  setl %al"));
                         self.output.push(format!("  movzb %al, %rax"));
                     }
                     ast::BinaryOperator::Le => {
-                        self.output.push(format!("  cmp %rdi, %rax"));
+                        self.output.push(format!("  cmp {}, {}", di, ax));
                         self.output.push(format!("  setle %al"));
                         self.output.push(format!("  movzb %al, %rax"));
                     }
                     ast::BinaryOperator::Gt => {
-                        self.output.push(format!("  cmp %rdi, %rax"));
+                        self.output.push(format!("  cmp {}, {}", di, ax));
                         self.output.push(format!("  setg %al"));
                         self.output.push(format!("  movzb %al, %rax"));
                     }
                     ast::BinaryOperator::Ge => {
-                        self.output.push(format!("  cmp %rdi, %rax"));
+                        self.output.push(format!("  cmp {}, {}", di, ax));
                         self.output.push(format!("  setge %al"));
                         self.output.push(format!("  movzb %al, %rax"));
                     }
