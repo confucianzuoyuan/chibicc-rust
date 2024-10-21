@@ -8,6 +8,9 @@ use crate::token::Token;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Type {
+    TyBool {
+        name: Option<Token>,
+    },
     TyVoid {
         name: Option<Token>,
     },
@@ -151,10 +154,20 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
             }
         }
         ast::Expr::Variable { obj } => e.node.ty = obj.borrow().ty.clone(),
-        ast::Expr::Assign { l_value, .. } => match l_value.node.ty {
+        ast::Expr::Assign {
+            l_value,
+            ref mut r_value,
+        } => match l_value.node.ty {
             Type::TyPlaceholder => e.node.ty = l_value.node.ty.clone(),
             Type::TyArray { .. } => panic!("array type is not lvalue. {:?}", l_value.node.ty),
-            _ => (),
+            Type::TyStruct { .. } => e.node.ty = l_value.node.ty.clone(),
+            _ => {
+                r_value.node.node = Expr::CastExpr {
+                    expr: r_value.clone(),
+                    ty: l_value.node.ty.clone(),
+                };
+                e.node.ty = l_value.node.ty.clone();
+            }
         },
         ast::Expr::Unary {
             op:
@@ -258,6 +271,7 @@ pub fn sema_stmt(node: &mut ast::StmtWithPos) {
 
 pub fn get_sizeof(ty: Type) -> i32 {
     match ty {
+        Type::TyBool { .. } => 1,
         Type::TyVoid { .. } => 1,
         Type::TyLong { .. } => 8,
         Type::TyInt { .. } => 4,
@@ -283,6 +297,7 @@ pub fn align_to(n: i32, align: i32) -> i32 {
 
 pub fn get_align(ty: Type) -> i32 {
     match ty {
+        Type::TyBool { .. } => 1,
         Type::TyVoid { .. } => 1,
         Type::TyStruct { align, .. } => align,
         Type::TyUnion { align, .. } => align,
@@ -293,5 +308,16 @@ pub fn get_align(ty: Type) -> i32 {
         Type::TyArray { base, .. } => get_align(*base),
         Type::TyPtr { .. } => 8,
         _ => panic!("type {:?} has no align infomation.", ty),
+    }
+}
+
+pub fn is_integer(ty: Type) -> bool {
+    match ty {
+        Type::TyBool { .. }
+        | Type::TyChar { .. }
+        | Type::TyInt { .. }
+        | Type::TyShort { .. }
+        | Type::TyLong { .. } => true,
+        _ => false,
     }
 }

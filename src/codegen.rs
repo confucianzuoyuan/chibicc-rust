@@ -2,7 +2,7 @@ use std::io::Write;
 
 use crate::{
     ast::{self, Function, InitData},
-    sema::{self, get_sizeof, Type},
+    sema::{self, get_sizeof, is_integer, Type},
 };
 
 static ARGREG_64: [&str; 6] = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"];
@@ -144,9 +144,14 @@ impl CodeGenerator {
         }
     }
 
-    pub fn cast(&mut self, from: Type, to: Type) {
+    fn cast(&mut self, from: Type, to: Type) {
         match to {
             Type::TyVoid { .. } => (),
+            Type::TyBool { .. } => {
+                self.cmp_zero(from);
+                self.output.push(format!("  setne %al"));
+                self.output.push(format!("  movzx %al, %eax"));
+            }
             _ => {
                 let t1 = get_type_id(from);
                 let t2 = get_type_id(to);
@@ -156,6 +161,14 @@ impl CodeGenerator {
                     self.output.push(format!("  {}", _cast));
                 }
             }
+        }
+    }
+
+    fn cmp_zero(&mut self, ty: Type) {
+        if is_integer(ty.clone()) && get_sizeof(ty) <= 4 {
+            self.output.push(format!("  cmp $0, %eax"));
+        } else {
+            self.output.push(format!("  cmp $0, %rax"));
         }
     }
 

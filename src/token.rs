@@ -45,6 +45,7 @@ pub enum Tok {
     KeywordUnion,
     KeywordVoid,
     KeywordTypedef,
+    KeywordBool,
 
     EndOfFile,
 }
@@ -98,6 +99,7 @@ impl Display for Tok {
                 Tok::KeywordUnion => "union",
                 Tok::KeywordVoid => "void",
                 Tok::KeywordTypedef => "typedef",
+                Tok::KeywordBool => "_Bool",
                 Tok::EndOfFile => "<eof>",
                 Tok::Str(ref string) => return format!("{:?}", string),
             };

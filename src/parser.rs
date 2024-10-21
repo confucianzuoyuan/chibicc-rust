@@ -7,12 +7,12 @@ use crate::{
     },
     error::Error::{self, UnexpectedToken},
     position::{Pos, WithPos},
-    sema::{self, add_type, align_to, get_sizeof, sema_stmt, Type, WithType},
+    sema::{self, add_type, align_to, get_sizeof, is_integer, sema_stmt, Type, WithType},
     symbol::{Strings, Symbols},
     token::{
         Tok::{
             self, Amp, BangEqual, Comma, Dot, Equal, EqualEqual, Greater, GreaterEqual, Ident,
-            KeywordChar, KeywordElse, KeywordFor, KeywordIf, KeywordInt, KeywordLong,
+            KeywordBool, KeywordChar, KeywordElse, KeywordFor, KeywordIf, KeywordInt, KeywordLong,
             KeywordReturn, KeywordShort, KeywordSizeof, KeywordStruct, KeywordTypedef,
             KeywordUnion, KeywordVoid, KeywordWhile, LeftBrace, LeftBracket, LeftParen, Lesser,
             LesserEqual, Minus, MinusGreater, Number, Plus, RightBrace, RightBracket, RightParen,
@@ -452,7 +452,7 @@ impl<'a> Parser<'a> {
         Ok(union_ty)
     }
 
-    /// declspec = ("void" | "char" | "short" | "int" | "long"
+    /// declspec = ("void" | "_Bool" | "char" | "short" | "int" | "long"
     ///             | struct-decl | union-decl)+
     ///
     /// The order of typenames in a type-specifier doesn't matter. For
@@ -473,11 +473,12 @@ impl<'a> Parser<'a> {
         // as you can see below.
         enum Counter {
             VOID = 1 << 0,
-            CHAR = 1 << 2,
-            SHORT = 1 << 4,
-            INT = 1 << 6,
-            LONG = 1 << 8,
-            OTHER = 1 << 10,
+            BOOL = 1 << 2,
+            CHAR = 1 << 4,
+            SHORT = 1 << 6,
+            INT = 1 << 8,
+            LONG = 1 << 10,
+            OTHER = 1 << 12,
         }
 
         let mut counter = 0;
@@ -536,6 +537,10 @@ impl<'a> Parser<'a> {
                     eat!(self, KeywordVoid);
                     counter += Counter::VOID as i32;
                 }
+                Tok::KeywordBool => {
+                    eat!(self, KeywordBool);
+                    counter += Counter::BOOL as i32;
+                }
                 Tok::KeywordChar => {
                     eat!(self, KeywordChar);
                     counter += Counter::CHAR as i32;
@@ -557,6 +562,8 @@ impl<'a> Parser<'a> {
 
             if counter == Counter::VOID as i32 {
                 ty = Type::TyVoid { name: None };
+            } else if counter == Counter::BOOL as i32 {
+                ty = Type::TyBool { name: None };
             } else if counter == Counter::CHAR as i32 {
                 ty = Type::TyChar { name: None };
             } else if counter == Counter::SHORT as i32 {
@@ -602,11 +609,12 @@ impl<'a> Parser<'a> {
             }
         }
 
-        Ok(Type::TyFunc {
+        let node = Type::TyFunc {
             name: None,
             params,
             return_ty: Box::new(ty),
-        })
+        };
+        Ok(node)
     }
 
     /// type-suffix = "(" func-params
@@ -659,6 +667,7 @@ impl<'a> Parser<'a> {
                             match ty {
                                 Type::TyInt { ref mut name }
                                 | Type::TyVoid { ref mut name }
+                                | Type::TyBool { ref mut name }
                                 | Type::TyChar { ref mut name }
                                 | Type::TyShort { ref mut name }
                                 | Type::TyLong { ref mut name }
@@ -705,6 +714,7 @@ impl<'a> Parser<'a> {
                 match ty {
                     Type::TyInt { ref mut name }
                     | Type::TyVoid { ref mut name }
+                    | Type::TyBool { ref mut name }
                     | Type::TyChar { ref mut name }
                     | Type::TyShort { ref mut name }
                     | Type::TyLong { ref mut name }
@@ -726,6 +736,7 @@ impl<'a> Parser<'a> {
         match tok {
             Tok::KeywordLong
             | Tok::KeywordInt
+            | Tok::KeywordBool
             | Tok::KeywordChar
             | Tok::KeywordShort
             | Tok::KeywordStruct
@@ -942,16 +953,9 @@ impl<'a> Parser<'a> {
 
                     match (expr.node.ty.clone(), right.node.ty.clone()) {
                         // num - num
-                        (
-                            Type::TyInt { .. }
-                            | Type::TyChar { .. }
-                            | Type::TyShort { .. }
-                            | Type::TyLong { .. },
-                            Type::TyInt { .. }
-                            | Type::TyChar { .. }
-                            | Type::TyShort { .. }
-                            | Type::TyLong { .. },
-                        ) => {
+                        _ if is_integer(expr.node.ty.clone())
+                            && is_integer(right.node.ty.clone()) =>
+                        {
                             expr = WithPos::new(
                                 WithType::new(
                                     Expr::Binary {
@@ -1164,23 +1168,6 @@ impl<'a> Parser<'a> {
         add_type(&mut rhs);
 
         match (lhs.node.ty.clone(), rhs.node.ty.clone()) {
-            // num + num
-            (
-                Type::TyInt { .. } | Type::TyLong { .. },
-                Type::TyInt { .. } | Type::TyLong { .. },
-            ) => {
-                lhs = WithPos::new(
-                    WithType::new(
-                        Expr::Binary {
-                            left: Box::new(lhs.clone()),
-                            op: WithPos::new(ast::BinaryOperator::Add, pos),
-                            right: Box::new(rhs),
-                        },
-                        lhs.node.ty.clone(),
-                    ),
-                    pos,
-                );
-            }
             // ptr + num
             (
                 Type::TyPtr { base, .. } | Type::TyArray { base, .. },
@@ -1251,6 +1238,20 @@ impl<'a> Parser<'a> {
                             right: Box::new(lhs),
                         },
                         rhs.node.ty.clone(),
+                    ),
+                    pos,
+                );
+            }
+            // num + num
+            _ if is_integer(lhs.node.ty.clone()) && is_integer(rhs.node.ty.clone()) => {
+                lhs = WithPos::new(
+                    WithType::new(
+                        Expr::Binary {
+                            left: Box::new(lhs.clone()),
+                            op: WithPos::new(ast::BinaryOperator::Add, pos),
+                            right: Box::new(rhs),
+                        },
+                        lhs.node.ty.clone(),
                     ),
                     pos,
                 );
@@ -1369,6 +1370,12 @@ impl<'a> Parser<'a> {
         let pos = eat!(self, LeftParen);
         let mut args = vec![];
 
+        let params_ty = match func_found.clone().unwrap().ty.clone() {
+            Type::TyFunc { params, .. } => params,
+            _ => unreachable!(),
+        };
+
+        let mut i = 0;
         loop {
             match self.peek()?.token {
                 Tok::RightParen => {
@@ -1389,13 +1396,20 @@ impl<'a> Parser<'a> {
                             WithType::new(
                                 Expr::CastExpr {
                                     expr: Box::new(arg_exp.clone()),
-                                    ty: arg_exp.node.ty.clone(),
+                                    ty: match params_ty.get(i).clone() {
+                                        Some(t) => t.clone(),
+                                        _ => arg_exp.node.ty.clone(),
+                                    },
                                 },
-                                arg_exp.node.ty,
+                                match params_ty.get(i).clone() {
+                                    Some(t) => t.clone(),
+                                    _ => arg_exp.node.ty.clone(),
+                                },
                             ),
                             pos,
                         ),
                     });
+                    i += 1;
                 }
             }
         }
@@ -1738,6 +1752,7 @@ impl<'a> Parser<'a> {
         match ty {
             Type::TyArray { name: Some(t), .. }
             | Type::TyInt { name: Some(t), .. }
+            | Type::TyBool { name: Some(t), .. }
             | Type::TyChar { name: Some(t), .. }
             | Type::TyShort { name: Some(t), .. }
             | Type::TyLong { name: Some(t), .. }
@@ -1816,6 +1831,14 @@ impl<'a> Parser<'a> {
                 ..
             }
             | Type::TyUnion {
+                name:
+                    Some(Token {
+                        token: Tok::Ident(param_name),
+                        ..
+                    }),
+                ..
+            }
+            | Type::TyBool {
                 name:
                     Some(Token {
                         token: Tok::Ident(param_name),

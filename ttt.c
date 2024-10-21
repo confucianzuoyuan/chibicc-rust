@@ -33,10 +33,6 @@
    - 56 emoji characters
    - 285 hentaigana
    - 3 additional Zanabazar Square characters */
-int g1;
-
-int *g1_ptr() { return &g1; }
-
 int main() {
-  return *g1_ptr();
+  return ({ _Bool x=2; x; });
 }
