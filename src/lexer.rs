@@ -345,6 +345,28 @@ impl<R: Read> Lexer<R> {
         }
     }
 
+    fn char_literal(&mut self) -> Result<Token> {
+        self.eat('\'')?;
+        if self.current_char()? == '\0' {
+            return Err(Error::Unclosed {
+                pos: self.current_pos(),
+                token: "unclosed char literal",
+            });
+        }
+
+        let c;
+        if self.current_char()? == '\\' {
+            self.eat('\\')?;
+            c = self.escape_char(self.current_pos())?;
+        } else {
+            c = self.current_char()?;
+            self.advance()?;
+        }
+
+        self.eat('\'')?;
+        self.make_token(Tok::Number(c as i8 as i64), 1)
+    }
+
     pub fn token(&mut self) -> Result<Token> {
         if let Some(&Ok(ch)) = self.bytes_iter.peek() {
             return match ch {
@@ -373,6 +395,7 @@ impl<R: Read> Lexer<R> {
                 b'&' => self.simple_token(Tok::Amp),
                 b'.' => self.simple_token(Tok::Dot),
                 b'"' => self.string(),
+                b'\'' => self.char_literal(),
                 b'\0' => self.simple_token(Tok::EndOfFile),
                 _ => {
                     let mut pos = self.current_pos();
