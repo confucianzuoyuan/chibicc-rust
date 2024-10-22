@@ -283,6 +283,10 @@ impl CodeGenerator {
                     self.output.push(format!("  sete %al"));
                     self.output.push(format!("  movzx %al, %rax"));
                 }
+                ast::UnaryOperator::BitNot => {
+                    self.gen_expr(expr);
+                    self.output.push(format!("  not %rax"));
+                }
             },
             ast::Expr::Variable { .. } | ast::Expr::MemberExpr { .. } => {
                 self.gen_addr(ast);

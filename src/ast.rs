@@ -148,6 +148,7 @@ impl Display for BinaryOperatorWithPos {
 pub enum UnaryOperator {
     Neg,
     Not,
+    BitNot,
 }
 
 pub type UnaryOperatorWithPos = WithPos<UnaryOperator>;
@@ -159,6 +160,7 @@ impl Display for UnaryOperatorWithPos {
                 WithPos { node, .. } => match node {
                     UnaryOperator::Neg => "-",
                     UnaryOperator::Not => "!",
+                    UnaryOperator::BitNot => "~",
                 },
             };
             string.to_string()

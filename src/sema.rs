@@ -195,6 +195,14 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
                 },
             ..
         } => e.node.ty = Type::TyInt { name: None },
+        ast::Expr::Unary {
+            op:
+                UnaryOperatorWithPos {
+                    node: ast::UnaryOperator::BitNot,
+                    ..
+                },
+            expr,
+        } => e.node.ty = expr.node.ty.clone(),
         // "&" addr
         ast::Expr::Addr { expr } => match e.node.ty.clone() {
             Type::TyPlaceholder => e.node.ty = pointer_to(expr.node.ty.clone()),

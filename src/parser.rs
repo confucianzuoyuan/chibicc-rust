@@ -1176,7 +1176,7 @@ impl<'a> Parser<'a> {
         Ok(expr)
     }
 
-    /// unary = ("+" | "-" | "*" | "&") cast
+    /// unary = ("+" | "-" | "*" | "&" | "!" | "~") cast
     ///       | ("++" | "--") unary
     ///       | primary
     fn unary(&mut self) -> Result<ExprWithPos> {
@@ -1230,6 +1230,21 @@ impl<'a> Parser<'a> {
             }
             Bang => {
                 let op = WithPos::new(UnaryOperator::Not, eat!(self, Bang));
+                let expr = self.cast()?;
+                let pos = expr.pos.grow(expr.pos);
+                Ok(WithPos::new(
+                    WithType::new(
+                        Expr::Unary {
+                            op,
+                            expr: Box::new(expr),
+                        },
+                        Type::TyPlaceholder,
+                    ),
+                    pos,
+                ))
+            }
+            Tilde => {
+                let op = WithPos::new(UnaryOperator::BitNot, eat!(self, Tilde));
                 let expr = self.cast()?;
                 let pos = expr.pos.grow(expr.pos);
                 Ok(WithPos::new(

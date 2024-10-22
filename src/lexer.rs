@@ -464,6 +464,7 @@ impl<R: Read> Lexer<R> {
                 b',' => self.simple_token(Tok::Comma),
                 b'&' => self.simple_token(Tok::Amp),
                 b'.' => self.simple_token(Tok::Dot),
+                b'~' => self.simple_token(Tok::Tilde),
                 b'"' => self.string(),
                 b'\'' => self.char_literal(),
                 b'\0' => self.simple_token(Tok::EndOfFile),
