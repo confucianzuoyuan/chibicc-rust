@@ -10,14 +10,7 @@ use crate::{
     sema::{self, add_type, align_to, get_sizeof, is_integer, sema_stmt, Type, WithType},
     symbol::{Strings, Symbols},
     token::{
-        Tok::{
-            self, Amp, BangEqual, Comma, Dot, Equal, EqualEqual, Greater, GreaterEqual, Ident,
-            KeywordBool, KeywordChar, KeywordElse, KeywordEnum, KeywordFor, KeywordIf, KeywordInt,
-            KeywordLong, KeywordReturn, KeywordShort, KeywordSizeof, KeywordStruct, KeywordTypedef,
-            KeywordUnion, KeywordVoid, KeywordWhile, LeftBrace, LeftBracket, LeftParen, Lesser,
-            LesserEqual, Minus, MinusGreater, Number, Plus, RightBrace, RightBracket, RightParen,
-            Semicolon, Slash, Star, Str,
-        },
+        Tok::{self, *},
         Token,
     },
 };
@@ -453,7 +446,9 @@ impl<'a> Parser<'a> {
     }
 
     /// declspec = ("void" | "_Bool" | "char" | "short" | "int" | "long"
-    ///             | struct-decl | union-decl)+
+    ///          | "typedef" | "static"
+    ///          | struct-decl | union-decl | typedef-name
+    ///          | enum-specifier)+
     ///
     /// The order of typenames in a type-specifier doesn't matter. For
     /// example, `int long static` means the same as `static long int`.
@@ -485,6 +480,8 @@ impl<'a> Parser<'a> {
         // typedef t; t为int
         let mut ty = Type::TyInt { name: None };
 
+        let mut typedef_static_count = 0;
+
         loop {
             let tok = self.peek()?.token.clone();
             if !self.is_typename(tok)? {
@@ -494,7 +491,24 @@ impl<'a> Parser<'a> {
                 Tok::KeywordTypedef => {
                     eat!(self, KeywordTypedef);
                     if attr.is_some() {
+                        typedef_static_count += 1;
+                        if typedef_static_count > 1 {
+                            panic!("typedef and static may not be used together.");
+                        }
                         *attr = Some(VarAttr::Typedef { type_def: None });
+                        continue;
+                    } else {
+                        panic!("storage class specifier is not allowed in this context.");
+                    }
+                }
+                Tok::KeywordStatic => {
+                    eat!(self, KeywordStatic);
+                    if attr.is_some() {
+                        typedef_static_count += 1;
+                        if typedef_static_count > 1 {
+                            panic!("typedef and static may not be used together.");
+                        }
+                        *attr = Some(VarAttr::Static);
                         continue;
                     } else {
                         panic!("storage class specifier is not allowed in this context.");
@@ -754,6 +768,7 @@ impl<'a> Parser<'a> {
             | Tok::KeywordStruct
             | Tok::KeywordUnion
             | Tok::KeywordTypedef
+            | Tok::KeywordStatic
             | Tok::KeywordVoid => Ok(true),
             Tok::Ident(name) => {
                 let symbol = self.symbols.symbol(&name);
@@ -1667,7 +1682,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn function(&mut self, pos: usize, basety: Type) -> Result<usize> {
+    fn function(&mut self, pos: usize, basety: Type, attr: &Option<VarAttr>) -> Result<usize> {
         self.current_pos = pos;
 
         let ty = self.declarator(basety)?;
@@ -1683,6 +1698,11 @@ impl<'a> Parser<'a> {
                 false
             }
             _ => true,
+        };
+
+        let is_static = match attr {
+            Some(VarAttr::Static) => true,
+            _ => false,
         };
 
         self.locals = Vec::new();
@@ -1713,6 +1733,7 @@ impl<'a> Parser<'a> {
                     stack_size: 0,
                     is_definition: false,
                     ty: ty.clone(),
+                    is_static,
                 });
 
                 self.current_fn = Some(ast::Function {
@@ -1723,6 +1744,7 @@ impl<'a> Parser<'a> {
                     stack_size: 0,
                     is_definition: false,
                     ty: ty.clone(),
+                    is_static,
                 });
 
                 for p in params {
@@ -1756,6 +1778,7 @@ impl<'a> Parser<'a> {
             stack_size: 0,
             is_definition: is_definition,
             ty,
+            is_static,
         });
         Ok(self.current_pos)
     }
@@ -2124,7 +2147,7 @@ impl<'a> Parser<'a> {
                     // 保存当前的位置
                     let pos = self.current_pos.clone();
                     if self.is_function()? {
-                        self.current_pos = self.function(pos, basety)?;
+                        self.current_pos = self.function(pos, basety, &attr)?;
                     } else {
                         self.current_pos = self.global_variable(pos, basety)?;
                     }

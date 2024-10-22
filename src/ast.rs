@@ -246,6 +246,7 @@ impl Display for Obj {
 #[derive(Clone, Debug, PartialEq)]
 pub enum VarAttr {
     Typedef { type_def: Option<Type> },
+    Static,
     Placeholder,
 }
 
@@ -258,6 +259,7 @@ pub struct Function {
     pub stack_size: i32,
     pub is_definition: bool,
     pub ty: Type,
+    pub is_static: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -425,7 +425,11 @@ impl CodeGenerator {
             if !f.is_definition {
                 continue;
             }
-            self.output.push(format!("  .globl {}", f.name));
+            if f.is_static {
+                self.output.push(format!("  .local {}", f.name));
+            } else {
+                self.output.push(format!("  .globl {}", f.name));
+            }
             self.output.push(format!("  .text"));
             self.output.push(format!("{}:", f.name));
             self.current_fn = Some(f.clone());

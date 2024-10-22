@@ -47,6 +47,7 @@ pub enum Tok {
     KeywordTypedef,
     KeywordBool,
     KeywordEnum,
+    KeywordStatic,
 
     EndOfFile,
 }
@@ -102,6 +103,7 @@ impl Display for Tok {
                 Tok::KeywordTypedef => "typedef",
                 Tok::KeywordBool => "_Bool",
                 Tok::KeywordEnum => "enum",
+                Tok::KeywordStatic => "static",
                 Tok::EndOfFile => "<eof>",
                 Tok::Str(ref string) => return format!("{:?}", string),
             };
