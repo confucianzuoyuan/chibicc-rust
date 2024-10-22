@@ -165,7 +165,15 @@ impl<'a> Parser<'a> {
                 let pos = eat!(self, KeywordFor);
                 eat!(self, LeftParen);
 
-                let init = self.expr_stmt()?;
+                self.var_env.begin_scope();
+
+                let tok = self.peek()?.token.clone();
+                let init = if self.is_typename(tok)? {
+                    let basety = self.declspec(&mut None)?;
+                    self.declaration(basety)?
+                } else {
+                    self.expr_stmt()?
+                };
 
                 let cond = match self.peek()?.token {
                     Tok::Semicolon => None,
@@ -182,6 +190,8 @@ impl<'a> Parser<'a> {
                 eat!(self, RightParen);
 
                 let body = self.stmt()?;
+
+                self.var_env.end_scope();
 
                 Ok(WithPos::new(
                     Stmt::ForStmt {
