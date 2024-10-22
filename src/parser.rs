@@ -1525,7 +1525,58 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// postfix = primary ("[" expr "]" | "." ident | "->" ident)*
+    /// Convert A++ to `(typeof A)((A += 1) - 1)`
+    /// Convert A-- to `(typeof A)((A -= 1) + 1)`
+    fn new_inc_dec(&mut self, mut node: ExprWithPos, addend: i32) -> Result<ExprWithPos> {
+        add_type(&mut node);
+
+        let pos = self.peek()?.pos;
+
+        // 1
+        let positive_one = WithPos::new(
+            WithType::new(
+                Expr::Number {
+                    value: addend as i64,
+                },
+                Type::TyLong { name: None },
+            ),
+            pos,
+        );
+
+        // -1
+        let negative_one = WithPos::new(
+            WithType::new(
+                Expr::Number {
+                    value: -addend as i64,
+                },
+                Type::TyLong { name: None },
+            ),
+            pos,
+        );
+
+        // A += 1
+        // A + 1
+        let a_plus_one = self.new_add(node.clone(), positive_one, pos)?;
+        // A = A + 1
+        let a = self.to_assign(a_plus_one)?;
+        let e = self.new_add(a, negative_one, pos)?;
+
+        // cast
+        let c = WithPos::new(
+            WithType::new(
+                Expr::CastExpr {
+                    expr: Box::new(e),
+                    ty: node.node.ty.clone(),
+                },
+                node.node.ty.clone(),
+            ),
+            pos,
+        );
+
+        Ok(c)
+    }
+
+    /// postfix = primary ("[" expr "]" | "." ident | "->" ident | "++" | "--")*
     fn postfix(&mut self) -> Result<ExprWithPos> {
         let mut node = self.primary()?;
 
@@ -1565,6 +1616,14 @@ impl<'a> Parser<'a> {
                     );
                     add_type(&mut node);
                     node = self.struct_ref(node)?;
+                }
+                Tok::PlusPlus => {
+                    eat!(self, PlusPlus);
+                    node = self.new_inc_dec(node, 1)?;
+                }
+                Tok::MinusMinus => {
+                    eat!(self, MinusMinus);
+                    node = self.new_inc_dec(node, -1)?;
                 }
                 _ => break,
             }
