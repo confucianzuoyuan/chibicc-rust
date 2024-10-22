@@ -405,6 +405,9 @@ impl CodeGenerator {
 
                         self.output.push(format!("  mov %rdx, %rax"));
                     }
+                    ast::BinaryOperator::BitAnd => self.output.push(format!("  and %rdi, %rax")),
+                    ast::BinaryOperator::BitOr => self.output.push(format!("  or %rdi, %rax")),
+                    ast::BinaryOperator::BitXor => self.output.push(format!("  xor %rdi, %rax")),
                 }
             }
         }

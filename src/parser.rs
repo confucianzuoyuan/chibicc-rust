@@ -992,10 +992,10 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// assign    = equality (assign-op assign)?
-    /// assign-op = "=" | "+=" | "-=" | "*=" | "/=" | "%="
+    /// assign    = bitor (assign-op assign)?
+    /// assign-op = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^="
     fn assign(&mut self) -> Result<ExprWithPos> {
-        let mut expr = self.equality()?;
+        let mut expr = self.bitor()?;
         add_type(&mut expr);
         match self.peek()?.token {
             Tok::Equal => {
@@ -1064,6 +1064,54 @@ impl<'a> Parser<'a> {
                         Expr::Binary {
                             left: Box::new(expr.clone()),
                             op: WithPos::new(ast::BinaryOperator::Mod, pos),
+                            right: Box::new(rhs),
+                        },
+                        expr.node.ty,
+                    ),
+                    pos,
+                );
+                expr = self.to_assign(expr)?;
+            }
+            Tok::AmpEqual => {
+                let pos = eat!(self, AmpEqual);
+                let rhs = self.assign()?;
+                expr = WithPos::new(
+                    WithType::new(
+                        Expr::Binary {
+                            left: Box::new(expr.clone()),
+                            op: WithPos::new(ast::BinaryOperator::BitAnd, pos),
+                            right: Box::new(rhs),
+                        },
+                        expr.node.ty,
+                    ),
+                    pos,
+                );
+                expr = self.to_assign(expr)?;
+            }
+            Tok::BarEqual => {
+                let pos = eat!(self, BarEqual);
+                let rhs = self.assign()?;
+                expr = WithPos::new(
+                    WithType::new(
+                        Expr::Binary {
+                            left: Box::new(expr.clone()),
+                            op: WithPos::new(ast::BinaryOperator::BitOr, pos),
+                            right: Box::new(rhs),
+                        },
+                        expr.node.ty,
+                    ),
+                    pos,
+                );
+                expr = self.to_assign(expr)?;
+            }
+            Tok::HatEqual => {
+                let pos = eat!(self, HatEqual);
+                let rhs = self.assign()?;
+                expr = WithPos::new(
+                    WithType::new(
+                        Expr::Binary {
+                            left: Box::new(expr.clone()),
+                            op: WithPos::new(ast::BinaryOperator::BitXor, pos),
                             right: Box::new(rhs),
                         },
                         expr.node.ty,
@@ -1161,6 +1209,90 @@ impl<'a> Parser<'a> {
             }
         }
         Ok(expr)
+    }
+
+    /// bitor = bitxor ("|" bitxor)*
+    fn bitor(&mut self) -> Result<ExprWithPos> {
+        let mut node = self.bitxor()?;
+
+        loop {
+            match self.peek()?.token {
+                Tok::Bar => {
+                    let pos = eat!(self, Bar);
+                    let rhs = self.bitxor()?;
+                    node = WithPos::new(
+                        WithType::new(
+                            Expr::Binary {
+                                left: Box::new(node),
+                                op: WithPos::new(ast::BinaryOperator::BitOr, pos),
+                                right: Box::new(rhs),
+                            },
+                            Type::TyPlaceholder,
+                        ),
+                        pos,
+                    );
+                }
+                _ => break,
+            }
+        }
+
+        Ok(node)
+    }
+
+    /// bitxor = bitand ("^" bitand)*
+    fn bitxor(&mut self) -> Result<ExprWithPos> {
+        let mut node = self.bitand()?;
+
+        loop {
+            match self.peek()?.token {
+                Tok::Hat => {
+                    let pos = eat!(self, Hat);
+                    let rhs = self.bitand()?;
+                    node = WithPos::new(
+                        WithType::new(
+                            Expr::Binary {
+                                left: Box::new(node),
+                                op: WithPos::new(ast::BinaryOperator::BitXor, pos),
+                                right: Box::new(rhs),
+                            },
+                            Type::TyPlaceholder,
+                        ),
+                        pos,
+                    );
+                }
+                _ => break,
+            }
+        }
+
+        Ok(node)
+    }
+
+    /// bitand = equality ("&" equality)*
+    fn bitand(&mut self) -> Result<ExprWithPos> {
+        let mut node = self.equality()?;
+
+        loop {
+            match self.peek()?.token {
+                Tok::Amp => {
+                    let pos = eat!(self, Amp);
+                    let rhs = self.equality()?;
+                    node = WithPos::new(
+                        WithType::new(
+                            Expr::Binary {
+                                left: Box::new(node),
+                                op: WithPos::new(ast::BinaryOperator::BitAnd, pos),
+                                right: Box::new(rhs),
+                            },
+                            Type::TyPlaceholder,
+                        ),
+                        pos,
+                    );
+                }
+                _ => break,
+            }
+        }
+
+        Ok(node)
     }
 
     /// mul = cast ("*" cast | "/" cast)*

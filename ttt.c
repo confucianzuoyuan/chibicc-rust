@@ -34,5 +34,5 @@
    - 285 hentaigana
    - 3 additional Zanabazar Square characters */
 int main() {
-  return ({ enum { zero, one, two } x; sizeof(x); });
+  return 3&1;
 }

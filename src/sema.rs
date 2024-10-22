@@ -140,7 +140,7 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
         ast::Expr::Binary {
             op:
                 BinaryOperatorWithPos {
-                    node: Add | Sub | Mul | Div | Mod,
+                    node: Add | Sub | Mul | Div | Mod | BitAnd | BitOr | BitXor,
                     ..
                 },
             ref mut left,

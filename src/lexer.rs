@@ -189,6 +189,18 @@ impl<R: Read> Lexer<R> {
         self.two_char_token(vec![('=', Tok::PercentEqual)], Tok::Percent)
     }
 
+    fn hat_or_hat_equal(&mut self) -> Result<Token> {
+        self.two_char_token(vec![('=', Tok::HatEqual)], Tok::Hat)
+    }
+
+    fn amp_or_amp_equal(&mut self) -> Result<Token> {
+        self.two_char_token(vec![('=', Tok::AmpEqual)], Tok::Amp)
+    }
+
+    fn bar_or_bar_equal(&mut self) -> Result<Token> {
+        self.two_char_token(vec![('=', Tok::BarEqual)], Tok::Bar)
+    }
+
     fn eat(&mut self, ch: char) -> Result<()> {
         if self.current_char()? != ch {
             panic!(
@@ -466,7 +478,9 @@ impl<R: Read> Lexer<R> {
                 b'=' => self.equal_or_equal_equal(),
                 b';' => self.simple_token(Tok::Semicolon),
                 b',' => self.simple_token(Tok::Comma),
-                b'&' => self.simple_token(Tok::Amp),
+                b'&' => self.amp_or_amp_equal(),
+                b'|' => self.bar_or_bar_equal(),
+                b'^' => self.hat_or_hat_equal(),
                 b'.' => self.simple_token(Tok::Dot),
                 b'~' => self.simple_token(Tok::Tilde),
                 b'%' => self.percent_or_percent_equal(),

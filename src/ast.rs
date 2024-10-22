@@ -118,6 +118,9 @@ pub enum BinaryOperator {
     Gt,
     Ge,
     Mod,
+    BitAnd,
+    BitOr,
+    BitXor,
 }
 
 pub type BinaryOperatorWithPos = WithPos<BinaryOperator>;
@@ -138,6 +141,9 @@ impl Display for BinaryOperatorWithPos {
                     BinaryOperator::Ne => "!=",
                     BinaryOperator::Sub => "-",
                     BinaryOperator::Mod => "%",
+                    BinaryOperator::BitAnd => "&",
+                    BinaryOperator::BitOr => "|",
+                    BinaryOperator::BitXor => "^",
                 },
             };
             string.to_string()
