@@ -100,8 +100,19 @@ impl<R: Read> Lexer<R> {
         Ok(buffer)
     }
 
-    fn minus_or_minus_greater(&mut self) -> Result<Token> {
-        self.two_char_token(vec![('>', Tok::MinusGreater)], Tok::Minus)
+    fn plus_or_plus_equal(&mut self) -> Result<Token> {
+        self.two_char_token(vec![('=', Tok::PlusEqual)], Tok::Plus)
+    }
+
+    fn minus_or_minus_greater_or_minus_equal(&mut self) -> Result<Token> {
+        self.two_char_token(
+            vec![('>', Tok::MinusGreater), ('=', Tok::MinusEqual)],
+            Tok::Minus,
+        )
+    }
+
+    fn star_or_star_equal(&mut self) -> Result<Token> {
+        self.two_char_token(vec![('=', Tok::StarEqual)], Tok::Star)
     }
 
     fn greater_or_greater_equal(&mut self) -> Result<Token> {
@@ -314,7 +325,7 @@ impl<R: Read> Lexer<R> {
         Ok(())
     }
 
-    fn slash_or_comment(&mut self) -> Result<Token> {
+    fn slash_or_comment_or_slash_equal(&mut self) -> Result<Token> {
         self.save_start();
         self.advance()?;
         if self.current_char()? == '*' {
@@ -342,6 +353,9 @@ impl<R: Read> Lexer<R> {
                 }
             }
             self.token()
+        } else if self.current_char()? == '=' {
+            self.advance()?;
+            self.make_token(Tok::SlashEqual, 2)
         } else {
             self.make_token(Tok::Slash, 1)
         }
@@ -378,10 +392,10 @@ impl<R: Read> Lexer<R> {
                 }
                 b'a'..=b'z' | b'A'..=b'Z' | b'_' => self.identifier(),
                 b'0'..=b'9' => self.number(),
-                b'+' => self.simple_token(Tok::Plus),
-                b'-' => self.minus_or_minus_greater(),
-                b'*' => self.simple_token(Tok::Star),
-                b'/' => self.slash_or_comment(),
+                b'+' => self.plus_or_plus_equal(),
+                b'-' => self.minus_or_minus_greater_or_minus_equal(),
+                b'*' => self.star_or_star_equal(),
+                b'/' => self.slash_or_comment_or_slash_equal(),
                 b'(' => self.simple_token(Tok::LeftParen),
                 b')' => self.simple_token(Tok::RightParen),
                 b'{' => self.simple_token(Tok::LeftBrace),
