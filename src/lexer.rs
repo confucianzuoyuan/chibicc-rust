@@ -193,12 +193,12 @@ impl<R: Read> Lexer<R> {
         self.two_char_token(vec![('=', Tok::HatEqual)], Tok::Hat)
     }
 
-    fn amp_or_amp_equal(&mut self) -> Result<Token> {
-        self.two_char_token(vec![('=', Tok::AmpEqual)], Tok::Amp)
+    fn amp_or_amp_equal_or_amp_amp(&mut self) -> Result<Token> {
+        self.two_char_token(vec![('=', Tok::AmpEqual), ('&', Tok::AmpAmp)], Tok::Amp)
     }
 
-    fn bar_or_bar_equal(&mut self) -> Result<Token> {
-        self.two_char_token(vec![('=', Tok::BarEqual)], Tok::Bar)
+    fn bar_or_bar_equal_or_bar_bar(&mut self) -> Result<Token> {
+        self.two_char_token(vec![('=', Tok::BarEqual), ('|', Tok::BarBar)], Tok::Bar)
     }
 
     fn eat(&mut self, ch: char) -> Result<()> {
@@ -478,8 +478,8 @@ impl<R: Read> Lexer<R> {
                 b'=' => self.equal_or_equal_equal(),
                 b';' => self.simple_token(Tok::Semicolon),
                 b',' => self.simple_token(Tok::Comma),
-                b'&' => self.amp_or_amp_equal(),
-                b'|' => self.bar_or_bar_equal(),
+                b'&' => self.amp_or_amp_equal_or_amp_amp(),
+                b'|' => self.bar_or_bar_equal_or_bar_bar(),
                 b'^' => self.hat_or_hat_equal(),
                 b'.' => self.simple_token(Tok::Dot),
                 b'~' => self.simple_token(Tok::Tilde),

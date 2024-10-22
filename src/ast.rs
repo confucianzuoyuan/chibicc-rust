@@ -121,6 +121,8 @@ pub enum BinaryOperator {
     BitAnd,
     BitOr,
     BitXor,
+    LogAnd,
+    LogOr,
 }
 
 pub type BinaryOperatorWithPos = WithPos<BinaryOperator>;
@@ -144,6 +146,8 @@ impl Display for BinaryOperatorWithPos {
                     BinaryOperator::BitAnd => "&",
                     BinaryOperator::BitOr => "|",
                     BinaryOperator::BitXor => "^",
+                    BinaryOperator::LogAnd => "&&",
+                    BinaryOperator::LogOr => "||",
                 },
             };
             string.to_string()

@@ -992,10 +992,10 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// assign    = bitor (assign-op assign)?
+    /// assign    = logor (assign-op assign)?
     /// assign-op = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^="
     fn assign(&mut self) -> Result<ExprWithPos> {
-        let mut expr = self.bitor()?;
+        let mut expr = self.logor()?;
         add_type(&mut expr);
         match self.peek()?.token {
             Tok::Equal => {
@@ -1209,6 +1209,62 @@ impl<'a> Parser<'a> {
             }
         }
         Ok(expr)
+    }
+
+    /// logor = logand ("||" logand)*
+    fn logor(&mut self) -> Result<ExprWithPos> {
+        let mut node = self.logand()?;
+
+        loop {
+            match self.peek()?.token {
+                Tok::BarBar => {
+                    let pos = eat!(self, BarBar);
+                    let rhs = self.logand()?;
+                    node = WithPos::new(
+                        WithType::new(
+                            Expr::Binary {
+                                left: Box::new(node),
+                                op: WithPos::new(ast::BinaryOperator::LogOr, pos),
+                                right: Box::new(rhs),
+                            },
+                            Type::TyPlaceholder,
+                        ),
+                        pos,
+                    );
+                }
+                _ => break,
+            }
+        }
+
+        Ok(node)
+    }
+
+    /// logand = bitor ("&&" bitor)*
+    fn logand(&mut self) -> Result<ExprWithPos> {
+        let mut node = self.bitor()?;
+
+        loop {
+            match self.peek()?.token {
+                Tok::AmpAmp => {
+                    let pos = eat!(self, AmpAmp);
+                    let rhs = self.bitor()?;
+                    node = WithPos::new(
+                        WithType::new(
+                            Expr::Binary {
+                                left: Box::new(node),
+                                op: WithPos::new(ast::BinaryOperator::LogAnd, pos),
+                                right: Box::new(rhs),
+                            },
+                            Type::TyPlaceholder,
+                        ),
+                        pos,
+                    );
+                }
+                _ => break,
+            }
+        }
+
+        Ok(node)
     }
 
     /// bitor = bitxor ("|" bitxor)*

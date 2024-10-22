@@ -149,6 +149,14 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
             usual_arith_conv(left, right);
             e.node.ty = left.node.ty.clone();
         }
+        ast::Expr::Binary {
+            op:
+                BinaryOperatorWithPos {
+                    node: LogOr | LogAnd,
+                    ..
+                },
+            ..
+        } => e.node.ty = Type::TyInt { name: None },
         ast::Expr::Number { value } => {
             if *value == *value as i32 as i64 {
                 e.node.ty = Type::TyInt { name: None };

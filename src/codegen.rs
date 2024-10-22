@@ -408,6 +408,33 @@ impl CodeGenerator {
                     ast::BinaryOperator::BitAnd => self.output.push(format!("  and %rdi, %rax")),
                     ast::BinaryOperator::BitOr => self.output.push(format!("  or %rdi, %rax")),
                     ast::BinaryOperator::BitXor => self.output.push(format!("  xor %rdi, %rax")),
+                    ast::BinaryOperator::LogAnd => {
+                        let c = self.label_count;
+                        self.label_count += 1;
+                        self.gen_expr(left);
+                        self.output.push(format!("  cmp $0, %rax"));
+                        self.output.push(format!("  je .L.false.{}", c));
+                        self.output.push(format!("  mov $1, %rax"));
+                        self.output.push(format!("  jmp .L.end.{}", c));
+                        self.output.push(format!(".L.false.{}:", c));
+                        self.output.push(format!("  mov $0, %rax"));
+                        self.output.push(format!(".L.end.{}:", c));
+                    }
+                    ast::BinaryOperator::LogOr => {
+                        let c = self.label_count;
+                        self.label_count += 1;
+                        self.gen_expr(left);
+                        self.output.push(format!("  cmp $0, %rax"));
+                        self.output.push(format!("  jne .L.true.{}", c));
+                        self.gen_expr(right);
+                        self.output.push(format!("  cmp $0, %rax"));
+                        self.output.push(format!("  jne .L.true.{}", c));
+                        self.output.push(format!("  mov $0, %rax"));
+                        self.output.push(format!("  jmp .L.end.{}", c));
+                        self.output.push(format!(".L.true.{}:", c));
+                        self.output.push(format!("  mov $1, %rax"));
+                        self.output.push(format!(".L.end.{}:", c));
+                    }
                 }
             }
         }
