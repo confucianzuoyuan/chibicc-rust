@@ -225,6 +225,7 @@ impl Display for StmtWithPos {
 #[derive(Clone, Debug, PartialEq)]
 pub enum InitData {
     StringInitData(String),
+    IntInitData(i32),
 }
 
 #[derive(Clone, Debug, PartialEq)]

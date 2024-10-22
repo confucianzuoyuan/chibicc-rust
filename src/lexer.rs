@@ -150,6 +150,7 @@ impl<R: Read> Lexer<R> {
             "void" => Tok::KeywordVoid,
             "typedef" => Tok::KeywordTypedef,
             "_Bool" => Tok::KeywordBool,
+            "enum" => Tok::KeywordEnum,
             _ => Tok::Ident(ident),
         };
         self.make_token(token, len)

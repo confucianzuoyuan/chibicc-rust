@@ -8,6 +8,9 @@ use crate::token::Token;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Type {
+    TyEnum {
+        name: Option<Token>,
+    },
     TyBool {
         name: Option<Token>,
     },
@@ -271,6 +274,7 @@ pub fn sema_stmt(node: &mut ast::StmtWithPos) {
 
 pub fn get_sizeof(ty: Type) -> i32 {
     match ty {
+        Type::TyEnum { .. } => 4,
         Type::TyBool { .. } => 1,
         Type::TyVoid { .. } => 1,
         Type::TyLong { .. } => 8,
@@ -297,6 +301,7 @@ pub fn align_to(n: i32, align: i32) -> i32 {
 
 pub fn get_align(ty: Type) -> i32 {
     match ty {
+        Type::TyEnum { .. } => 4,
         Type::TyBool { .. } => 1,
         Type::TyVoid { .. } => 1,
         Type::TyStruct { align, .. } => align,
@@ -315,6 +320,7 @@ pub fn is_integer(ty: Type) -> bool {
     match ty {
         Type::TyBool { .. }
         | Type::TyChar { .. }
+        | Type::TyEnum { .. }
         | Type::TyInt { .. }
         | Type::TyShort { .. }
         | Type::TyLong { .. } => true,

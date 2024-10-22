@@ -12,8 +12,8 @@ use crate::{
     token::{
         Tok::{
             self, Amp, BangEqual, Comma, Dot, Equal, EqualEqual, Greater, GreaterEqual, Ident,
-            KeywordBool, KeywordChar, KeywordElse, KeywordFor, KeywordIf, KeywordInt, KeywordLong,
-            KeywordReturn, KeywordShort, KeywordSizeof, KeywordStruct, KeywordTypedef,
+            KeywordBool, KeywordChar, KeywordElse, KeywordEnum, KeywordFor, KeywordIf, KeywordInt,
+            KeywordLong, KeywordReturn, KeywordShort, KeywordSizeof, KeywordStruct, KeywordTypedef,
             KeywordUnion, KeywordVoid, KeywordWhile, LeftBrace, LeftBracket, LeftParen, Lesser,
             LesserEqual, Minus, MinusGreater, Number, Plus, RightBrace, RightBracket, RightParen,
             Semicolon, Slash, Star, Str,
@@ -518,6 +518,15 @@ impl<'a> Parser<'a> {
                     counter += Counter::OTHER as i32;
                     continue;
                 }
+                Tok::KeywordEnum => {
+                    if counter > 0 {
+                        break;
+                    }
+                    eat!(self, KeywordEnum);
+                    ty = self.enum_specifier()?;
+                    counter += Counter::OTHER as i32;
+                    continue;
+                }
                 Tok::Ident(name) => {
                     if counter > 0 {
                         break;
@@ -674,6 +683,7 @@ impl<'a> Parser<'a> {
                                 | Type::TyPtr { ref mut name, .. }
                                 | Type::TyFunc { ref mut name, .. }
                                 | Type::TyArray { ref mut name, .. }
+                                | Type::TyEnum { ref mut name, .. }
                                 | Type::TyStruct { ref mut name, .. }
                                 | Type::TyUnion { ref mut name, .. } => *name = Some(tok.clone()),
                                 _ => (),
@@ -721,6 +731,7 @@ impl<'a> Parser<'a> {
                     | Type::TyPtr { ref mut name, .. }
                     | Type::TyFunc { ref mut name, .. }
                     | Type::TyArray { ref mut name, .. }
+                    | Type::TyEnum { ref mut name, .. }
                     | Type::TyStruct { ref mut name, .. }
                     | Type::TyUnion { ref mut name, .. } => *name = Some(tok.clone()),
                     _ => (),
@@ -736,6 +747,7 @@ impl<'a> Parser<'a> {
         match tok {
             Tok::KeywordLong
             | Tok::KeywordInt
+            | Tok::KeywordEnum
             | Tok::KeywordBool
             | Tok::KeywordChar
             | Tok::KeywordShort
@@ -1565,10 +1577,27 @@ impl<'a> Parser<'a> {
                 // variable
                 if let Some(var) = self.var_env.look(self.symbols.symbol(&name)) {
                     let _ty = var.borrow().ty.clone();
-                    Ok(WithPos::new(
-                        WithType::new(Expr::Variable { obj: var.clone() }, _ty),
-                        pos,
-                    ))
+                    match _ty {
+                        Type::TyEnum { .. } => {
+                            if let Some(InitData::IntInitData(i)) = var.borrow().init_data {
+                                return Ok(WithPos::new(
+                                    WithType::new(Expr::Number { value: i as i64 }, _ty),
+                                    pos,
+                                ));
+                            } else {
+                                return Ok(WithPos::new(
+                                    WithType::new(Expr::Variable { obj: var.clone() }, _ty),
+                                    pos,
+                                ));
+                            }
+                        }
+                        _ => {
+                            return Ok(WithPos::new(
+                                WithType::new(Expr::Variable { obj: var.clone() }, _ty),
+                                pos,
+                            ));
+                        }
+                    }
                 } else {
                     panic!("variable undefined: {}", name);
                 }
@@ -1759,6 +1788,7 @@ impl<'a> Parser<'a> {
             | Type::TyPtr { name: Some(t), .. }
             | Type::TyStruct { name: Some(t), .. }
             | Type::TyUnion { name: Some(t), .. }
+            | Type::TyEnum { name: Some(t), .. }
             | Type::TyFunc { name: Some(t), .. } => Ok(t),
             _ => panic!("ty {:?} has no token.", ty),
         }
@@ -1845,6 +1875,14 @@ impl<'a> Parser<'a> {
                         ..
                     }),
                 ..
+            }
+            | Type::TyEnum {
+                name:
+                    Some(Token {
+                        token: Tok::Ident(param_name),
+                        ..
+                    }),
+                ..
             } => Ok(param_name),
             _ => panic!("ty {:?} has no token.", ty),
         }
@@ -1924,6 +1962,143 @@ impl<'a> Parser<'a> {
             }
         }
         Ok(())
+    }
+
+    // enum-specifier = ident? "{" enum-list? "}"
+    //                | ident ("{" enum-list? "}")?
+    //
+    // enum-list      = ident ("=" num)? ("," ident ("=" num)?)*
+    fn enum_specifier(&mut self) -> Result<Type> {
+        // read a enum tag
+        match self.peek()?.token.clone() {
+            Tok::Ident(..) => {
+                let ident_tok = self.peek()?.clone();
+                let ident;
+                eat!(self, Ident, ident);
+                match self.peek()?.token.clone() {
+                    Tok::LeftBrace => {
+                        eat!(self, LeftBrace);
+                        // read an enum-list
+                        let mut val = 0;
+                        loop {
+                            match self.peek()?.token {
+                                Tok::RightBrace => {
+                                    eat!(self, RightBrace);
+                                    break;
+                                }
+                                Tok::Comma => {
+                                    eat!(self, Comma);
+                                }
+                                _ => {
+                                    let name;
+                                    eat!(self, Ident, name);
+                                    match self.peek()?.token {
+                                        Tok::Equal => {
+                                            eat!(self, Equal);
+                                            match self.peek()?.token {
+                                                Tok::Number(..) => {
+                                                    let i;
+                                                    eat!(self, Number, i);
+                                                    val = i as i32;
+                                                }
+                                                _ => panic!(),
+                                            }
+                                        }
+                                        _ => (),
+                                    }
+
+                                    // 将enum添加到`变量`作用域
+                                    let enum_var = Rc::new(RefCell::new(Obj {
+                                        name: name.clone(),
+                                        offset: 0,
+                                        is_local: false,
+                                        init_data: Some(InitData::IntInitData(val)),
+                                        ty: Type::TyEnum {
+                                            name: Some(ident_tok.clone()),
+                                        },
+                                    }));
+                                    val += 1;
+                                    self.var_env.enter(self.symbols.symbol(&name), enum_var);
+                                }
+                            }
+                        }
+
+                        self.struct_tag_env.enter(
+                            self.symbols.symbol(&ident),
+                            Type::TyEnum {
+                                name: Some(ident_tok.clone()),
+                            },
+                        );
+
+                        Ok(Type::TyEnum {
+                            name: Some(ident_tok.clone()),
+                        })
+                    }
+                    _ => {
+                        if let Some(ty) = self.struct_tag_env.look(self.symbols.symbol(&ident)) {
+                            match ty {
+                                Type::TyEnum { .. } => {
+                                    return Ok(ty.clone());
+                                }
+                                _ => panic!(),
+                            }
+                        } else {
+                            panic!()
+                        }
+                    }
+                }
+            }
+            _ => match self.peek()?.token {
+                Tok::LeftBrace => {
+                    eat!(self, LeftBrace);
+                    // read an enum-list
+                    let mut val = 0;
+                    loop {
+                        match self.peek()?.token {
+                            Tok::RightBrace => {
+                                eat!(self, RightBrace);
+                                break;
+                            }
+                            Tok::Comma => {
+                                eat!(self, Comma);
+                            }
+                            _ => {
+                                let name;
+                                eat!(self, Ident, name);
+                                match self.peek()?.token {
+                                    Tok::Equal => {
+                                        eat!(self, Equal);
+                                        match self.peek()?.token {
+                                            Tok::Number(..) => {
+                                                let i;
+                                                eat!(self, Number, i);
+                                                val = i as i32;
+                                            }
+                                            _ => panic!(),
+                                        }
+                                    }
+                                    _ => (),
+                                }
+
+                                // 将enum添加到`变量`作用域
+                                let enum_var = Rc::new(RefCell::new(Obj {
+                                    name: name.clone(),
+                                    offset: 0,
+                                    is_local: false,
+                                    init_data: Some(InitData::IntInitData(val)),
+                                    ty: Type::TyEnum { name: None },
+                                }));
+                                val += 1;
+                                self.var_env.enter(self.symbols.symbol(&name), enum_var);
+                            }
+                        }
+                    }
+
+                    Ok(Type::TyEnum { name: None })
+                }
+                _ => panic!(),
+            },
+        }
     }
 
     /// program = function-definition*
