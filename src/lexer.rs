@@ -18,6 +18,27 @@ pub struct Lexer<R: Read> {
     saved_pos: Pos,
 }
 
+fn is_ascii_hexdigit(c: char) -> bool {
+    match c {
+        '0'..='9' | 'a'..='f' | 'A'..='F' => true,
+        _ => false,
+    }
+}
+
+fn is_ascii_binarydigit(c: char) -> bool {
+    match c {
+        '0' | '1' => true,
+        _ => false,
+    }
+}
+
+fn is_ascii_octaldigit(c: char) -> bool {
+    match c {
+        '0'..='7' => true,
+        _ => false,
+    }
+}
+
 impl<R: Read> Lexer<R> {
     pub fn new(reader: R, filename: Symbol) -> Self {
         Lexer {
@@ -65,8 +86,37 @@ impl<R: Read> Lexer<R> {
     }
 
     fn number(&mut self) -> Result<Token> {
-        let buffer = self.take_while(char::is_numeric)?;
-        let num = buffer.parse().unwrap();
+        let buffer;
+        let num;
+        match self.current_char()? {
+            '0' => {
+                self.advance()?;
+                match self.current_char()? {
+                    'x' | 'X' => {
+                        self.advance()?;
+                        buffer = self.take_while(is_ascii_hexdigit)?;
+                        num = i64::from_str_radix(&buffer, 16).unwrap();
+                    }
+                    'b' | 'B' => {
+                        self.advance()?;
+                        buffer = self.take_while(is_ascii_binarydigit)?;
+                        num = i64::from_str_radix(&buffer, 2).unwrap();
+                    }
+                    '0'..='7' => {
+                        buffer = self.take_while(is_ascii_octaldigit)?;
+                        num = i64::from_str_radix(&buffer, 8).unwrap();
+                    }
+                    _ => {
+                        num = 0 as i64;
+                    }
+                }
+            }
+            _ => {
+                buffer = self.take_while(char::is_numeric)?;
+                num = buffer.parse().unwrap();
+            }
+        }
+
         self.make_token(Tok::Number(num), num_text_size(num))
     }
 
