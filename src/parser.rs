@@ -940,7 +940,7 @@ impl<'a> Parser<'a> {
                                             left.pos,
                                         )),
                                     },
-                                    right.node.ty.clone(),
+                                    left.node.ty.clone(),
                                 ),
                                 left.pos,
                             )),
@@ -958,19 +958,19 @@ impl<'a> Parser<'a> {
                                                         left.pos,
                                                     )),
                                                 },
-                                                right.node.ty.clone(),
+                                                left.node.ty.clone(),
                                             ),
                                             left.pos,
                                         )),
                                         op,
                                         right: right.clone(),
                                     },
-                                    right.node.ty.clone(),
+                                    left.node.ty.clone(),
                                 ),
                                 left.pos,
                             )),
                         },
-                        right.node.ty.clone(),
+                        left.node.ty.clone(),
                     ),
                     left.pos,
                 );
@@ -1177,6 +1177,7 @@ impl<'a> Parser<'a> {
     }
 
     /// unary = ("+" | "-" | "*" | "&") cast
+    ///       | ("++" | "--") unary
     ///       | primary
     fn unary(&mut self) -> Result<ExprWithPos> {
         match self.peek()?.token {
@@ -1226,6 +1227,28 @@ impl<'a> Parser<'a> {
                     ),
                     pos,
                 ))
+            }
+            // read ++i as i+=1
+            PlusPlus => {
+                let pos = eat!(self, PlusPlus);
+                let i = self.unary()?;
+                let one = WithPos::new(
+                    WithType::new(Expr::Number { value: 1 }, i.node.ty.clone()),
+                    pos,
+                );
+                let binary = self.new_add(i, one, pos)?;
+                self.to_assign(binary)
+            }
+            // read --i as i-=1
+            MinusMinus => {
+                let pos = eat!(self, MinusMinus);
+                let i = self.unary()?;
+                let one = WithPos::new(
+                    WithType::new(Expr::Number { value: 1 }, i.node.ty.clone()),
+                    pos,
+                );
+                let binary = self.new_sub(i, one, pos)?;
+                self.to_assign(binary)
             }
             _ => self.postfix(),
         }

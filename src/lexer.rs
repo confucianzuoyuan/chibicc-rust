@@ -100,13 +100,17 @@ impl<R: Read> Lexer<R> {
         Ok(buffer)
     }
 
-    fn plus_or_plus_equal(&mut self) -> Result<Token> {
-        self.two_char_token(vec![('=', Tok::PlusEqual)], Tok::Plus)
+    fn plus_or_plus_equal_or_plus_plus(&mut self) -> Result<Token> {
+        self.two_char_token(vec![('=', Tok::PlusEqual), ('+', Tok::PlusPlus)], Tok::Plus)
     }
 
-    fn minus_or_minus_greater_or_minus_equal(&mut self) -> Result<Token> {
+    fn minus_or_minus_greater_or_minus_equal_or_minus_minus(&mut self) -> Result<Token> {
         self.two_char_token(
-            vec![('>', Tok::MinusGreater), ('=', Tok::MinusEqual)],
+            vec![
+                ('>', Tok::MinusGreater),
+                ('=', Tok::MinusEqual),
+                ('-', Tok::MinusMinus),
+            ],
             Tok::Minus,
         )
     }
@@ -392,8 +396,8 @@ impl<R: Read> Lexer<R> {
                 }
                 b'a'..=b'z' | b'A'..=b'Z' | b'_' => self.identifier(),
                 b'0'..=b'9' => self.number(),
-                b'+' => self.plus_or_plus_equal(),
-                b'-' => self.minus_or_minus_greater_or_minus_equal(),
+                b'+' => self.plus_or_plus_equal_or_plus_plus(),
+                b'-' => self.minus_or_minus_greater_or_minus_equal_or_minus_minus(),
                 b'*' => self.star_or_star_equal(),
                 b'/' => self.slash_or_comment_or_slash_equal(),
                 b'(' => self.simple_token(Tok::LeftParen),
