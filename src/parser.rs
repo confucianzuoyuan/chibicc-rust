@@ -993,7 +993,7 @@ impl<'a> Parser<'a> {
     }
 
     /// assign    = equality (assign-op assign)?
-    /// assign-op = "=" | "+=" | "-=" | "*=" | "/="
+    /// assign-op = "=" | "+=" | "-=" | "*=" | "/=" | "%="
     fn assign(&mut self) -> Result<ExprWithPos> {
         let mut expr = self.equality()?;
         add_type(&mut expr);
@@ -1048,6 +1048,22 @@ impl<'a> Parser<'a> {
                         Expr::Binary {
                             left: Box::new(expr.clone()),
                             op: WithPos::new(ast::BinaryOperator::Div, pos),
+                            right: Box::new(rhs),
+                        },
+                        expr.node.ty,
+                    ),
+                    pos,
+                );
+                expr = self.to_assign(expr)?;
+            }
+            Tok::PercentEqual => {
+                let pos = eat!(self, PercentEqual);
+                let rhs = self.assign()?;
+                expr = WithPos::new(
+                    WithType::new(
+                        Expr::Binary {
+                            left: Box::new(expr.clone()),
+                            op: WithPos::new(ast::BinaryOperator::Mod, pos),
                             right: Box::new(rhs),
                         },
                         expr.node.ty,
@@ -1155,6 +1171,7 @@ impl<'a> Parser<'a> {
             let op = match self.peek_token() {
                 Ok(&Tok::Star) => WithPos::new(BinaryOperator::Mul, eat!(self, Star)),
                 Ok(&Tok::Slash) => WithPos::new(BinaryOperator::Div, eat!(self, Slash)),
+                Ok(&Tok::Percent) => WithPos::new(BinaryOperator::Mod, eat!(self, Percent)),
                 _ => break,
             };
             let mut right = Box::new(self.cast()?);

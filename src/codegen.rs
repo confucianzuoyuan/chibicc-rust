@@ -395,6 +395,16 @@ impl CodeGenerator {
                         self.output.push(format!("  setge %al"));
                         self.output.push(format!("  movzb %al, %rax"));
                     }
+                    ast::BinaryOperator::Mod => {
+                        if get_sizeof(left.node.ty.clone()) == 8 {
+                            self.output.push(format!("  cqo"));
+                        } else {
+                            self.output.push(format!("  cdq"));
+                        }
+                        self.output.push(format!("  idiv {}", di));
+
+                        self.output.push(format!("  mov %rdx, %rax"));
+                    }
                 }
             }
         }

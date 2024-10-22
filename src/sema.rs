@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::ast::BinaryOperator::{Add, Div, Eq, Ge, Gt, Le, Lt, Mul, Ne, Sub};
+use crate::ast::BinaryOperator::*;
 use crate::ast::{self, BinaryOperatorWithPos, Expr, ExprWithPos, UnaryOperatorWithPos};
 use crate::position::WithPos;
 use crate::token::Token;
@@ -140,7 +140,7 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
         ast::Expr::Binary {
             op:
                 BinaryOperatorWithPos {
-                    node: Add | Sub | Mul | Div,
+                    node: Add | Sub | Mul | Div | Mod,
                     ..
                 },
             ref mut left,

@@ -185,6 +185,10 @@ impl<R: Read> Lexer<R> {
         self.two_char_token(vec![('=', Tok::EqualEqual)], Tok::Equal)
     }
 
+    fn percent_or_percent_equal(&mut self) -> Result<Token> {
+        self.two_char_token(vec![('=', Tok::PercentEqual)], Tok::Percent)
+    }
+
     fn eat(&mut self, ch: char) -> Result<()> {
         if self.current_char()? != ch {
             panic!(
@@ -465,6 +469,7 @@ impl<R: Read> Lexer<R> {
                 b'&' => self.simple_token(Tok::Amp),
                 b'.' => self.simple_token(Tok::Dot),
                 b'~' => self.simple_token(Tok::Tilde),
+                b'%' => self.percent_or_percent_equal(),
                 b'"' => self.string(),
                 b'\'' => self.char_literal(),
                 b'\0' => self.simple_token(Tok::EndOfFile),
