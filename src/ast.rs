@@ -147,6 +147,7 @@ impl Display for BinaryOperatorWithPos {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum UnaryOperator {
     Neg,
+    Not,
 }
 
 pub type UnaryOperatorWithPos = WithPos<UnaryOperator>;
@@ -157,6 +158,7 @@ impl Display for UnaryOperatorWithPos {
             let string = match *self {
                 WithPos { node, .. } => match node {
                     UnaryOperator::Neg => "-",
+                    UnaryOperator::Not => "!",
                 },
             };
             string.to_string()

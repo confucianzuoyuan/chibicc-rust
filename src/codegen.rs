@@ -272,10 +272,18 @@ impl CodeGenerator {
         self.output.push(format!("  .loc 1 {}", ast.pos.line));
         match &ast.node.node {
             ast::Expr::Number { value, .. } => self.output.push(format!("  mov ${}, %rax", value)),
-            ast::Expr::Unary { expr, .. } => {
-                self.gen_expr(expr);
-                self.output.push(format!("  neg %rax"));
-            }
+            ast::Expr::Unary { expr, op } => match op.node {
+                ast::UnaryOperator::Neg => {
+                    self.gen_expr(expr);
+                    self.output.push(format!("  neg %rax"));
+                }
+                ast::UnaryOperator::Not => {
+                    self.gen_expr(expr);
+                    self.output.push(format!("  cmp $0, %rax"));
+                    self.output.push(format!("  sete %al"));
+                    self.output.push(format!("  movzx %al, %rax"));
+                }
+            },
             ast::Expr::Variable { .. } | ast::Expr::MemberExpr { .. } => {
                 self.gen_addr(ast);
                 self.load(&ast.node.ty);

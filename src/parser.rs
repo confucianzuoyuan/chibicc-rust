@@ -1228,6 +1228,21 @@ impl<'a> Parser<'a> {
                     pos,
                 ))
             }
+            Bang => {
+                let op = WithPos::new(UnaryOperator::Not, eat!(self, Bang));
+                let expr = self.cast()?;
+                let pos = expr.pos.grow(expr.pos);
+                Ok(WithPos::new(
+                    WithType::new(
+                        Expr::Unary {
+                            op,
+                            expr: Box::new(expr),
+                        },
+                        Type::TyPlaceholder,
+                    ),
+                    pos,
+                ))
+            }
             // read ++i as i+=1
             PlusPlus => {
                 let pos = eat!(self, PlusPlus);
