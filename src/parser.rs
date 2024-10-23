@@ -240,6 +240,9 @@ impl<'a> Parser<'a> {
                     let ty = self.declarator(basety.clone())?;
                     match ty {
                         Type::TyVoid { name } => panic!("{:#?} variable declared void.", name),
+                        Type::TyArray { array_len, .. } if array_len < 0 => {
+                            panic!("variable has incomplete type.")
+                        }
                         _ => (),
                     }
                     let ident = self.get_ident(ty.clone())?;
@@ -653,9 +656,9 @@ impl<'a> Parser<'a> {
     }
 
     /// type-suffix = "(" func-params
-    ///             | "[" num "]" type-suffix
+    ///             | "[" array-dimensions
     ///             | ε
-    fn type_suffix(&mut self, mut ty: Type) -> Result<Type> {
+    fn type_suffix(&mut self, ty: Type) -> Result<Type> {
         match self.peek()?.token {
             Tok::LeftParen => {
                 eat!(self, LeftParen);
@@ -663,15 +666,7 @@ impl<'a> Parser<'a> {
             }
             Tok::LeftBracket => {
                 eat!(self, LeftBracket);
-                let num;
-                eat!(self, Number, num);
-                eat!(self, RightBracket);
-                ty = self.type_suffix(ty)?;
-                Ok(Type::TyArray {
-                    name: None,
-                    base: Box::new(ty),
-                    array_len: num as i32,
-                })
+                return self.array_dimensions(ty);
             }
             _ => Ok(ty),
         }
@@ -2611,6 +2606,32 @@ impl<'a> Parser<'a> {
                 }
                 _ => panic!(),
             },
+        }
+    }
+
+    /// array-dimensions = num? "]" type-suffix
+    fn array_dimensions(&mut self, mut ty: Type) -> Result<Type> {
+        match self.peek()?.token {
+            Tok::RightBracket => {
+                eat!(self, RightBracket);
+                ty = self.type_suffix(ty)?;
+                Ok(Type::TyArray {
+                    name: None,
+                    base: Box::new(ty),
+                    array_len: -1,
+                })
+            }
+            _ => {
+                let sz;
+                eat!(self, Number, sz);
+                eat!(self, RightBracket);
+                ty = self.type_suffix(ty)?;
+                Ok(Type::TyArray {
+                    name: None,
+                    base: Box::new(ty),
+                    array_len: sz as i32,
+                })
+            }
         }
     }
 
