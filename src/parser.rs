@@ -640,9 +640,32 @@ impl<'a> Parser<'a> {
                     break;
                 }
                 _ => {
-                    let basety = self.declspec(&mut None)?;
-                    let ty = self.declarator(basety)?;
-                    params.push(ty);
+                    let mut ty2 = self.declspec(&mut None)?;
+                    ty2 = self.declarator(ty2)?;
+
+                    // "array of T" is converted to "pointer to T" only in the parameter
+                    // context. For example, *argv[] is converted to **argv by this.
+                    match ty2 {
+                        Type::TyArray {
+                            name: old_name,
+                            base,
+                            array_len: _,
+                        } => {
+                            ty2 = pointer_to(*base);
+                            match ty2 {
+                                Type::TyPtr {
+                                    name: ref mut new_name,
+                                    ..
+                                } => {
+                                    *new_name = old_name;
+                                }
+                                _ => (),
+                            }
+                        }
+                        _ => (),
+                    }
+
+                    params.push(ty2);
                 }
             }
         }
