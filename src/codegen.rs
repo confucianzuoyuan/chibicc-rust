@@ -2,7 +2,7 @@ use std::io::Write;
 
 use crate::{
     ast::{self, Function, InitData},
-    sema::{self, get_sizeof, is_integer, Type},
+    sema::{self, Type},
 };
 
 static ARGREG_64: [&str; 6] = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"];
@@ -98,7 +98,7 @@ impl CodeGenerator {
             // a register always contains a valid value. The upper half of a
             // register for char, short and int may contain garbage. When we load
             // a long value to a register, it simply occupies the entire register.
-            _ => match get_sizeof(ty.clone()) {
+            _ => match ty.get_size() {
                 1 => self.output.push(format!("  movsbl (%rax), %eax")),
                 2 => self.output.push(format!("  movswl (%rax), %eax")),
                 4 => self.output.push(format!("  movsxd (%rax), %rax")),
@@ -117,7 +117,7 @@ impl CodeGenerator {
                     self.output.push(format!("  mov %r8b, {}(%rdi)", i));
                 }
             }
-            _ => match get_sizeof(ty.clone()) {
+            _ => match ty.get_size() {
                 1 => self.output.push(format!("  mov %al, (%rdi)")),
                 2 => self.output.push(format!("  mov %ax, (%rdi)")),
                 4 => self.output.push(format!("  mov %eax, (%rdi)")),
@@ -165,7 +165,7 @@ impl CodeGenerator {
     }
 
     fn cmp_zero(&mut self, ty: Type) {
-        if is_integer(ty.clone()) && get_sizeof(ty) <= 4 {
+        if ty.is_integer() && ty.get_size() <= 4 {
             self.output.push(format!("  cmp $0, %eax"));
         } else {
             self.output.push(format!("  cmp $0, %rax"));
@@ -358,7 +358,7 @@ impl CodeGenerator {
                     ast::BinaryOperator::Sub => self.output.push(format!("  sub {}, {}", di, ax)),
                     ast::BinaryOperator::Mul => self.output.push(format!("  imul {}, {}", di, ax)),
                     ast::BinaryOperator::Div => {
-                        if get_sizeof(left.node.ty.clone()) == 8 {
+                        if left.node.ty.get_size() == 8 {
                             self.output.push(format!("  cqo"));
                         } else {
                             self.output.push(format!("  cdq"));
@@ -396,7 +396,7 @@ impl CodeGenerator {
                         self.output.push(format!("  movzb %al, %rax"));
                     }
                     ast::BinaryOperator::Mod => {
-                        if get_sizeof(left.node.ty.clone()) == 8 {
+                        if left.node.ty.get_size() == 8 {
                             self.output.push(format!("  cqo"));
                         } else {
                             self.output.push(format!("  cdq"));
@@ -444,8 +444,8 @@ impl CodeGenerator {
         for f in &mut ast.funcs {
             let mut offset = 0;
             for local in &mut f.locals {
-                offset += get_sizeof(local.borrow().ty.clone());
-                offset = sema::align_to(offset, sema::get_align(local.borrow().ty.clone()));
+                offset += local.borrow().ty.get_size();
+                offset = sema::align_to(offset, local.borrow().ty.get_align());
                 local.borrow_mut().offset = -offset;
             }
             f.stack_size = sema::align_to(offset, 16);
@@ -464,10 +464,9 @@ impl CodeGenerator {
                         self.output.push(format!("  .byte {}", c as u8));
                     }
                 }
-                _ => self.output.push(format!(
-                    "  .zero {}",
-                    get_sizeof(global.borrow().ty.clone())
-                )),
+                _ => self
+                    .output
+                    .push(format!("  .zero {}", global.borrow().ty.get_size())),
             }
         }
     }
@@ -495,7 +494,7 @@ impl CodeGenerator {
             let mut i = 0;
             for p in &mut f.params.iter().rev() {
                 let offset = p.borrow().offset;
-                self.store_gp(i, offset, get_sizeof(p.borrow().ty.clone()));
+                self.store_gp(i, offset, p.borrow().ty.get_size());
                 i += 1;
             }
 

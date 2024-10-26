@@ -58,6 +58,90 @@ pub enum Type {
     TyPlaceholder,
 }
 
+impl Type {
+    pub fn struct_type(
+        name: Option<Token>,
+        members: Vec<Rc<RefCell<Member>>>,
+        type_size: i32,
+        align: i32,
+    ) -> Self {
+        Type::TyStruct {
+            name,
+            members,
+            type_size,
+            align,
+        }
+    }
+
+    pub fn get_size(&self) -> i32 {
+        match self {
+            Type::TyEnum { .. } => 4,
+            Type::TyBool { .. } => 1,
+            Type::TyVoid { .. } => 1,
+            Type::TyLong { .. } => 8,
+            Type::TyInt { .. } => 4,
+            Type::TyShort { .. } => 2,
+            Type::TyChar { .. } => 1,
+            Type::TyArray {
+                name: _,
+                base,
+                array_len,
+            } => base.get_size() * *array_len,
+            Type::TyPtr { .. } => 8,
+            Type::TyStruct { type_size, .. } => *type_size,
+            Type::TyUnion { type_size, .. } => *type_size,
+            _ => 0,
+        }
+    }
+
+    pub fn get_align(&self) -> i32 {
+        match self {
+            Type::TyEnum { .. } => 4,
+            Type::TyBool { .. } => 1,
+            Type::TyVoid { .. } => 1,
+            Type::TyStruct { align, .. } => *align,
+            Type::TyUnion { align, .. } => *align,
+            Type::TyLong { .. } => 8,
+            Type::TyInt { .. } => 4,
+            Type::TyShort { .. } => 2,
+            Type::TyChar { .. } => 1,
+            Type::TyArray { base, .. } => base.get_align(),
+            Type::TyPtr { .. } => 8,
+            _ => panic!("type {:?} has no align infomation.", self),
+        }
+    }
+
+    pub fn is_integer(&self) -> bool {
+        match self {
+            Type::TyBool { .. }
+            | Type::TyChar { .. }
+            | Type::TyEnum { .. }
+            | Type::TyInt { .. }
+            | Type::TyShort { .. }
+            | Type::TyLong { .. } => true,
+            _ => false,
+        }
+    }
+
+    pub fn set_name(&mut self, tok: Token) {
+        match self {
+            Type::TyInt { ref mut name }
+            | Type::TyVoid { ref mut name }
+            | Type::TyBool { ref mut name }
+            | Type::TyChar { ref mut name }
+            | Type::TyShort { ref mut name }
+            | Type::TyLong { ref mut name }
+            | Type::TyPtr { ref mut name, .. }
+            | Type::TyFunc { ref mut name, .. }
+            | Type::TyArray { ref mut name, .. }
+            | Type::TyEnum { ref mut name, .. }
+            | Type::TyStruct { ref mut name, .. }
+            | Type::TyUnion { ref mut name, .. } => *name = Some(tok.clone()),
+            _ => (),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Member {
     pub ty: Type,
@@ -87,7 +171,7 @@ pub fn pointer_to(base: Type) -> Type {
 pub fn get_common_type(ty1: Type, ty2: Type) -> Type {
     match (ty1.clone(), ty2.clone()) {
         (Type::TyArray { base, .. } | Type::TyPtr { base, .. }, _) => pointer_to(*base),
-        _ if get_sizeof(ty1) == 8 || get_sizeof(ty2) == 8 => Type::TyLong { name: None },
+        _ if ty1.get_size() == 8 || ty2.get_size() == 8 => Type::TyLong { name: None },
         _ => Type::TyInt { name: None },
     }
 }
@@ -296,58 +380,8 @@ pub fn sema_stmt(node: &mut ast::StmtWithPos) {
     }
 }
 
-pub fn get_sizeof(ty: Type) -> i32 {
-    match ty {
-        Type::TyEnum { .. } => 4,
-        Type::TyBool { .. } => 1,
-        Type::TyVoid { .. } => 1,
-        Type::TyLong { .. } => 8,
-        Type::TyInt { .. } => 4,
-        Type::TyShort { .. } => 2,
-        Type::TyChar { .. } => 1,
-        Type::TyArray {
-            name: _,
-            base,
-            array_len,
-        } => get_sizeof(*base) * array_len,
-        Type::TyPtr { .. } => 8,
-        Type::TyStruct { type_size, .. } => type_size,
-        Type::TyUnion { type_size, .. } => type_size,
-        _ => 0,
-    }
-}
-
 // Round up `n` to the nearest multiple of `align`. For instance,
 // align_to(5, 8) returns 8 and align_to(11, 8) returns 16.
 pub fn align_to(n: i32, align: i32) -> i32 {
     (n + align - 1) / align * align
-}
-
-pub fn get_align(ty: Type) -> i32 {
-    match ty {
-        Type::TyEnum { .. } => 4,
-        Type::TyBool { .. } => 1,
-        Type::TyVoid { .. } => 1,
-        Type::TyStruct { align, .. } => align,
-        Type::TyUnion { align, .. } => align,
-        Type::TyLong { .. } => 8,
-        Type::TyInt { .. } => 4,
-        Type::TyShort { .. } => 2,
-        Type::TyChar { .. } => 1,
-        Type::TyArray { base, .. } => get_align(*base),
-        Type::TyPtr { .. } => 8,
-        _ => panic!("type {:?} has no align infomation.", ty),
-    }
-}
-
-pub fn is_integer(ty: Type) -> bool {
-    match ty {
-        Type::TyBool { .. }
-        | Type::TyChar { .. }
-        | Type::TyEnum { .. }
-        | Type::TyInt { .. }
-        | Type::TyShort { .. }
-        | Type::TyLong { .. } => true,
-        _ => false,
-    }
 }

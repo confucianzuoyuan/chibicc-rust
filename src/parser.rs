@@ -7,9 +7,7 @@ use crate::{
     },
     error::Error::{self, UnexpectedToken},
     position::{Pos, WithPos},
-    sema::{
-        self, add_type, align_to, get_sizeof, is_integer, pointer_to, sema_stmt, Type, WithType,
-    },
+    sema::{self, add_type, align_to, pointer_to, sema_stmt, Type, WithType},
     symbol::{Strings, Symbols},
     token::{
         Tok::{self, *},
@@ -70,7 +68,7 @@ pub struct Parser<'a> {
     unique_name_count: i32,
 
     var_env: Symbols<Rc<RefCell<Obj>>>,
-    struct_tag_env: Symbols<Type>,
+    struct_tag_env: Symbols<Box<Type>>,
     var_attr_env: Symbols<VarAttr>,
 
     // Points to the function object the parser is currently parsing.
@@ -301,7 +299,7 @@ impl<'a> Parser<'a> {
                 if let Some(struct_tag) = tag {
                     let ty = self.struct_tag_env.look(self.symbols.symbol(&struct_tag));
                     if let Some(_ty) = ty {
-                        return Ok(_ty.clone());
+                        return Ok(*_ty.clone());
                     } else {
                         panic!("unknown struct type: {}", struct_tag);
                     }
@@ -347,12 +345,12 @@ impl<'a> Parser<'a> {
         let mut struct_align = 1;
         let mut offset = 0;
         for mem in members.clone() {
-            offset = align_to(offset, sema::get_align(mem.borrow().ty.clone()));
+            offset = align_to(offset, mem.borrow().ty.get_align());
             mem.borrow_mut().offset = offset;
-            offset += get_sizeof(mem.borrow().ty.clone());
+            offset += mem.borrow().ty.get_size();
 
-            if struct_align < sema::get_align(mem.borrow().ty.clone()) {
-                struct_align = sema::get_align(mem.borrow().ty.clone());
+            if struct_align < mem.borrow().ty.get_align() {
+                struct_align = mem.borrow().ty.get_align();
             }
         }
 
@@ -363,8 +361,10 @@ impl<'a> Parser<'a> {
             align: struct_align,
         };
         if let Some(struct_tag) = tag {
-            self.struct_tag_env
-                .enter(self.symbols.symbol(&struct_tag), struct_ty.clone());
+            self.struct_tag_env.enter(
+                self.symbols.symbol(&struct_tag),
+                Box::new(struct_ty.clone()),
+            );
         }
         Ok(struct_ty)
     }
@@ -390,7 +390,7 @@ impl<'a> Parser<'a> {
                 if let Some(union_tag) = tag {
                     let ty = self.struct_tag_env.look(self.symbols.symbol(&union_tag));
                     if let Some(_ty) = ty {
-                        return Ok(_ty.clone());
+                        return Ok(*_ty.clone());
                     } else {
                         panic!("unknown union type: {}", union_tag);
                     }
@@ -439,11 +439,11 @@ impl<'a> Parser<'a> {
         let mut union_align = 1;
         let mut type_size = 0;
         for mem in members.clone() {
-            if union_align < sema::get_align(mem.borrow().ty.clone()) {
-                union_align = sema::get_align(mem.borrow().ty.clone());
+            if union_align < mem.borrow().ty.get_align() {
+                union_align = mem.borrow().ty.get_align();
             }
-            if type_size < sema::get_sizeof(mem.borrow().ty.clone()) {
-                type_size = sema::get_sizeof(mem.borrow().ty.clone());
+            if type_size < mem.borrow().ty.get_size() {
+                type_size = mem.borrow().ty.get_size();
             }
         }
 
@@ -455,7 +455,7 @@ impl<'a> Parser<'a> {
         };
         if let Some(struct_tag) = tag {
             self.struct_tag_env
-                .enter(self.symbols.symbol(&struct_tag), union_ty.clone());
+                .enter(self.symbols.symbol(&struct_tag), Box::new(union_ty.clone()));
         }
         Ok(union_ty)
     }
@@ -717,21 +717,7 @@ impl<'a> Parser<'a> {
                             let tok = self.token()?;
                             eat!(self, RightParen);
                             let mut ty = self.type_suffix(ty)?;
-                            match ty {
-                                Type::TyInt { ref mut name }
-                                | Type::TyVoid { ref mut name }
-                                | Type::TyBool { ref mut name }
-                                | Type::TyChar { ref mut name }
-                                | Type::TyShort { ref mut name }
-                                | Type::TyLong { ref mut name }
-                                | Type::TyPtr { ref mut name, .. }
-                                | Type::TyFunc { ref mut name, .. }
-                                | Type::TyArray { ref mut name, .. }
-                                | Type::TyEnum { ref mut name, .. }
-                                | Type::TyStruct { ref mut name, .. }
-                                | Type::TyUnion { ref mut name, .. } => *name = Some(tok.clone()),
-                                _ => (),
-                            }
+                            ty.set_name(tok);
                             return Ok(ty);
                         }
                         _ => {
@@ -765,21 +751,7 @@ impl<'a> Parser<'a> {
             Tok::Ident(..) => {
                 let tok = self.token()?;
                 ty = self.type_suffix(ty)?;
-                match ty {
-                    Type::TyInt { ref mut name }
-                    | Type::TyVoid { ref mut name }
-                    | Type::TyBool { ref mut name }
-                    | Type::TyChar { ref mut name }
-                    | Type::TyShort { ref mut name }
-                    | Type::TyLong { ref mut name }
-                    | Type::TyPtr { ref mut name, .. }
-                    | Type::TyFunc { ref mut name, .. }
-                    | Type::TyArray { ref mut name, .. }
-                    | Type::TyEnum { ref mut name, .. }
-                    | Type::TyStruct { ref mut name, .. }
-                    | Type::TyUnion { ref mut name, .. } => *name = Some(tok.clone()),
-                    _ => (),
-                }
+                ty.set_name(tok);
             }
             _ => panic!("expected a variable name, but got {:?}", self.peek()?),
         }
@@ -1546,7 +1518,7 @@ impl<'a> Parser<'a> {
 
         match (lhs.node.ty.clone(), rhs.node.ty.clone()) {
             // num - num
-            _ if is_integer(lhs.node.ty.clone()) && is_integer(rhs.node.ty.clone()) => {
+            _ if lhs.node.ty.is_integer() && rhs.node.ty.is_integer() => {
                 lhs = WithPos::new(
                     WithType::new(
                         Expr::Binary {
@@ -1570,7 +1542,7 @@ impl<'a> Parser<'a> {
                             right: Box::new(WithPos::new(
                                 WithType::new(
                                     Expr::Number {
-                                        value: get_sizeof(*base) as i64,
+                                        value: base.get_size() as i64,
                                     },
                                     Type::TyLong { name: None },
                                 ),
@@ -1615,7 +1587,7 @@ impl<'a> Parser<'a> {
                             right: Box::new(WithPos::new(
                                 WithType::new(
                                     Expr::Number {
-                                        value: get_sizeof(*base) as i64,
+                                        value: base.get_size() as i64,
                                     },
                                     Type::TyInt { name: None },
                                 ),
@@ -1658,7 +1630,7 @@ impl<'a> Parser<'a> {
                             right: Box::new(WithPos::new(
                                 WithType::new(
                                     Expr::Number {
-                                        value: get_sizeof(*base) as i64,
+                                        value: base.get_size() as i64,
                                     },
                                     Type::TyLong { name: None },
                                 ),
@@ -1695,7 +1667,7 @@ impl<'a> Parser<'a> {
                             right: Box::new(WithPos::new(
                                 WithType::new(
                                     Expr::Number {
-                                        value: get_sizeof(*base) as i64,
+                                        value: base.get_size() as i64,
                                     },
                                     Type::TyLong { name: None },
                                 ),
@@ -1719,7 +1691,7 @@ impl<'a> Parser<'a> {
                 );
             }
             // num + num
-            _ if is_integer(lhs.node.ty.clone()) && is_integer(rhs.node.ty.clone()) => {
+            _ if lhs.node.ty.is_integer() && rhs.node.ty.is_integer() => {
                 lhs = WithPos::new(
                     WithType::new(
                         Expr::Binary {
@@ -2051,7 +2023,7 @@ impl<'a> Parser<'a> {
                             Ok(WithPos::new(
                                 WithType::new(
                                     Expr::Number {
-                                        value: get_sizeof(ty) as i64,
+                                        value: ty.get_size() as i64,
                                     },
                                     Type::TyInt { name: None },
                                 ),
@@ -2065,7 +2037,7 @@ impl<'a> Parser<'a> {
                             node = WithPos::new(
                                 WithType::new(
                                     Expr::Number {
-                                        value: get_sizeof(node.node.ty.clone()) as i64,
+                                        value: node.node.ty.get_size() as i64,
                                     },
                                     Type::TyInt { name: None },
                                 ),
@@ -2081,7 +2053,7 @@ impl<'a> Parser<'a> {
                         Ok(WithPos::new(
                             WithType::new(
                                 Expr::Number {
-                                    value: get_sizeof(node.node.ty.clone()) as i64,
+                                    value: node.node.ty.get_size() as i64,
                                 },
                                 Type::TyInt { name: None },
                             ),
@@ -2556,9 +2528,9 @@ impl<'a> Parser<'a> {
 
                         self.struct_tag_env.enter(
                             self.symbols.symbol(&ident),
-                            Type::TyEnum {
+                            Box::new(Type::TyEnum {
                                 name: Some(ident_tok.clone()),
-                            },
+                            }),
                         );
 
                         Ok(Type::TyEnum {
@@ -2567,9 +2539,9 @@ impl<'a> Parser<'a> {
                     }
                     _ => {
                         if let Some(ty) = self.struct_tag_env.look(self.symbols.symbol(&ident)) {
-                            match ty {
+                            match **ty {
                                 Type::TyEnum { .. } => {
-                                    return Ok(ty.clone());
+                                    return Ok(*ty.clone());
                                 }
                                 _ => panic!(),
                             }
