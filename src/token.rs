@@ -43,6 +43,7 @@ pub enum Tok {
     Tilde,
     Percent,
     PercentEqual,
+    Colon,
     Number(i64),
     Ident(String),
     Str(String),
@@ -64,6 +65,7 @@ pub enum Tok {
     KeywordBool,
     KeywordEnum,
     KeywordStatic,
+    KeywordGoto,
 
     EndOfFile,
 }
@@ -126,6 +128,7 @@ impl Display for Tok {
                 Tok::Tilde => "~",
                 Tok::Percent => "%",
                 Tok::PercentEqual => "%=",
+                Tok::Colon => ":",
                 Tok::Number(i) => return i.to_string(),
                 Tok::Ident(ref ident) => ident,
                 Tok::KeywordReturn => "return",
@@ -145,6 +148,7 @@ impl Display for Tok {
                 Tok::KeywordBool => "_Bool",
                 Tok::KeywordEnum => "enum",
                 Tok::KeywordStatic => "static",
+                Tok::KeywordGoto => "goto",
                 Tok::EndOfFile => "<eof>",
                 Tok::Str(ref string) => return format!("{:?}", string),
             };

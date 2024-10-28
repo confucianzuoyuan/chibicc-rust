@@ -1,4 +1,4 @@
-use std::io::Write;
+use std::{collections::HashMap, io::Write};
 
 use crate::{
     ast::{self, Function, InitData},
@@ -56,6 +56,8 @@ pub struct CodeGenerator {
     out_writer: Box<dyn Write>,
 
     file_path: String,
+
+    goto_labels: HashMap<String, String>,
 }
 
 impl CodeGenerator {
@@ -68,6 +70,8 @@ impl CodeGenerator {
             out_writer,
 
             file_path,
+
+            goto_labels: HashMap::new(),
         }
     }
 
@@ -264,6 +268,15 @@ impl CodeGenerator {
                 self.gen_stmt(body);
                 self.output.push(format!(" jmp .L.begin.{}", c));
                 self.output.push(format!(".L.end.{}:", c));
+            }
+            ast::Stmt::GotoStmt { label } => {
+                self.output
+                    .push(format!("  jmp {}", self.goto_labels.get(label).unwrap()));
+            }
+            ast::Stmt::LabelStmt { label, stmt } => {
+                self.output
+                    .push(format!("{}:", self.goto_labels.get(label).unwrap()));
+                self.gen_stmt(stmt);
             }
         }
     }
@@ -473,6 +486,7 @@ impl CodeGenerator {
 
     fn emit_text(&mut self, ast: &mut ast::Program) {
         for f in &mut ast.funcs {
+            self.goto_labels = f.goto_labels.clone();
             if !f.is_definition {
                 continue;
             }

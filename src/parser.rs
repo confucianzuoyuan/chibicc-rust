@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc, result};
+use std::{cell::RefCell, collections::HashMap, rc::Rc, result};
 
 use crate::{
     ast::{
@@ -73,6 +73,8 @@ pub struct Parser<'a> {
 
     // Points to the function object the parser is currently parsing.
     current_fn: Option<Function>,
+
+    goto_labels: HashMap<String, String>,
 }
 
 impl<'a> Parser<'a> {
@@ -94,6 +96,8 @@ impl<'a> Parser<'a> {
             var_attr_env,
 
             current_fn: None,
+
+            goto_labels: HashMap::new(),
         }
     }
 
@@ -104,7 +108,7 @@ impl<'a> Parser<'a> {
     ///      | "{" compound-stmt
     ///      | expr-stmt
     fn stmt(&mut self) -> Result<StmtWithPos> {
-        match self.peek()?.token {
+        match self.peek()?.token.clone() {
             Tok::KeywordReturn => {
                 let pos = eat!(self, KeywordReturn);
                 let mut expr = self.expr()?;
@@ -216,6 +220,38 @@ impl<'a> Parser<'a> {
                     },
                     pos,
                 ))
+            }
+            Tok::KeywordGoto => {
+                let pos = eat!(self, KeywordGoto);
+                let label;
+                eat!(self, Ident, label);
+                eat!(self, Semicolon);
+                let node = WithPos::new(
+                    Stmt::GotoStmt {
+                        label: label.clone(),
+                    },
+                    pos,
+                );
+                Ok(node)
+            }
+            Tok::Ident(..) if self.peek_next_one()?.token == Colon => {
+                let label;
+                let pos = eat!(self, Ident, label);
+                eat!(self, Colon);
+                let stmt = self.stmt()?;
+                let unique_name = format!(".L..{}", self.unique_name_count);
+                self.unique_name_count += 1;
+
+                self.goto_labels.insert(label.clone(), unique_name);
+
+                let node = WithPos::new(
+                    Stmt::LabelStmt {
+                        label: label.clone(),
+                        stmt: Box::new(stmt),
+                    },
+                    pos,
+                );
+                Ok(node)
             }
             _ => self.expr_stmt(),
         }
@@ -2319,6 +2355,7 @@ impl<'a> Parser<'a> {
                     is_definition: false,
                     ty: ty.clone(),
                     is_static,
+                    goto_labels: HashMap::new(),
                 });
 
                 self.current_fn = Some(ast::Function {
@@ -2330,6 +2367,7 @@ impl<'a> Parser<'a> {
                     is_definition: false,
                     ty: ty.clone(),
                     is_static,
+                    goto_labels: HashMap::new(),
                 });
 
                 for p in params {
@@ -2364,7 +2402,10 @@ impl<'a> Parser<'a> {
             is_definition: is_definition,
             ty,
             is_static,
+            goto_labels: self.goto_labels.clone(),
         });
+        self.goto_labels = HashMap::new();
+
         Ok(self.current_pos)
     }
 

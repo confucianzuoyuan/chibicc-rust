@@ -407,6 +407,8 @@ pub fn sema_stmt(node: &mut ast::StmtWithPos) {
             add_type(condition);
             sema_stmt(body);
         }
+        ast::Stmt::LabelStmt { label: _, stmt } => sema_stmt(stmt),
+        _ => (),
     }
 }
 

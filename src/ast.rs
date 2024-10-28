@@ -1,4 +1,4 @@
-use std::{cell::RefCell, fmt::Display, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, fmt::Display, rc::Rc};
 
 use crate::{
     position::WithPos,
@@ -208,6 +208,13 @@ pub enum Stmt {
         condition: ExprWithPos,
         body: Box<StmtWithPos>,
     },
+    GotoStmt {
+        label: String,
+    },
+    LabelStmt {
+        label: String,
+        stmt: Box<StmtWithPos>,
+    },
 }
 
 pub type StmtWithPos = WithPos<Stmt>;
@@ -230,6 +237,8 @@ impl Display for StmtWithPos {
                     Stmt::IfStmt { .. } => return format!("{:?}", node),
                     Stmt::Return { expr } => return format!("return {}", expr),
                     Stmt::WhileStmt { .. } => return format!("{:?}", node),
+                    Stmt::GotoStmt { .. } => return format!("{:?}", node),
+                    Stmt::LabelStmt { .. } => return format!("{:?}", node),
                 },
             };
             string.to_string()
@@ -276,6 +285,7 @@ pub struct Function {
     pub is_definition: bool,
     pub ty: Type,
     pub is_static: bool,
+    pub goto_labels: HashMap<String, String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

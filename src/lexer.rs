@@ -233,6 +233,7 @@ impl<R: Read> Lexer<R> {
             "_Bool" => Tok::KeywordBool,
             "enum" => Tok::KeywordEnum,
             "static" => Tok::KeywordStatic,
+            "goto" => Tok::KeywordGoto,
             _ => Tok::Ident(ident),
         };
         self.make_token(token, len)
@@ -484,6 +485,7 @@ impl<R: Read> Lexer<R> {
                 b'.' => self.simple_token(Tok::Dot),
                 b'~' => self.simple_token(Tok::Tilde),
                 b'%' => self.percent_or_percent_equal(),
+                b':' => self.simple_token(Tok::Colon),
                 b'"' => self.string(),
                 b'\'' => self.char_literal(),
                 b'\0' => self.simple_token(Tok::EndOfFile),
