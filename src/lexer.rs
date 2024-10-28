@@ -235,6 +235,7 @@ impl<R: Read> Lexer<R> {
             "static" => Tok::KeywordStatic,
             "goto" => Tok::KeywordGoto,
             "break" => Tok::KeywordBreak,
+            "continue" => Tok::KeywordContinue,
             _ => Tok::Ident(ident),
         };
         self.make_token(token, len)

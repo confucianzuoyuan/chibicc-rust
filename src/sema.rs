@@ -394,6 +394,7 @@ pub fn sema_stmt(node: &mut ast::StmtWithPos) {
             body,
             increment,
             break_label: _,
+            continue_label: _,
         } => {
             sema_stmt(init);
             if let Some(cond) = condition {

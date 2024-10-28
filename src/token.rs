@@ -67,6 +67,7 @@ pub enum Tok {
     KeywordStatic,
     KeywordGoto,
     KeywordBreak,
+    KeywordContinue,
 
     EndOfFile,
 }
@@ -151,6 +152,7 @@ impl Display for Tok {
                 Tok::KeywordStatic => "static",
                 Tok::KeywordGoto => "goto",
                 Tok::KeywordBreak => "break",
+                Tok::KeywordContinue => "continue",
                 Tok::EndOfFile => "<eof>",
                 Tok::Str(ref string) => return format!("{:?}", string),
             };

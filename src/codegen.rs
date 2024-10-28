@@ -242,6 +242,7 @@ impl CodeGenerator {
                 body,
                 increment,
                 break_label,
+                continue_label,
             } => {
                 let c = self.label_count;
                 self.label_count += 1;
@@ -255,6 +256,9 @@ impl CodeGenerator {
                     }
                 }
                 self.gen_stmt(body);
+                if let Some(cont_label) = continue_label {
+                    self.output.push(format!("{}:", cont_label));
+                }
                 if let Some(inc) = increment {
                     self.gen_expr(inc);
                 }
@@ -267,6 +271,7 @@ impl CodeGenerator {
                 condition,
                 body,
                 break_label,
+                continue_label,
             } => {
                 let c = self.label_count;
                 self.label_count += 1;
@@ -277,6 +282,9 @@ impl CodeGenerator {
                     self.output.push(format!("  je {}", brk_label));
                 }
                 self.gen_stmt(body);
+                if let Some(cont_label) = continue_label {
+                    self.output.push(format!("{}:", cont_label));
+                }
                 self.output.push(format!(" jmp .L.begin.{}", c));
                 if let Some(brk_label) = break_label {
                     self.output.push(format!("{}:", brk_label));

@@ -76,6 +76,7 @@ pub struct Parser<'a> {
 
     goto_labels: HashMap<String, String>,
     break_label: Option<String>,
+    continue_label: Option<String>,
 }
 
 impl<'a> Parser<'a> {
@@ -100,6 +101,7 @@ impl<'a> Parser<'a> {
 
             goto_labels: HashMap::new(),
             break_label: None,
+            continue_label: None,
         }
     }
 
@@ -112,7 +114,10 @@ impl<'a> Parser<'a> {
     /// stmt = "return" expr ";"
     ///      | "if" "(" expr ")" stmt ("else" stmt)?
     ///      | "for" "(" expr-stmt expr? ";" expr? ")" stmt
-    ///      | "while" "(" expr ")"
+    ///      | "while" "(" expr ")" stmt
+    ///      | "goto" ident ";"
+    ///      | "continue" ";"
+    ///      | ident ":" stmt
     ///      | "{" compound-stmt
     ///      | expr-stmt
     fn stmt(&mut self) -> Result<StmtWithPos> {
@@ -182,6 +187,9 @@ impl<'a> Parser<'a> {
                 let old_break_label = self.break_label.clone();
                 self.break_label = Some(self.new_unique_name());
 
+                let old_continue_label = self.continue_label.clone();
+                self.continue_label = Some(self.new_unique_name());
+
                 let tok = self.peek()?.token.clone();
                 let init = if self.is_typename(tok)? {
                     let basety = self.declspec(&mut None)?;
@@ -215,11 +223,13 @@ impl<'a> Parser<'a> {
                         body: Box::new(body),
                         increment: inc,
                         break_label: self.break_label.clone(),
+                        continue_label: self.continue_label.clone(),
                     },
                     pos,
                 );
 
                 self.break_label = old_break_label;
+                self.continue_label = old_continue_label;
 
                 Ok(node)
             }
@@ -230,16 +240,20 @@ impl<'a> Parser<'a> {
                 eat!(self, RightParen);
                 let old_break_label = self.break_label.clone();
                 self.break_label = Some(self.new_unique_name());
+                let old_continue_label = self.continue_label.clone();
+                self.continue_label = Some(self.new_unique_name());
                 let body = self.stmt()?;
                 let node = WithPos::new(
                     Stmt::WhileStmt {
                         condition: cond,
                         body: Box::new(body),
                         break_label: self.break_label.clone(),
+                        continue_label: self.continue_label.clone(),
                     },
                     pos,
                 );
                 self.break_label = old_break_label;
+                self.continue_label = old_continue_label;
                 Ok(node)
             }
             Tok::KeywordGoto => {
@@ -290,6 +304,25 @@ impl<'a> Parser<'a> {
                     Ok(node)
                 } else {
                     panic!("stray break: {}", pos);
+                }
+            }
+            Tok::KeywordContinue => {
+                let pos = eat!(self, KeywordContinue);
+
+                if let Some(cont_label) = self.continue_label.clone() {
+                    eat!(self, Semicolon);
+                    self.goto_labels
+                        .insert(cont_label.clone(), cont_label.clone());
+
+                    let node = WithPos::new(
+                        Stmt::GotoStmt {
+                            label: cont_label.clone(),
+                        },
+                        pos,
+                    );
+                    Ok(node)
+                } else {
+                    panic!("stray continue: {}", pos);
                 }
             }
             _ => self.expr_stmt(),
