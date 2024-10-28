@@ -234,6 +234,7 @@ impl<R: Read> Lexer<R> {
             "enum" => Tok::KeywordEnum,
             "static" => Tok::KeywordStatic,
             "goto" => Tok::KeywordGoto,
+            "break" => Tok::KeywordBreak,
             _ => Tok::Ident(ident),
         };
         self.make_token(token, len)

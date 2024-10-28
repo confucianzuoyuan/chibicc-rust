@@ -203,10 +203,12 @@ pub enum Stmt {
         condition: Option<ExprWithPos>,
         body: Box<StmtWithPos>,
         increment: Option<ExprWithPos>,
+        break_label: Option<String>,
     },
     WhileStmt {
         condition: ExprWithPos,
         body: Box<StmtWithPos>,
+        break_label: Option<String>,
     },
     GotoStmt {
         label: String,

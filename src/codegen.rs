@@ -241,6 +241,7 @@ impl CodeGenerator {
                 condition,
                 body,
                 increment,
+                break_label,
             } => {
                 let c = self.label_count;
                 self.label_count += 1;
@@ -249,25 +250,37 @@ impl CodeGenerator {
                 if let Some(cond) = condition {
                     self.gen_expr(cond);
                     self.output.push(format!("  cmp $0, %rax"));
-                    self.output.push(format!("  je .L.end.{}", c));
+                    if let Some(brk_label) = break_label {
+                        self.output.push(format!("  je {}", brk_label));
+                    }
                 }
                 self.gen_stmt(body);
                 if let Some(inc) = increment {
                     self.gen_expr(inc);
                 }
                 self.output.push(format!("  jmp .L.begin.{}", c));
-                self.output.push(format!(".L.end.{}:", c));
+                if let Some(brk_label) = break_label {
+                    self.output.push(format!("{}:", brk_label));
+                }
             }
-            ast::Stmt::WhileStmt { condition, body } => {
+            ast::Stmt::WhileStmt {
+                condition,
+                body,
+                break_label,
+            } => {
                 let c = self.label_count;
                 self.label_count += 1;
                 self.output.push(format!(".L.begin.{}:", c));
                 self.gen_expr(condition);
                 self.output.push(format!("  cmp $0, %rax"));
-                self.output.push(format!("  je .L.end.{}", c));
+                if let Some(brk_label) = break_label {
+                    self.output.push(format!("  je {}", brk_label));
+                }
                 self.gen_stmt(body);
                 self.output.push(format!(" jmp .L.begin.{}", c));
-                self.output.push(format!(".L.end.{}:", c));
+                if let Some(brk_label) = break_label {
+                    self.output.push(format!("{}:", brk_label));
+                }
             }
             ast::Stmt::GotoStmt { label } => {
                 self.output

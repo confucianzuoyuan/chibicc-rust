@@ -393,6 +393,7 @@ pub fn sema_stmt(node: &mut ast::StmtWithPos) {
             condition,
             body,
             increment,
+            break_label: _,
         } => {
             sema_stmt(init);
             if let Some(cond) = condition {
@@ -403,7 +404,9 @@ pub fn sema_stmt(node: &mut ast::StmtWithPos) {
                 add_type(inc);
             }
         }
-        ast::Stmt::WhileStmt { condition, body } => {
+        ast::Stmt::WhileStmt {
+            condition, body, ..
+        } => {
             add_type(condition);
             sema_stmt(body);
         }

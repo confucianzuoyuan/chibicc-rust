@@ -75,6 +75,7 @@ pub struct Parser<'a> {
     current_fn: Option<Function>,
 
     goto_labels: HashMap<String, String>,
+    break_label: Option<String>,
 }
 
 impl<'a> Parser<'a> {
@@ -98,7 +99,14 @@ impl<'a> Parser<'a> {
             current_fn: None,
 
             goto_labels: HashMap::new(),
+            break_label: None,
         }
+    }
+
+    fn new_unique_name(&mut self) -> String {
+        let unique_name = format!(".L..{}", self.unique_name_count);
+        self.unique_name_count += 1;
+        unique_name
     }
 
     /// stmt = "return" expr ";"
@@ -171,6 +179,9 @@ impl<'a> Parser<'a> {
 
                 self.var_env.begin_scope();
 
+                let old_break_label = self.break_label.clone();
+                self.break_label = Some(self.new_unique_name());
+
                 let tok = self.peek()?.token.clone();
                 let init = if self.is_typename(tok)? {
                     let basety = self.declspec(&mut None)?;
@@ -197,29 +208,39 @@ impl<'a> Parser<'a> {
 
                 self.var_env.end_scope();
 
-                Ok(WithPos::new(
+                let node = WithPos::new(
                     Stmt::ForStmt {
                         init: Box::new(init),
                         condition: cond,
                         body: Box::new(body),
                         increment: inc,
+                        break_label: self.break_label.clone(),
                     },
                     pos,
-                ))
+                );
+
+                self.break_label = old_break_label;
+
+                Ok(node)
             }
             Tok::KeywordWhile => {
                 let pos = eat!(self, KeywordWhile);
                 eat!(self, LeftParen);
                 let cond = self.expr()?;
                 eat!(self, RightParen);
+                let old_break_label = self.break_label.clone();
+                self.break_label = Some(self.new_unique_name());
                 let body = self.stmt()?;
-                Ok(WithPos::new(
+                let node = WithPos::new(
                     Stmt::WhileStmt {
                         condition: cond,
                         body: Box::new(body),
+                        break_label: self.break_label.clone(),
                     },
                     pos,
-                ))
+                );
+                self.break_label = old_break_label;
+                Ok(node)
             }
             Tok::KeywordGoto => {
                 let pos = eat!(self, KeywordGoto);
@@ -239,8 +260,7 @@ impl<'a> Parser<'a> {
                 let pos = eat!(self, Ident, label);
                 eat!(self, Colon);
                 let stmt = self.stmt()?;
-                let unique_name = format!(".L..{}", self.unique_name_count);
-                self.unique_name_count += 1;
+                let unique_name = self.new_unique_name();
 
                 self.goto_labels.insert(label.clone(), unique_name);
 
@@ -252,6 +272,25 @@ impl<'a> Parser<'a> {
                     pos,
                 );
                 Ok(node)
+            }
+            Tok::KeywordBreak => {
+                let pos = eat!(self, KeywordBreak);
+
+                if let Some(brk_label) = self.break_label.clone() {
+                    eat!(self, Semicolon);
+                    self.goto_labels
+                        .insert(brk_label.clone(), brk_label.clone());
+
+                    let node = WithPos::new(
+                        Stmt::GotoStmt {
+                            label: brk_label.clone(),
+                        },
+                        pos,
+                    );
+                    Ok(node)
+                } else {
+                    panic!("stray break: {}", pos);
+                }
             }
             _ => self.expr_stmt(),
         }
@@ -2243,8 +2282,7 @@ impl<'a> Parser<'a> {
                 // 字符串是字符数组类型，需要添加一个`'\0'`作为结束符。
                 let mut string;
                 let pos = eat!(self, Str, string);
-                let unique_name = format!(".L..{}", self.unique_name_count);
-                self.unique_name_count += 1;
+                let unique_name = self.new_unique_name();
                 string.push_str("\0");
                 let var_type = Type::TyArray {
                     name: None,
