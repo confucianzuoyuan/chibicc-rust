@@ -68,7 +68,7 @@ pub struct Parser<'a> {
     unique_name_count: i32,
 
     var_env: Symbols<Rc<RefCell<Obj>>>,
-    struct_tag_env: Symbols<Box<Type>>,
+    struct_tag_env: Symbols<Rc<RefCell<Type>>>,
     var_attr_env: Symbols<VarAttr>,
 
     // Points to the function object the parser is currently parsing.
@@ -278,35 +278,8 @@ impl<'a> Parser<'a> {
         Ok(WithPos::new(Stmt::Block { body: decls }, self.peek()?.pos))
     }
 
-    /// struct-decl = "{" struct-members
-    /// struct-members = (declspec declarator (","  declarator)* ";")*
-    fn struct_decl(&mut self) -> Result<Type> {
-        // Read a struct tag.
-        let tag = match self.peek()?.token {
-            Tok::Ident(..) => {
-                let ident;
-                eat!(self, Ident, ident);
-                Some(ident)
-            }
-            _ => None,
-        };
-
-        match self.peek()?.token {
-            Tok::LeftBrace => {
-                eat!(self, LeftBrace);
-            }
-            _ => {
-                if let Some(struct_tag) = tag {
-                    let ty = self.struct_tag_env.look(self.symbols.symbol(&struct_tag));
-                    if let Some(_ty) = ty {
-                        return Ok(*_ty.clone());
-                    } else {
-                        panic!("unknown struct type: {}", struct_tag);
-                    }
-                }
-            }
-        }
-
+    // struct-members = (declspec declarator (","  declarator)* ";")*
+    fn struct_members(&mut self, ty: &mut Type) -> Result<()> {
         // Construct a struct object.
         let mut members = vec![];
         loop {
@@ -342,31 +315,91 @@ impl<'a> Parser<'a> {
             }
         }
 
-        let mut struct_align = 1;
-        let mut offset = 0;
-        for mem in members.clone() {
-            offset = align_to(offset, mem.borrow().ty.get_align());
-            mem.borrow_mut().offset = offset;
-            offset += mem.borrow().ty.get_size();
+        ty.set_struct_members(members);
+        Ok(())
+    }
 
-            if struct_align < mem.borrow().ty.get_align() {
-                struct_align = mem.borrow().ty.get_align();
+    // struct-union-decl = ident? ("{" struct-members)?
+    fn struct_union_decl(&mut self) -> Result<Type> {
+        // Read a struct tag.
+        let (tag, tag_token) = match self.peek()?.token {
+            Tok::Ident(..) => {
+                let ident;
+                let tok = self.peek()?.clone();
+                eat!(self, Ident, ident);
+                (Some(ident), Some(tok))
+            }
+            _ => (None, None),
+        };
+
+        match self.peek()?.token {
+            Tok::LeftBrace => {
+                eat!(self, LeftBrace);
+            }
+            _ => {
+                if let Some(struct_tag) = tag {
+                    let ty = self.struct_tag_env.look(self.symbols.symbol(&struct_tag));
+                    if let Some(_ty) = ty {
+                        return Ok(_ty.borrow_mut().clone());
+                    } else {
+                        let ty = Type::struct_type(tag_token, vec![], -1, 1);
+                        self.struct_tag_env.enter(
+                            self.symbols.symbol(&struct_tag),
+                            Rc::new(RefCell::new(ty.clone())),
+                        );
+                        return Ok(ty);
+                    }
+                }
             }
         }
 
-        let struct_ty = Type::TyStruct {
-            name: None,
-            members,
-            type_size: sema::align_to(offset, struct_align),
-            align: struct_align,
-        };
-        if let Some(struct_tag) = tag {
-            self.struct_tag_env.enter(
-                self.symbols.symbol(&struct_tag),
-                Box::new(struct_ty.clone()),
-            );
+        let mut ty = Type::struct_type(tag_token, vec![], 0, 1);
+        self.struct_members(&mut ty)?;
+
+        if let Some(tag) = tag {
+            // Assign offsets within the struct to members.
+            let mut offset = 0;
+            for mem in ty.get_struct_members().unwrap() {
+                offset = align_to(offset, mem.borrow_mut().ty.get_align());
+                mem.borrow_mut().offset = offset;
+                offset += mem.borrow_mut().ty.get_size();
+
+                if ty.get_align() < mem.borrow_mut().ty.get_align() {
+                    ty.set_align(mem.borrow_mut().ty.get_align());
+                }
+            }
+
+            ty.set_size(sema::align_to(offset, ty.get_align()));
+            self.struct_tag_env
+                .enter(self.symbols.symbol(&tag), Rc::new(RefCell::new(ty.clone())));
         }
-        Ok(struct_ty)
+
+        return Ok(ty);
+    }
+
+    /// struct-decl = "{" struct-members
+    /// struct-members = (declspec declarator (","  declarator)* ";")*
+    fn struct_decl(&mut self) -> Result<Type> {
+        let mut ty = self.struct_union_decl()?;
+        if ty.get_size() < -1 {
+            return Ok(ty);
+        }
+
+        // Assign offsets within the struct to members.
+        let mut offset = 0;
+        for mem in ty.get_struct_members().unwrap() {
+            offset = align_to(offset, mem.borrow_mut().ty.get_align());
+            mem.borrow_mut().offset = offset;
+            offset += mem.borrow_mut().ty.get_size();
+
+            if ty.get_align() < mem.borrow_mut().ty.get_align() {
+                ty.set_align(mem.borrow_mut().ty.get_align());
+            }
+        }
+
+        ty.set_size(sema::align_to(offset, ty.get_align()));
+
+        Ok(ty)
     }
 
     /// union-decl = "{" struct-members
@@ -390,7 +423,7 @@ impl<'a> Parser<'a> {
                 if let Some(union_tag) = tag {
                     let ty = self.struct_tag_env.look(self.symbols.symbol(&union_tag));
                     if let Some(_ty) = ty {
-                        return Ok(*_ty.clone());
+                        return Ok(_ty.borrow_mut().clone());
                     } else {
                         panic!("unknown union type: {}", union_tag);
                     }
@@ -439,11 +472,11 @@ impl<'a> Parser<'a> {
         let mut union_align = 1;
         let mut type_size = 0;
         for mem in members.clone() {
-            if union_align < mem.borrow().ty.get_align() {
-                union_align = mem.borrow().ty.get_align();
+            if union_align < mem.borrow_mut().ty.get_align() {
+                union_align = mem.borrow_mut().ty.get_align();
             }
-            if type_size < mem.borrow().ty.get_size() {
-                type_size = mem.borrow().ty.get_size();
+            if type_size < mem.borrow_mut().ty.get_size() {
+                type_size = mem.borrow_mut().ty.get_size();
             }
         }
 
@@ -454,8 +487,10 @@ impl<'a> Parser<'a> {
             align: union_align,
         };
         if let Some(struct_tag) = tag {
-            self.struct_tag_env
-                .enter(self.symbols.symbol(&struct_tag), Box::new(union_ty.clone()));
+            self.struct_tag_env.enter(
+                self.symbols.symbol(&struct_tag),
+                Rc::new(RefCell::new(union_ty.clone())),
+            );
         }
         Ok(union_ty)
     }
@@ -1713,12 +1748,58 @@ impl<'a> Parser<'a> {
 
     fn struct_ref(&mut self, node: ExprWithPos) -> Result<ExprWithPos> {
         match node.node.ty.clone() {
-            Type::TyStruct { members, .. } | Type::TyUnion { members, .. } => {
+            Type::TyStruct { members, name, .. } | Type::TyUnion { members, name, .. } => {
                 let mem_ident;
                 let pos = eat!(self, Ident, mem_ident);
                 let mut mem_found = None;
+
+                if name.is_some() {
+                    let name = self.get_ident(node.node.ty.clone())?;
+                    let ty = self.struct_tag_env.look(self.symbols.symbol(&name));
+
+                    if let Some(ty) = ty {
+                        match ty.borrow().clone() {
+                            Type::TyStruct {
+                                name: Some(_),
+                                members,
+                                ..
+                            } => {
+                                for mem in members {
+                                    match mem.borrow_mut().name.token.clone() {
+                                        Tok::Ident(tok_name) => {
+                                            if mem_ident == tok_name {
+                                                mem_found = Some(mem.clone());
+                                                break;
+                                            }
+                                        }
+                                        _ => (),
+                                    }
+                                }
+
+                                return Ok(WithPos::new(
+                                    WithType::new(
+                                        Expr::MemberExpr {
+                                            strct: Box::new(node),
+                                            member: match mem_found.clone() {
+                                                Some(m) => m.clone(),
+                                                None => panic!(),
+                                            },
+                                        },
+                                        match mem_found.clone() {
+                                            Some(m) => m.borrow_mut().ty.clone(),
+                                            None => panic!(),
+                                        },
+                                    ),
+                                    pos,
+                                ));
+                            }
+                            _ => (),
+                        }
+                    }
+                }
+
                 for mem in members {
-                    match mem.borrow().name.token.clone() {
+                    match mem.borrow_mut().name.token.clone() {
                         Tok::Ident(tok_name) => {
                             if mem_ident == tok_name {
                                 mem_found = Some(mem.clone());
@@ -1739,7 +1820,7 @@ impl<'a> Parser<'a> {
                             },
                         },
                         match mem_found.clone() {
-                            Some(m) => m.borrow().ty.clone(),
+                            Some(m) => m.borrow_mut().ty.clone(),
                             None => panic!(),
                         },
                     ),
@@ -2015,6 +2096,30 @@ impl<'a> Parser<'a> {
                 match self.peek()?.token {
                     Tok::LeftParen => {
                         let tok = self.peek_next_one()?.token.clone();
+                        // sizeof(typedef)
+                        if let Some(name) = tok.get_ident_name().clone() {
+                            let attr = self.var_attr_env.look(self.symbols.symbol(&name));
+                            if let Some(VarAttr::Typedef { type_def: Some(..) }) = attr.cloned() {
+                                eat!(self, LeftParen);
+                                let ignored;
+                                let pos = eat!(self, Ident, ignored);
+                                let _ = ignored;
+                                eat!(self, RightParen);
+
+                                let ty = self.struct_tag_env.look(self.symbols.symbol(&name));
+                                if let Some(ty) = ty {
+                                    return Ok(WithPos::new(
+                                        WithType::new(
+                                            Expr::Number {
+                                                value: ty.borrow().clone().get_size() as i64,
+                                            },
+                                            Type::TyInt { name: None },
+                                        ),
+                                        pos,
+                                    ));
+                                }
+                            }
+                        }
                         // sizeof(int **)
                         if self.is_typename(tok)? {
                             eat!(self, LeftParen);
@@ -2071,10 +2176,10 @@ impl<'a> Parser<'a> {
                 }
                 // variable
                 if let Some(var) = self.var_env.look(self.symbols.symbol(&name)) {
-                    let _ty = var.borrow().ty.clone();
+                    let _ty = var.borrow_mut().ty.clone();
                     match _ty {
                         Type::TyEnum { .. } => {
-                            if let Some(InitData::IntInitData(i)) = var.borrow().init_data {
+                            if let Some(InitData::IntInitData(i)) = var.borrow_mut().init_data {
                                 return Ok(WithPos::new(
                                     WithType::new(Expr::Number { value: i as i64 }, _ty),
                                     pos,
@@ -2528,9 +2633,9 @@ impl<'a> Parser<'a> {
 
                         self.struct_tag_env.enter(
                             self.symbols.symbol(&ident),
-                            Box::new(Type::TyEnum {
+                            Rc::new(RefCell::new(Type::TyEnum {
                                 name: Some(ident_tok.clone()),
-                            }),
+                            })),
                         );
 
                         Ok(Type::TyEnum {
@@ -2539,12 +2644,7 @@ impl<'a> Parser<'a> {
                     }
                     _ => {
                         if let Some(ty) = self.struct_tag_env.look(self.symbols.symbol(&ident)) {
-                            match **ty {
-                                Type::TyEnum { .. } => {
-                                    return Ok(*ty.clone());
-                                }
-                                _ => panic!(),
-                            }
+                            return Ok(ty.borrow_mut().clone());
                         } else {
                             panic!()
                         }

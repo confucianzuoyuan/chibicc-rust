@@ -94,6 +94,13 @@ impl Type {
         }
     }
 
+    pub fn set_size(&mut self, sz: i32) {
+        match self {
+            Type::TyStruct { type_size, .. } => *type_size = sz,
+            _ => (),
+        }
+    }
+
     pub fn get_align(&self) -> i32 {
         match self {
             Type::TyEnum { .. } => 4,
@@ -108,6 +115,13 @@ impl Type {
             Type::TyArray { base, .. } => base.get_align(),
             Type::TyPtr { .. } => 8,
             _ => panic!("type {:?} has no align infomation.", self),
+        }
+    }
+
+    pub fn set_align(&mut self, new_align: i32) {
+        match self {
+            Type::TyStruct { align, .. } => *align = new_align,
+            _ => (),
         }
     }
 
@@ -138,6 +152,22 @@ impl Type {
             | Type::TyStruct { ref mut name, .. }
             | Type::TyUnion { ref mut name, .. } => *name = Some(tok.clone()),
             _ => (),
+        }
+    }
+
+    pub fn set_struct_members(&mut self, new_members: Vec<Rc<RefCell<Member>>>) {
+        match self {
+            Type::TyStruct {
+                ref mut members, ..
+            } => *members = new_members,
+            _ => (),
+        }
+    }
+
+    pub fn get_struct_members(&mut self) -> Option<Vec<Rc<RefCell<Member>>>> {
+        match self {
+            Type::TyStruct { members, .. } => Some(members.clone()),
+            _ => None,
         }
     }
 }

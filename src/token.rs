@@ -68,6 +68,15 @@ pub enum Tok {
     EndOfFile,
 }
 
+impl Tok {
+    pub fn get_ident_name(&self) -> Option<String> {
+        match self {
+            Tok::Ident(ref name) => Some(name.clone()),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     pub pos: Pos,
