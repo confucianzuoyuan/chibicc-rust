@@ -883,7 +883,7 @@ impl<'a> Parser<'a> {
                         }
                         _ => (),
                     }
-                    if self.is_typename(tok)? {
+                    if self.is_typename(tok)? && self.peek_next_one()?.token != Colon {
                         let mut attr = Some(VarAttr::Placeholder);
                         let basety = self.declspec(&mut attr)?;
                         match attr {
