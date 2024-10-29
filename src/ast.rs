@@ -1,7 +1,7 @@
 use std::{cell::RefCell, collections::HashMap, fmt::Display, rc::Rc};
 
 use crate::{
-    position::WithPos,
+    position::{Pos, WithPos},
     sema::{Member, Type, WithType},
 };
 
@@ -219,9 +219,90 @@ pub enum Stmt {
         label: String,
         stmt: Box<StmtWithPos>,
     },
+    SwitchStmt {
+        condition: ExprWithPos,
+        cases: Vec<StmtWithPos>,
+        default_case: Option<Box<StmtWithPos>>,
+        break_label: Option<String>,
+        body: Option<Box<StmtWithPos>>,
+    },
+    CaseStmt {
+        label: String,
+        val: i64,
+        stmt: Box<StmtWithPos>,
+    },
 }
 
 pub type StmtWithPos = WithPos<Stmt>;
+
+impl StmtWithPos {
+    pub fn get_val(&self) -> i64 {
+        match self.node {
+            Stmt::CaseStmt { val, .. } => val,
+            _ => 0,
+        }
+    }
+
+    pub fn get_label(&self) -> String {
+        match self.node.clone() {
+            Stmt::CaseStmt { label, .. } => label,
+            _ => String::new(),
+        }
+    }
+
+    pub fn new_switch(condition: ExprWithPos, pos: Pos) -> Self {
+        WithPos::new(
+            Stmt::SwitchStmt {
+                condition,
+                cases: vec![],
+                default_case: None,
+                break_label: None,
+                body: None,
+            },
+            pos,
+        )
+    }
+
+    pub fn update_break_label(&mut self, brk_label: Option<String>) {
+        match self.node {
+            Stmt::SwitchStmt {
+                ref mut break_label,
+                ..
+            } => *break_label = brk_label,
+            _ => (),
+        }
+    }
+
+    pub fn update_body(&mut self, new_body: StmtWithPos) {
+        match self.node {
+            Stmt::SwitchStmt { ref mut body, .. } => *body = Some(Box::new(new_body)),
+            _ => (),
+        }
+    }
+
+    pub fn update_cases(&mut self, new_cases: Vec<StmtWithPos>) {
+        match self.node {
+            Stmt::SwitchStmt { ref mut cases, .. } => *cases = new_cases,
+            _ => (),
+        }
+    }
+
+    pub fn update_default_case(&mut self, new_default_case: Option<StmtWithPos>) {
+        match self.node {
+            Stmt::SwitchStmt {
+                ref mut default_case,
+                ..
+            } => {
+                *default_case = if let Some(dc) = new_default_case {
+                    Some(Box::new(dc))
+                } else {
+                    None
+                }
+            }
+            _ => (),
+        }
+    }
+}
 
 impl Display for StmtWithPos {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -243,6 +324,8 @@ impl Display for StmtWithPos {
                     Stmt::WhileStmt { .. } => return format!("{:?}", node),
                     Stmt::GotoStmt { .. } => return format!("{:?}", node),
                     Stmt::LabelStmt { .. } => return format!("{:?}", node),
+                    Stmt::SwitchStmt { .. } => return format!("{:?}", node),
+                    Stmt::CaseStmt { .. } => return format!("{:?}", node),
                 },
             };
             string.to_string()

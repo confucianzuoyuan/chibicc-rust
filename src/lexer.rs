@@ -236,6 +236,9 @@ impl<R: Read> Lexer<R> {
             "goto" => Tok::KeywordGoto,
             "break" => Tok::KeywordBreak,
             "continue" => Tok::KeywordContinue,
+            "switch" => Tok::KeywordSwitch,
+            "default" => Tok::KeywordDefault,
+            "case" => Tok::KeywordCase,
             _ => Tok::Ident(ident),
         };
         self.make_token(token, len)

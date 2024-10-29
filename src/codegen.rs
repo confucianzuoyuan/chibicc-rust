@@ -299,6 +299,42 @@ impl CodeGenerator {
                     .push(format!("{}:", self.goto_labels.get(label).unwrap()));
                 self.gen_stmt(stmt);
             }
+            ast::Stmt::SwitchStmt {
+                condition,
+                cases,
+                default_case,
+                break_label,
+                body,
+            } => {
+                self.gen_expr(condition);
+
+                for n in cases {
+                    let reg = if condition.node.ty.get_size() == 8 {
+                        "%rax"
+                    } else {
+                        "%eax"
+                    };
+                    self.output.push(format!("  cmp ${}, {}", n.get_val(), reg));
+                    self.output.push(format!("  je {}", n.get_label()));
+                }
+
+                if let Some(default_case) = default_case {
+                    self.output
+                        .push(format!("  jmp {}", default_case.get_label()));
+                }
+
+                self.output.push(format!("  jmp {}", break_label.clone().unwrap()));
+                self.gen_stmt(&body.clone().unwrap());
+                self.output.push(format!("{}:", break_label.clone().unwrap()));
+            }
+            ast::Stmt::CaseStmt {
+                label,
+                val: _,
+                stmt,
+            } => {
+                self.output.push(format!("{}:", label));
+                self.gen_stmt(&stmt);
+            }
         }
     }
 

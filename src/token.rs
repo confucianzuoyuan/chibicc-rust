@@ -68,6 +68,9 @@ pub enum Tok {
     KeywordGoto,
     KeywordBreak,
     KeywordContinue,
+    KeywordSwitch,
+    KeywordCase,
+    KeywordDefault,
 
     EndOfFile,
 }
@@ -153,6 +156,9 @@ impl Display for Tok {
                 Tok::KeywordGoto => "goto",
                 Tok::KeywordBreak => "break",
                 Tok::KeywordContinue => "continue",
+                Tok::KeywordCase => "case",
+                Tok::KeywordDefault => "default",
+                Tok::KeywordSwitch => "switch",
                 Tok::EndOfFile => "<eof>",
                 Tok::Str(ref string) => return format!("{:?}", string),
             };

@@ -77,6 +77,9 @@ pub struct Parser<'a> {
     goto_labels: HashMap<String, String>,
     break_label: Option<String>,
     continue_label: Option<String>,
+
+    case_stmts: Vec<StmtWithPos>,
+    default_case_stmt: Option<StmtWithPos>,
 }
 
 impl<'a> Parser<'a> {
@@ -102,6 +105,9 @@ impl<'a> Parser<'a> {
             goto_labels: HashMap::new(),
             break_label: None,
             continue_label: None,
+
+            case_stmts: vec![],
+            default_case_stmt: None,
         }
     }
 
@@ -324,6 +330,71 @@ impl<'a> Parser<'a> {
                 } else {
                     panic!("stray continue: {}", pos);
                 }
+            }
+            Tok::KeywordSwitch => {
+                let pos = eat!(self, KeywordSwitch);
+                eat!(self, LeftParen);
+                let condition = self.expr()?;
+                let mut node = StmtWithPos::new_switch(condition, pos);
+                eat!(self, RightParen);
+
+                let old_case_stmts = self.case_stmts.clone();
+                let old_default_case_stmt = self.default_case_stmt.clone();
+                let old_break_label = self.break_label.clone();
+
+                self.break_label = Some(self.new_unique_name());
+                node.update_break_label(self.break_label.clone());
+
+                let body = self.stmt()?;
+                node.update_body(body);
+
+                node.update_cases(self.case_stmts.clone());
+                node.update_default_case(self.default_case_stmt.clone());
+
+                self.case_stmts = old_case_stmts;
+                self.default_case_stmt = old_default_case_stmt;
+                self.break_label = old_break_label;
+
+                return Ok(node);
+            }
+            Tok::KeywordCase => {
+                let pos = eat!(self, KeywordCase);
+                let val;
+                eat!(self, Number, val);
+                eat!(self, Colon);
+
+                let label = self.new_unique_name();
+                let stmt = self.stmt()?;
+                let val = val;
+                let node = WithPos::new(
+                    Stmt::CaseStmt {
+                        label,
+                        val,
+                        stmt: Box::new(stmt),
+                    },
+                    pos,
+                );
+
+                self.case_stmts.insert(0, node.clone());
+
+                return Ok(node);
+            }
+            Tok::KeywordDefault => {
+                let pos = eat!(self, KeywordDefault);
+                eat!(self, Colon);
+
+                let label = self.new_unique_name();
+                let stmt = self.stmt()?;
+                let node = WithPos::new(
+                    Stmt::CaseStmt {
+                        label,
+                        val: 0,
+                        stmt: Box::new(stmt),
+                    },
+                    pos,
+                );
+                self.default_case_stmt = Some(node.clone());
+                return Ok(node);
             }
             _ => self.expr_stmt(),
         }
