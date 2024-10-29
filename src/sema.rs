@@ -325,6 +325,13 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
                 },
             expr,
         } => e.node.ty = expr.node.ty.clone(),
+        ast::Expr::Binary {
+            op: BinaryOperatorWithPos {
+                node: SHL | SHR, ..
+            },
+            left,
+            ..
+        } => e.node.ty = left.node.ty.clone(),
         // "&" addr
         ast::Expr::Addr { expr } => match e.node.ty.clone() {
             Type::TyPlaceholder => e.node.ty = pointer_to(expr.node.ty.clone()),

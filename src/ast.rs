@@ -57,6 +57,22 @@ pub enum Expr {
 pub type ExprWithPos = WithPos<ExprWithType>;
 pub type ExprWithType = WithType<Expr>;
 
+impl ExprWithPos {
+    pub fn new_binary(op: BinaryOperator, left: ExprWithPos, right: ExprWithPos, pos: Pos) -> Self {
+        WithPos::new(
+            WithType::new(
+                Expr::Binary {
+                    left: Box::new(left),
+                    op: WithPos::new(op, pos),
+                    right: Box::new(right),
+                },
+                Type::TyPlaceholder,
+            ),
+            pos,
+        )
+    }
+}
+
 impl Display for ExprWithPos {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let string = (|| {
@@ -123,6 +139,8 @@ pub enum BinaryOperator {
     BitXor,
     LogAnd,
     LogOr,
+    SHL,
+    SHR,
 }
 
 pub type BinaryOperatorWithPos = WithPos<BinaryOperator>;
@@ -148,6 +166,8 @@ impl Display for BinaryOperatorWithPos {
                     BinaryOperator::BitXor => "^",
                     BinaryOperator::LogAnd => "&&",
                     BinaryOperator::LogOr => "||",
+                    BinaryOperator::SHL => "<<",
+                    BinaryOperator::SHR => ">>",
                 },
             };
             string.to_string()

@@ -1198,6 +1198,7 @@ impl<'a> Parser<'a> {
 
     /// assign    = logor (assign-op assign)?
     /// assign-op = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^="
+    ///           | "<<=" | ">>="
     fn assign(&mut self) -> Result<ExprWithPos> {
         let mut expr = self.logor()?;
         add_type(&mut expr);
@@ -1324,6 +1325,38 @@ impl<'a> Parser<'a> {
                 );
                 expr = self.to_assign(expr)?;
             }
+            Tok::LesserLesserEqual => {
+                let pos = eat!(self, LesserLesserEqual);
+                let rhs = self.assign()?;
+                expr = WithPos::new(
+                    WithType::new(
+                        Expr::Binary {
+                            left: Box::new(expr.clone()),
+                            op: WithPos::new(ast::BinaryOperator::SHL, pos),
+                            right: Box::new(rhs),
+                        },
+                        expr.node.ty,
+                    ),
+                    pos,
+                );
+                expr = self.to_assign(expr)?;
+            }
+            Tok::GreaterGreaterEqual => {
+                let pos = eat!(self, GreaterGreaterEqual);
+                let rhs = self.assign()?;
+                expr = WithPos::new(
+                    WithType::new(
+                        Expr::Binary {
+                            left: Box::new(expr.clone()),
+                            op: WithPos::new(ast::BinaryOperator::SHR, pos),
+                            right: Box::new(rhs),
+                        },
+                        expr.node.ty,
+                    ),
+                    pos,
+                );
+                expr = self.to_assign(expr)?;
+            }
             _ => (),
         }
         Ok(expr)
@@ -1356,9 +1389,9 @@ impl<'a> Parser<'a> {
         Ok(expr)
     }
 
-    /// relational = add ("<" add | "<=" add | ">" add | ">=" add)*
+    /// relational = shift ("<" shift | "<=" shift | ">" shift | ">=" shift)*
     fn relational(&mut self) -> Result<ExprWithPos> {
-        let mut expr = self.add()?;
+        let mut expr = self.shift()?;
 
         loop {
             let op = match self.peek_token() {
@@ -1370,7 +1403,7 @@ impl<'a> Parser<'a> {
                 }
                 _ => break,
             };
-            let right = Box::new(self.add()?);
+            let right = Box::new(self.shift()?);
             let pos = expr.pos.grow(right.pos);
             expr = WithPos::new(
                 WithType::new(
@@ -1413,6 +1446,29 @@ impl<'a> Parser<'a> {
             }
         }
         Ok(expr)
+    }
+
+    /// shift = add ("<<" add | ">>" add)*
+    fn shift(&mut self) -> Result<ExprWithPos> {
+        let mut node = self.add()?;
+
+        loop {
+            match self.peek()?.token {
+                Tok::LesserLesser => {
+                    let pos = eat!(self, LesserLesser);
+                    let rhs = self.add()?;
+                    node = ExprWithPos::new_binary(BinaryOperator::SHL, node, rhs, pos);
+                }
+                Tok::GreaterGreater => {
+                    let pos = eat!(self, GreaterGreater);
+                    let rhs = self.add()?;
+                    node = ExprWithPos::new_binary(BinaryOperator::SHR, node, rhs, pos);
+                }
+                _ => break,
+            }
+        }
+
+        Ok(node)
     }
 
     /// logor = logand ("||" logand)*

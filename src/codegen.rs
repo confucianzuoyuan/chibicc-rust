@@ -323,9 +323,11 @@ impl CodeGenerator {
                         .push(format!("  jmp {}", default_case.get_label()));
                 }
 
-                self.output.push(format!("  jmp {}", break_label.clone().unwrap()));
+                self.output
+                    .push(format!("  jmp {}", break_label.clone().unwrap()));
                 self.gen_stmt(&body.clone().unwrap());
-                self.output.push(format!("{}:", break_label.clone().unwrap()));
+                self.output
+                    .push(format!("{}:", break_label.clone().unwrap()));
             }
             ast::Stmt::CaseStmt {
                 label,
@@ -504,6 +506,14 @@ impl CodeGenerator {
                         self.output.push(format!(".L.true.{}:", c));
                         self.output.push(format!("  mov $1, %rax"));
                         self.output.push(format!(".L.end.{}:", c));
+                    }
+                    ast::BinaryOperator::SHL => {
+                        self.output.push(format!("  mov %rdi, %rcx"));
+                        self.output.push(format!("  shl %cl, {}", ax));
+                    }
+                    ast::BinaryOperator::SHR => {
+                        self.output.push(format!("  mov %rdi, %rcx"));
+                        self.output.push(format!("  sar %cl, {}", ax));
                     }
                 }
             }

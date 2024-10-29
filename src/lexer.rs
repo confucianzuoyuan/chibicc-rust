@@ -169,12 +169,52 @@ impl<R: Read> Lexer<R> {
         self.two_char_token(vec![('=', Tok::StarEqual)], Tok::Star)
     }
 
-    fn greater_or_greater_equal(&mut self) -> Result<Token> {
-        self.two_char_token(vec![('=', Tok::GreaterEqual)], Tok::Greater)
+    /// ">" | ">=" | ">>" | ">>="
+    fn greater_or_other(&mut self) -> Result<Token> {
+        self.advance()?;
+        match self.current_char()? {
+            '=' => {
+                self.advance()?;
+                self.make_token(Tok::GreaterEqual, 2)
+            }
+            '>' => {
+                self.advance()?;
+                match self.current_char()? {
+                    '=' => {
+                        self.advance()?;
+                        self.make_token(Tok::GreaterGreaterEqual, 3)
+                    }
+                    _ => {
+                        self.make_token(Tok::GreaterGreater, 2)
+                    }
+                }
+            }
+            _ => self.make_token(Tok::Greater, 1),
+        }
     }
 
-    fn lesser_or_lesser_equal(&mut self) -> Result<Token> {
-        self.two_char_token(vec![('=', Tok::LesserEqual)], Tok::Lesser)
+    /// "<" | "<=" | "<<" | "<<="
+    fn lesser_or_other(&mut self) -> Result<Token> {
+        self.advance()?;
+        match self.current_char()? {
+            '=' => {
+                self.advance()?;
+                self.make_token(Tok::LesserEqual, 2)
+            }
+            '<' => {
+                self.advance()?;
+                match self.current_char()? {
+                    '=' => {
+                        self.advance()?;
+                        self.make_token(Tok::LesserLesserEqual, 3)
+                    }
+                    _ => {
+                        self.make_token(Tok::LesserLesser, 2)
+                    }
+                }
+            }
+            _ => self.make_token(Tok::Lesser, 1),
+        }
     }
 
     fn bang_or_bang_equal(&mut self) -> Result<Token> {
@@ -478,8 +518,8 @@ impl<R: Read> Lexer<R> {
                 b'}' => self.simple_token(Tok::RightBrace),
                 b'[' => self.simple_token(Tok::LeftBracket),
                 b']' => self.simple_token(Tok::RightBracket),
-                b'>' => self.greater_or_greater_equal(),
-                b'<' => self.lesser_or_lesser_equal(),
+                b'>' => self.greater_or_other(),
+                b'<' => self.lesser_or_other(),
                 b'!' => self.bang_or_bang_equal(),
                 b'=' => self.equal_or_equal_equal(),
                 b';' => self.simple_token(Tok::Semicolon),
