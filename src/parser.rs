@@ -1547,32 +1547,30 @@ impl<'a> Parser<'a> {
 
     /// mul = cast ("*" cast | "/" cast)*
     fn mul(&mut self) -> Result<ExprWithPos> {
-        let mut expr = self.cast()?;
+        let mut node = self.cast()?;
 
         loop {
-            let op = match self.peek_token() {
-                Ok(&Tok::Star) => WithPos::new(BinaryOperator::Mul, eat!(self, Star)),
-                Ok(&Tok::Slash) => WithPos::new(BinaryOperator::Div, eat!(self, Slash)),
-                Ok(&Tok::Percent) => WithPos::new(BinaryOperator::Mod, eat!(self, Percent)),
+            match self.peek()?.token {
+                Tok::Star => {
+                    let pos = eat!(self, Star);
+                    let rhs = self.cast()?;
+                    node = ExprWithPos::new_binary(BinaryOperator::Mul, node, rhs, pos);
+                }
+                Tok::Slash => {
+                    let pos = eat!(self, Slash);
+                    let rhs = self.cast()?;
+                    node = ExprWithPos::new_binary(BinaryOperator::Div, node, rhs, pos);
+                }
+                Tok::Percent => {
+                    let pos = eat!(self, Percent);
+                    let rhs = self.cast()?;
+                    node = ExprWithPos::new_binary(BinaryOperator::Mod, node, rhs, pos);
+                }
                 _ => break,
-            };
-            let mut right = Box::new(self.cast()?);
-            add_type(&mut expr);
-            add_type(&mut right);
-            let pos = expr.pos.grow(right.pos);
-            expr = WithPos::new(
-                WithType::new(
-                    Expr::Binary {
-                        left: Box::new(expr.clone()),
-                        op,
-                        right,
-                    },
-                    expr.node.ty.clone(),
-                ),
-                pos,
-            );
+            }
         }
-        Ok(expr)
+
+        Ok(node)
     }
 
     /// unary = ("+" | "-" | "*" | "&" | "!" | "~") cast
@@ -2411,10 +2409,6 @@ impl<'a> Parser<'a> {
         } else {
             panic!()
         }
-    }
-
-    fn peek_token(&mut self) -> std::result::Result<&Tok, &Error> {
-        self.peek().map(|token| &token.token)
     }
 
     fn token(&mut self) -> Result<Token> {
