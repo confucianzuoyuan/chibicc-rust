@@ -531,6 +531,7 @@ impl<R: Read> Lexer<R> {
                 b'~' => self.simple_token(Tok::Tilde),
                 b'%' => self.percent_or_percent_equal(),
                 b':' => self.simple_token(Tok::Colon),
+                b'?' => self.simple_token(Tok::QuestionMark),
                 b'"' => self.string(),
                 b'\'' => self.char_literal(),
                 b'\0' => self.simple_token(Tok::EndOfFile),

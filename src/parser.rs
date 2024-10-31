@@ -1196,11 +1196,11 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// assign    = logor (assign-op assign)?
+    /// assign    = conditional (assign-op assign)?
     /// assign-op = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^="
     ///           | "<<=" | ">>="
     fn assign(&mut self) -> Result<ExprWithPos> {
-        let mut expr = self.logor()?;
+        let mut expr = self.conditional()?;
         add_type(&mut expr);
         match self.peek()?.token {
             Tok::Equal => {
@@ -1469,6 +1469,22 @@ impl<'a> Parser<'a> {
         }
 
         Ok(node)
+    }
+
+    /// conditional = logor ("?" expr ":" conditional)?
+    fn conditional(&mut self) -> Result<ExprWithPos> {
+        let condition = self.logor()?;
+        match self.peek()?.token {
+            Tok::QuestionMark => {
+                let pos = eat!(self, QuestionMark);
+                let then_clause = self.expr()?;
+                eat!(self, Colon);
+                let else_clause = self.conditional()?;
+                let node = ExprWithPos::new_ternary(condition, then_clause, else_clause, pos);
+                Ok(node)
+            }
+            _ => Ok(condition),
+        }
     }
 
     /// logor = logand ("||" logand)*

@@ -48,6 +48,8 @@ pub enum Tok {
     Percent,
     PercentEqual,
     Colon,
+    QuestionMark,
+
     Number(i64),
     Ident(String),
     Str(String),
@@ -142,6 +144,7 @@ impl Display for Tok {
                 Tok::Percent => "%",
                 Tok::PercentEqual => "%=",
                 Tok::Colon => ":",
+                Tok::QuestionMark => "?",
                 Tok::Number(i) => return i.to_string(),
                 Tok::Ident(ref ident) => ident,
                 Tok::KeywordReturn => "return",

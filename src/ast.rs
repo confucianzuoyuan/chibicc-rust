@@ -52,6 +52,11 @@ pub enum Expr {
         expr: Box<ExprWithPos>,
         ty: Type,
     },
+    TernaryExpr {
+        condition: Box<ExprWithPos>,
+        then_clause: Box<ExprWithPos>,
+        else_clause: Box<ExprWithPos>,
+    },
 }
 
 pub type ExprWithPos = WithPos<ExprWithType>;
@@ -65,6 +70,25 @@ impl ExprWithPos {
                     left: Box::new(left),
                     op: WithPos::new(op, pos),
                     right: Box::new(right),
+                },
+                Type::TyPlaceholder,
+            ),
+            pos,
+        )
+    }
+
+    pub fn new_ternary(
+        condition: ExprWithPos,
+        then_clause: ExprWithPos,
+        else_clause: ExprWithPos,
+        pos: Pos,
+    ) -> Self {
+        WithPos::new(
+            WithType::new(
+                Expr::TernaryExpr {
+                    then_clause: Box::new(then_clause),
+                    else_clause: Box::new(else_clause),
+                    condition: Box::new(condition),
                 },
                 Type::TyPlaceholder,
             ),
@@ -112,6 +136,13 @@ impl Display for ExprWithPos {
                     Expr::Unary { op, expr } => return format!("{}{}", op, expr),
                     Expr::CastExpr { expr, ty } => {
                         return format!("cast expr {} to type {:?}", expr, ty);
+                    }
+                    Expr::TernaryExpr {
+                        condition,
+                        then_clause,
+                        else_clause,
+                    } => {
+                        return format!("{} ? {} : {}", condition, then_clause, else_clause);
                     }
                 },
             };

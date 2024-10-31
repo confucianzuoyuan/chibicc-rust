@@ -73,6 +73,13 @@ impl Type {
         }
     }
 
+    pub fn is_void(&self) -> bool {
+        match self {
+            Type::TyVoid { .. } => true,
+            _ => false,
+        }
+    }
+
     pub fn get_size(&self) -> i32 {
         match self {
             Type::TyEnum { .. } => 4,
@@ -371,6 +378,18 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
         ast::Expr::MemberExpr { member, .. } => e.node.ty = member.borrow().ty.clone(),
 
         ast::Expr::CastExpr { .. } => (),
+        ast::Expr::TernaryExpr {
+            condition: _,
+            ref mut then_clause,
+            ref mut else_clause,
+        } => {
+            if then_clause.node.ty.is_void() || else_clause.node.ty.is_void() {
+                e.node.ty = Type::TyVoid { name: None }
+            } else {
+                usual_arith_conv(then_clause, else_clause);
+                e.node.ty = then_clause.node.ty.clone();
+            }
+        }
     }
 }
 

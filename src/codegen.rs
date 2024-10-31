@@ -392,6 +392,22 @@ impl CodeGenerator {
                 self.gen_expr(&left);
                 self.gen_expr(&right);
             }
+            ast::Expr::TernaryExpr {
+                condition,
+                then_clause,
+                else_clause,
+            } => {
+                let c = self.label_count;
+                self.label_count += 1;
+                self.gen_expr(&condition);
+                self.output.push(format!("  cmp $0, %rax"));
+                self.output.push(format!("  je .L.else.{}", c));
+                self.gen_expr(&then_clause);
+                self.output.push(format!("  jmp .L.end.{}", c));
+                self.output.push(format!(".L.else.{}:", c));
+                self.gen_expr(&else_clause);
+                self.output.push(format!(".L.end.{}:", c));
+            }
             ast::Expr::FunctionCall { name, args } => {
                 if args.len() > 0 {
                     // 参数逆序入栈
