@@ -2,8 +2,8 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc, result};
 
 use crate::{
     ast::{
-        self, BinaryOperator, Expr, ExprWithPos, Function, InitData, Obj, Program, Stmt,
-        StmtWithPos, UnaryOperator, VarAttr,
+        self, BinaryOperator, Expr, ExprWithPos, Function, InitData, InitDesg, Initializer, Obj,
+        Program, Stmt, StmtWithPos, UnaryOperator, VarAttr,
     },
     error::Error::{self, UnexpectedToken},
     position::{Pos, WithPos},
@@ -115,6 +115,117 @@ impl<'a> Parser<'a> {
         let unique_name = format!(".L..{}", self.unique_name_count);
         self.unique_name_count += 1;
         unique_name
+    }
+
+    fn new_initializer(&mut self, ty: Type) -> Result<Initializer> {
+        let mut init = Initializer::new(ty.clone());
+
+        if ty.is_array() {
+            for _ in 0..=ty.get_array_len() - 1 {
+                init.add_child(self.new_initializer(ty.base().unwrap())?);
+            }
+        }
+
+        Ok(init)
+    }
+
+    /// initializer = "{" initializer ("," initializer)* "}"
+    ///             | assign
+    fn initializer2(&mut self, init: &mut Initializer) -> Result<()> {
+        if init.ty.is_array() {
+            eat!(self, LeftBrace);
+
+            for i in 0..init.ty.get_array_len() {
+                if i > 0 {
+                    eat!(self, Comma);
+                }
+                self.initializer2(init.get_child(i))?;
+            }
+
+            eat!(self, RightBrace);
+
+            return Ok(());
+        }
+
+        init.expr = Some(self.assign()?);
+
+        Ok(())
+    }
+
+    fn initializer(&mut self, ty: Type) -> Result<Initializer> {
+        let mut init = self.new_initializer(ty)?;
+        self.initializer2(&mut init)?;
+        Ok(init)
+    }
+
+    fn init_desg_expr(&mut self, desg: &mut InitDesg, tok: Token) -> Result<ExprWithPos> {
+        if let Some(var) = &desg.var {
+            return Ok(ExprWithPos::new_var(var.clone(), tok.pos.clone()));
+        } else {
+            let lhs = self.init_desg_expr(desg.next(), tok.clone())?;
+            let rhs = ExprWithPos::new_number(desg.idx, tok.pos);
+            return Ok(ExprWithPos::new_deref(
+                self.new_add(lhs, rhs, tok.clone().pos)?,
+                tok.clone().pos,
+            ));
+        }
+    }
+
+    fn create_local_var_init(
+        &mut self,
+        init: &mut Initializer,
+        ty: Type,
+        desg: &mut InitDesg,
+        tok: Token,
+    ) -> Result<ExprWithPos> {
+        if ty.is_array() {
+            let mut node = ExprWithPos::new_null_expr(tok.pos.clone());
+            for i in 0..ty.get_array_len() {
+                let mut desg2 = InitDesg {
+                    idx: i as i64,
+                    next: Some(Box::new(desg.clone())),
+                    var: None,
+                };
+                let rhs = self.create_local_var_init(
+                    init.get_child(i),
+                    ty.base().unwrap(),
+                    &mut desg2,
+                    tok.clone(),
+                )?;
+                node = ExprWithPos::new_comma(node, rhs, tok.pos.clone());
+            }
+
+            return Ok(node);
+        }
+
+        let mut lhs = self.init_desg_expr(desg, tok.clone())?;
+        add_type(&mut lhs);
+        let mut rhs = init.expr.clone().unwrap();
+        add_type(&mut rhs);
+        let mut node = ExprWithPos::new_assign(lhs, rhs, tok.pos);
+        add_type(&mut node);
+        Ok(node)
+    }
+
+    /// A variable definition with an initializer is a shorthand notation
+    /// for a variable definition followed by assignments. This function
+    /// generates assignment expressions for an initializer. For example,
+    /// `int x[2][2] = {{6, 7}, {8, 9}}` is converted to the following
+    /// expressions:
+    ///
+    ///   x[0][0] = 6;
+    ///   x[0][1] = 7;
+    ///   x[1][0] = 8;
+    ///   x[1][1] = 9;
+    fn local_var_initializer(&mut self, var: Rc<RefCell<Obj>>) -> Result<ExprWithPos> {
+        let mut init = self.initializer(var.borrow().ty.clone())?;
+        let mut desg = InitDesg {
+            var: Some(var.clone()),
+            idx: 0,
+            next: None,
+        };
+        let tok = self.peek()?.clone();
+        self.create_local_var_init(&mut init, var.borrow().ty.clone(), &mut desg, tok)
     }
 
     /// stmt = "return" expr ";"
@@ -428,31 +539,12 @@ impl<'a> Parser<'a> {
                     let ident = self.get_ident(ty.clone())?;
                     let var = self.new_local_variable(ident, ty.clone())?;
 
-                    match self.peek()?.token {
-                        Tok::Equal => {
-                            eat!(self, Equal);
-                        }
-                        _ => continue,
+                    if self.peek()?.token == Equal {
+                        let pos = eat!(self, Equal);
+                        let expr = self.local_var_initializer(var)?;
+                        let expr_stmt = WithPos::new(Stmt::ExprStmt { expr }, pos);
+                        decls.push(expr_stmt);
                     }
-
-                    let lhs = WithPos::new(
-                        WithType::new(Expr::Variable { obj: var }, ty.clone()),
-                        self.peek()?.pos,
-                    );
-                    let rhs = self.assign()?;
-                    let node = WithPos::new(
-                        WithType::new(
-                            Expr::Assign {
-                                l_value: Box::new(lhs),
-                                r_value: Box::new(rhs),
-                            },
-                            ty.clone(),
-                        ),
-                        self.peek()?.pos,
-                    );
-
-                    let expr_stmt = WithPos::new(Stmt::ExprStmt { expr: node }, self.peek()?.pos);
-                    decls.push(expr_stmt);
                 }
             }
         }

@@ -73,10 +73,31 @@ impl Type {
         }
     }
 
+    pub fn base(&self) -> Option<Type> {
+        match self {
+            Type::TyArray { base, .. } => Some(*base.clone()),
+            _ => None,
+        }
+    }
+
     pub fn is_void(&self) -> bool {
         match self {
             Type::TyVoid { .. } => true,
             _ => false,
+        }
+    }
+
+    pub fn is_array(&self) -> bool {
+        match self {
+            Type::TyArray { .. } => true,
+            _ => false,
+        }
+    }
+
+    pub fn get_array_len(&self) -> i32 {
+        match self {
+            Type::TyArray { array_len, .. } => *array_len,
+            _ => 0,
         }
     }
 
@@ -378,6 +399,7 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
         ast::Expr::MemberExpr { member, .. } => e.node.ty = member.borrow().ty.clone(),
 
         ast::Expr::CastExpr { .. } => (),
+        ast::Expr::Null => (),
         ast::Expr::TernaryExpr {
             condition: _,
             ref mut then_clause,

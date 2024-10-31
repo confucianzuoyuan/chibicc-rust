@@ -3,6 +3,7 @@ use std::{cell::RefCell, collections::HashMap, fmt::Display, rc::Rc};
 use crate::{
     position::{Pos, WithPos},
     sema::{Member, Type, WithType},
+    token::Token,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -57,18 +58,65 @@ pub enum Expr {
         then_clause: Box<ExprWithPos>,
         else_clause: Box<ExprWithPos>,
     },
+    Null,
 }
 
 pub type ExprWithPos = WithPos<ExprWithType>;
 pub type ExprWithType = WithType<Expr>;
 
 impl ExprWithPos {
+    pub fn new_null_expr(pos: Pos) -> Self {
+        WithPos::new(WithType::new(Expr::Null, Type::TyPlaceholder), pos)
+    }
     pub fn new_number(i: i64, pos: Pos) -> Self {
         WithPos::new(
             WithType::new(Expr::Number { value: i }, Type::TyLong { name: None }),
             pos,
         )
     }
+    pub fn new_var(obj: Rc<RefCell<Obj>>, pos: Pos) -> Self {
+        WithPos::new(
+            WithType::new(Expr::Variable { obj }, Type::TyPlaceholder),
+            pos,
+        )
+    }
+    pub fn new_deref(expr: ExprWithPos, pos: Pos) -> Self {
+        WithPos::new(
+            WithType::new(
+                Expr::Deref {
+                    expr: Box::new(expr),
+                },
+                Type::TyPlaceholder,
+            ),
+            pos,
+        )
+    }
+    pub fn new_comma(left: ExprWithPos, right: ExprWithPos, pos: Pos) -> Self {
+        WithPos::new(
+            WithType::new(
+                Expr::CommaExpr {
+                    left: Box::new(left),
+                    right: Box::new(right),
+                },
+                Type::TyPlaceholder,
+            ),
+            pos,
+        )
+    }
+
+    pub fn new_assign(left: ExprWithPos, right: ExprWithPos, pos: Pos) -> Self {
+        WithPos::new(
+            WithType::new(
+                Expr::Assign {
+                    l_value: Box::new(left),
+                    r_value: Box::new(right),
+                },
+                Type::TyPlaceholder,
+            ),
+            pos,
+        )
+    }
+
     pub fn new_binary(op: BinaryOperator, left: ExprWithPos, right: ExprWithPos, pos: Pos) -> Self {
         WithPos::new(
             WithType::new(
@@ -170,6 +218,7 @@ impl Display for ExprWithPos {
                     } => {
                         return format!("{} ? {} : {}", condition, then_clause, else_clause);
                     }
+                    Expr::Null => format!("null expr"),
                 },
             };
             string.to_string()
@@ -450,6 +499,56 @@ pub struct Function {
     pub ty: Type,
     pub is_static: bool,
     pub goto_labels: HashMap<String, String>,
+}
+
+/// This struct represents a variable initializer. Since initializers
+/// can be nested (e.g. `int x[2][2] = {{1, 2}, {3, 4}}`), this struct
+/// is a tree data structure.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Initializer {
+    // If it's an initializer for an aggregate type (e.g. array or struct),
+    // `children` has initializers for its children.
+    pub children: Vec<Initializer>,
+    pub ty: Type,
+    // If it's not an aggregate type and has an initializer,
+    // `expr` has an initialization expression.
+    pub expr: Option<ExprWithPos>,
+    pub tok: Option<Token>,
+}
+
+impl Initializer {
+    pub fn new(ty: Type) -> Self {
+        Self {
+            children: vec![],
+            ty,
+            expr: None,
+            tok: None,
+        }
+    }
+
+    pub fn add_child(&mut self, child: Initializer) {
+        self.children.push(child);
+    }
+
+    pub fn get_child(&mut self, n: i32) -> &mut Initializer {
+        let children = &mut self.children;
+        let child = children.get_mut(n as usize).unwrap();
+        child
+    }
+}
+
+/// For local variable initializer.
+#[derive(Clone, Debug, PartialEq)]
+pub struct InitDesg {
+    pub idx: i64,
+    pub var: Option<Rc<RefCell<Obj>>>,
+    pub next: Option<Box<InitDesg>>,
+}
+
+impl InitDesg {
+    pub fn next(&mut self) -> &mut InitDesg {
+        self.next.as_mut().unwrap()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
