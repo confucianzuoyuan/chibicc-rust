@@ -77,6 +77,26 @@ impl ExprWithPos {
         )
     }
 
+    pub fn new_binary_with_type(
+        op: BinaryOperator,
+        left: ExprWithPos,
+        right: ExprWithPos,
+        pos: Pos,
+        ty: Type,
+    ) -> Self {
+        WithPos::new(
+            WithType::new(
+                Expr::Binary {
+                    left: Box::new(left),
+                    op: WithPos::new(op, pos),
+                    right: Box::new(right),
+                },
+                ty,
+            ),
+            pos,
+        )
+    }
+
     pub fn new_ternary(
         condition: ExprWithPos,
         then_clause: ExprWithPos,
