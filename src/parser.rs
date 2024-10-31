@@ -119,9 +119,13 @@ impl<'a> Parser<'a> {
 
     /// stmt = "return" expr ";"
     ///      | "if" "(" expr ")" stmt ("else" stmt)?
+    ///      | "switch" "(" expr ")" stmt
+    ///      | "case" const-expr ":" stmt
+    ///      | "default" ":" stmt
     ///      | "for" "(" expr-stmt expr? ";" expr? ")" stmt
     ///      | "while" "(" expr ")" stmt
     ///      | "goto" ident ";"
+    ///      | "break" ";"
     ///      | "continue" ";"
     ///      | ident ":" stmt
     ///      | "{" compound-stmt
@@ -359,8 +363,7 @@ impl<'a> Parser<'a> {
             }
             Tok::KeywordCase => {
                 let pos = eat!(self, KeywordCase);
-                let val;
-                eat!(self, Number, val);
+                let val = self.const_expr()?;
                 eat!(self, Colon);
 
                 let label = self.new_unique_name();
@@ -418,7 +421,7 @@ impl<'a> Parser<'a> {
                     match ty {
                         Type::TyVoid { name } => panic!("{:#?} variable declared void.", name),
                         Type::TyArray { array_len, .. } if array_len < 0 => {
-                            panic!("variable has incomplete type.")
+                            panic!("variable has incomplete type {:?}.", ty);
                         }
                         _ => (),
                     }
@@ -2860,8 +2863,7 @@ impl<'a> Parser<'a> {
                                             eat!(self, Equal);
                                             match self.peek()?.token {
                                                 Tok::Number(..) => {
-                                                    let i;
-                                                    eat!(self, Number, i);
+                                                    let i = self.const_expr()?;
                                                     val = i as i32;
                                                 }
                                                 _ => panic!(),
@@ -2928,8 +2930,7 @@ impl<'a> Parser<'a> {
                                         eat!(self, Equal);
                                         match self.peek()?.token {
                                             Tok::Number(..) => {
-                                                let i;
-                                                eat!(self, Number, i);
+                                                let i = self.const_expr()?;
                                                 val = i as i32;
                                             }
                                             _ => panic!(),
@@ -2959,7 +2960,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// array-dimensions = num? "]" type-suffix
+    /// array-dimensions = const-expr? "]" type-suffix
     fn array_dimensions(&mut self, mut ty: Type) -> Result<Type> {
         match self.peek()?.token {
             Tok::RightBracket => {
@@ -2972,8 +2973,7 @@ impl<'a> Parser<'a> {
                 })
             }
             _ => {
-                let sz;
-                eat!(self, Number, sz);
+                let sz = self.const_expr()?;
                 eat!(self, RightBracket);
                 ty = self.type_suffix(ty)?;
                 Ok(Type::TyArray {
@@ -2982,6 +2982,105 @@ impl<'a> Parser<'a> {
                     array_len: sz as i32,
                 })
             }
+        }
+    }
+
+    fn const_expr(&mut self) -> Result<i64> {
+        let node = self.conditional()?;
+        Ok(self.eval_constexpr(node)?)
+    }
+
+    fn eval_constexpr(&mut self, mut node: ExprWithPos) -> Result<i64> {
+        add_type(&mut node);
+
+        match node.node.node {
+            Expr::Binary { left, op, right } => match op.node {
+                ast::BinaryOperator::Add => {
+                    Ok(self.eval_constexpr(*left)? + self.eval_constexpr(*right)?)
+                }
+                ast::BinaryOperator::Sub => {
+                    Ok(self.eval_constexpr(*left)? - self.eval_constexpr(*right)?)
+                }
+                ast::BinaryOperator::Mul => {
+                    Ok(self.eval_constexpr(*left)? * self.eval_constexpr(*right)?)
+                }
+                ast::BinaryOperator::Div => {
+                    Ok(self.eval_constexpr(*left)? / self.eval_constexpr(*right)?)
+                }
+                ast::BinaryOperator::Mod => {
+                    Ok(self.eval_constexpr(*left)? % self.eval_constexpr(*right)?)
+                }
+                ast::BinaryOperator::BitAnd => {
+                    Ok(self.eval_constexpr(*left)? & self.eval_constexpr(*right)?)
+                }
+                ast::BinaryOperator::BitOr => {
+                    Ok(self.eval_constexpr(*left)? | self.eval_constexpr(*right)?)
+                }
+                ast::BinaryOperator::BitXor => {
+                    Ok(self.eval_constexpr(*left)? ^ self.eval_constexpr(*right)?)
+                }
+                ast::BinaryOperator::SHL => {
+                    Ok(self.eval_constexpr(*left)? << self.eval_constexpr(*right)?)
+                }
+                ast::BinaryOperator::SHR => {
+                    Ok(self.eval_constexpr(*left)? >> self.eval_constexpr(*right)?)
+                }
+                ast::BinaryOperator::Eq => {
+                    Ok((self.eval_constexpr(*left)? == self.eval_constexpr(*right)?) as i64)
+                }
+                ast::BinaryOperator::Ne => {
+                    Ok((self.eval_constexpr(*left)? != self.eval_constexpr(*right)?) as i64)
+                }
+                ast::BinaryOperator::Le => {
+                    Ok((self.eval_constexpr(*left)? <= self.eval_constexpr(*right)?) as i64)
+                }
+                ast::BinaryOperator::Lt => {
+                    Ok((self.eval_constexpr(*left)? < self.eval_constexpr(*right)?) as i64)
+                }
+                ast::BinaryOperator::Ge => {
+                    Ok((self.eval_constexpr(*left)? >= self.eval_constexpr(*right)?) as i64)
+                }
+                ast::BinaryOperator::Gt => {
+                    Ok((self.eval_constexpr(*left)? > self.eval_constexpr(*right)?) as i64)
+                }
+                ast::BinaryOperator::LogAnd => Ok((self.eval_constexpr(*left)? != 0
+                    && self.eval_constexpr(*right)? != 0)
+                    as i64),
+                ast::BinaryOperator::LogOr => Ok((self.eval_constexpr(*left)? != 0
+                    || self.eval_constexpr(*right)? != 0)
+                    as i64),
+            },
+            Expr::Unary { op, expr } => match op.node {
+                ast::UnaryOperator::Neg => Ok(-self.eval_constexpr(*expr)?),
+                ast::UnaryOperator::Not => {
+                    if self.eval_constexpr(*expr)? == 0 {
+                        return Ok(1);
+                    } else {
+                        return Ok(0);
+                    }
+                }
+                ast::UnaryOperator::BitNot => Ok(!self.eval_constexpr(*expr)?),
+            },
+            Expr::CommaExpr { right, .. } => Ok(self.eval_constexpr(*right)?),
+            Expr::CastExpr { expr, ty } => match ty.is_integer() {
+                true => match ty.get_size() {
+                    1 => Ok(self.eval_constexpr(*expr)? as u8 as i64),
+                    2 => Ok(self.eval_constexpr(*expr)? as u16 as i64),
+                    4 => Ok(self.eval_constexpr(*expr)? as u32 as i64),
+                    _ => Ok(self.eval_constexpr(*expr)?),
+                },
+                false => Ok(self.eval_constexpr(*expr)?),
+            },
+            Expr::TernaryExpr {
+                condition,
+                then_clause,
+                else_clause,
+            } => match self.eval_constexpr(*condition)? {
+                0 => Ok(self.eval_constexpr(*else_clause)?),
+                _ => Ok(self.eval_constexpr(*then_clause)?),
+            },
+            Expr::Number { value } => Ok(value),
+            _ => panic!("not a compile-time constant. {:?}", node.node.clone()),
         }
     }
 

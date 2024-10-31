@@ -75,7 +75,7 @@ impl Error {
                 pos.show(symbols, terminal);
                 highlight_line(pos, symbols, terminal)?;
             }
-            Error::Eof => eprintln!("End Of File"),
+            Error::Eof => eprintln!("End Of File Error"),
         }
         eprintln!();
 

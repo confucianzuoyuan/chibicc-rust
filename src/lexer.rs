@@ -460,7 +460,6 @@ impl<R: Read> Lexer<R> {
             self.token()
         } else if self.current_char()? == '/' {
             loop {
-                self.advance()?;
                 let ch = self.current_char()?;
                 if ch == '\n' {
                     break;

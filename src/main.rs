@@ -72,9 +72,10 @@ fn drive(strings: Rc<Strings>, symbols: &mut Symbols<()>) -> Result<(), Error> {
             source_code = fs::read_to_string(filename)?;
         }
         if source_code.as_bytes().last().unwrap() == &b'\n' {
-            source_code.push_str("\n");
+            source_code.push('\0');
         } else {
-            source_code.push_str("\n\0");
+            source_code.push('\n');
+            source_code.push('\0');
         }
         let file = BufReader::new(source_code.as_bytes());
         let file_symbol = symbols.symbol(filename);
