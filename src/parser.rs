@@ -1370,24 +1370,19 @@ impl<'a> Parser<'a> {
         let mut expr = self.relational()?;
 
         loop {
-            let op = match self.peek_token() {
-                Ok(&Tok::EqualEqual) => WithPos::new(BinaryOperator::Eq, eat!(self, EqualEqual)),
-                Ok(&Tok::BangEqual) => WithPos::new(BinaryOperator::Ne, eat!(self, BangEqual)),
+            match self.peek()?.token {
+                Tok::EqualEqual => {
+                    let pos = eat!(self, EqualEqual);
+                    let right = self.relational()?;
+                    expr = ExprWithPos::new_binary(ast::BinaryOperator::Eq, expr, right, pos);
+                }
+                Tok::BangEqual => {
+                    let pos = eat!(self, BangEqual);
+                    let right = self.relational()?;
+                    expr = ExprWithPos::new_binary(ast::BinaryOperator::Ne, expr, right, pos);
+                }
                 _ => break,
-            };
-            let right = Box::new(self.relational()?);
-            let pos = expr.pos.grow(right.pos);
-            expr = WithPos::new(
-                WithType::new(
-                    Expr::Binary {
-                        left: Box::new(expr),
-                        op,
-                        right,
-                    },
-                    Type::TyPlaceholder,
-                ),
-                pos,
-            );
+            }
         }
         Ok(expr)
     }
@@ -1397,29 +1392,31 @@ impl<'a> Parser<'a> {
         let mut expr = self.shift()?;
 
         loop {
-            let op = match self.peek_token() {
-                Ok(&Tok::Lesser) => WithPos::new(BinaryOperator::Lt, eat!(self, Lesser)),
-                Ok(&Tok::LesserEqual) => WithPos::new(BinaryOperator::Le, eat!(self, LesserEqual)),
-                Ok(&Tok::Greater) => WithPos::new(BinaryOperator::Gt, eat!(self, Greater)),
-                Ok(&Tok::GreaterEqual) => {
-                    WithPos::new(BinaryOperator::Ge, eat!(self, GreaterEqual))
+            match self.peek()?.token {
+                Tok::Lesser => {
+                    let pos = eat!(self, Lesser);
+                    let right = self.shift()?;
+                    expr = ExprWithPos::new_binary(ast::BinaryOperator::Lt, expr, right, pos);
+                }
+                Tok::LesserEqual => {
+                    let pos = eat!(self, LesserEqual);
+                    let right = self.shift()?;
+                    expr = ExprWithPos::new_binary(ast::BinaryOperator::Le, expr, right, pos);
+                }
+                Tok::Greater => {
+                    let pos = eat!(self, Greater);
+                    let right = self.shift()?;
+                    expr = ExprWithPos::new_binary(ast::BinaryOperator::Gt, expr, right, pos);
+                }
+                Tok::GreaterEqual => {
+                    let pos = eat!(self, GreaterEqual);
+                    let right = self.shift()?;
+                    expr = ExprWithPos::new_binary(ast::BinaryOperator::Ge, expr, right, pos);
                 }
                 _ => break,
-            };
-            let right = Box::new(self.shift()?);
-            let pos = expr.pos.grow(right.pos);
-            expr = WithPos::new(
-                WithType::new(
-                    Expr::Binary {
-                        left: Box::new(expr),
-                        op,
-                        right,
-                    },
-                    Type::TyPlaceholder,
-                ),
-                pos,
-            );
+            }
         }
+
         Ok(expr)
     }
 
@@ -1499,17 +1496,7 @@ impl<'a> Parser<'a> {
                 Tok::BarBar => {
                     let pos = eat!(self, BarBar);
                     let rhs = self.logand()?;
-                    node = WithPos::new(
-                        WithType::new(
-                            Expr::Binary {
-                                left: Box::new(node),
-                                op: WithPos::new(ast::BinaryOperator::LogOr, pos),
-                                right: Box::new(rhs),
-                            },
-                            Type::TyPlaceholder,
-                        ),
-                        pos,
-                    );
+                    node = ExprWithPos::new_binary(BinaryOperator::LogOr, node, rhs, pos);
                 }
                 _ => break,
             }
@@ -1527,17 +1514,7 @@ impl<'a> Parser<'a> {
                 Tok::AmpAmp => {
                     let pos = eat!(self, AmpAmp);
                     let rhs = self.bitor()?;
-                    node = WithPos::new(
-                        WithType::new(
-                            Expr::Binary {
-                                left: Box::new(node),
-                                op: WithPos::new(ast::BinaryOperator::LogAnd, pos),
-                                right: Box::new(rhs),
-                            },
-                            Type::TyPlaceholder,
-                        ),
-                        pos,
-                    );
+                    node = ExprWithPos::new_binary(BinaryOperator::LogAnd, node, rhs, pos);
                 }
                 _ => break,
             }
@@ -1555,17 +1532,7 @@ impl<'a> Parser<'a> {
                 Tok::Bar => {
                     let pos = eat!(self, Bar);
                     let rhs = self.bitxor()?;
-                    node = WithPos::new(
-                        WithType::new(
-                            Expr::Binary {
-                                left: Box::new(node),
-                                op: WithPos::new(ast::BinaryOperator::BitOr, pos),
-                                right: Box::new(rhs),
-                            },
-                            Type::TyPlaceholder,
-                        ),
-                        pos,
-                    );
+                    node = ExprWithPos::new_binary(BinaryOperator::BitOr, node, rhs, pos);
                 }
                 _ => break,
             }
@@ -1583,17 +1550,7 @@ impl<'a> Parser<'a> {
                 Tok::Hat => {
                     let pos = eat!(self, Hat);
                     let rhs = self.bitand()?;
-                    node = WithPos::new(
-                        WithType::new(
-                            Expr::Binary {
-                                left: Box::new(node),
-                                op: WithPos::new(ast::BinaryOperator::BitXor, pos),
-                                right: Box::new(rhs),
-                            },
-                            Type::TyPlaceholder,
-                        ),
-                        pos,
-                    );
+                    node = ExprWithPos::new_binary(BinaryOperator::BitXor, node, rhs, pos);
                 }
                 _ => break,
             }
@@ -1611,17 +1568,7 @@ impl<'a> Parser<'a> {
                 Tok::Amp => {
                     let pos = eat!(self, Amp);
                     let rhs = self.equality()?;
-                    node = WithPos::new(
-                        WithType::new(
-                            Expr::Binary {
-                                left: Box::new(node),
-                                op: WithPos::new(ast::BinaryOperator::BitAnd, pos),
-                                right: Box::new(rhs),
-                            },
-                            Type::TyPlaceholder,
-                        ),
-                        pos,
-                    );
+                    node = ExprWithPos::new_binary(BinaryOperator::BitAnd, node, rhs, pos);
                 }
                 _ => break,
             }
