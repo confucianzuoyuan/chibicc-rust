@@ -63,6 +63,12 @@ pub type ExprWithPos = WithPos<ExprWithType>;
 pub type ExprWithType = WithType<Expr>;
 
 impl ExprWithPos {
+    pub fn new_number(i: i64, pos: Pos) -> Self {
+        WithPos::new(
+            WithType::new(Expr::Number { value: i }, Type::TyLong { name: None }),
+            pos,
+        )
+    }
     pub fn new_binary(op: BinaryOperator, left: ExprWithPos, right: ExprWithPos, pos: Pos) -> Self {
         WithPos::new(
             WithType::new(

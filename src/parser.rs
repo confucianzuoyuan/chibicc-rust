@@ -1721,85 +1721,21 @@ impl<'a> Parser<'a> {
         match (lhs.node.ty.clone(), rhs.node.ty.clone()) {
             // num - num
             _ if lhs.node.ty.is_integer() && rhs.node.ty.is_integer() => {
-                lhs = WithPos::new(
-                    WithType::new(
-                        Expr::Binary {
-                            left: Box::new(lhs.clone()),
-                            op: WithPos::new(ast::BinaryOperator::Sub, pos),
-                            right: Box::new(rhs),
-                        },
-                        lhs.node.ty.clone(),
-                    ),
-                    pos,
-                );
+                lhs = ExprWithPos::new_binary(BinaryOperator::Sub, lhs, rhs, pos);
             }
             // ptr - num
             (Type::TyPtr { base, .. }, Type::TyInt { .. } | Type::TyLong { .. }) => {
                 // num * 8
-                rhs = WithPos::new(
-                    WithType::new(
-                        Expr::Binary {
-                            left: Box::new(rhs),
-                            op: WithPos::new(ast::BinaryOperator::Mul, pos),
-                            right: Box::new(WithPos::new(
-                                WithType::new(
-                                    Expr::Number {
-                                        value: base.get_size() as i64,
-                                    },
-                                    Type::TyLong { name: None },
-                                ),
-                                pos,
-                            )),
-                        },
-                        Type::TyLong { name: None },
-                    ),
-                    pos,
-                );
+                let num = ExprWithPos::new_number(base.get_size() as i64, pos);
+                rhs = ExprWithPos::new_binary(BinaryOperator::Mul, rhs, num, pos);
                 add_type(&mut rhs);
-                lhs = WithPos::new(
-                    WithType::new(
-                        Expr::Binary {
-                            left: Box::new(lhs.clone()),
-                            op: WithPos::new(ast::BinaryOperator::Sub, pos),
-                            right: Box::new(rhs),
-                        },
-                        lhs.node.ty.clone(),
-                    ),
-                    pos,
-                );
+                lhs = ExprWithPos::new_binary(BinaryOperator::Sub, lhs, rhs, pos);
             }
             // ptr - ptr, which returns how many elements are between the two.
             (Type::TyPtr { base, .. }, Type::TyPtr { .. }) => {
-                let left = WithPos::new(
-                    WithType::new(
-                        Expr::Binary {
-                            left: Box::new(lhs),
-                            op: WithPos::new(ast::BinaryOperator::Sub, pos),
-                            right: Box::new(rhs),
-                        },
-                        Type::TyLong { name: None },
-                    ),
-                    pos,
-                );
-                lhs = WithPos::new(
-                    WithType::new(
-                        Expr::Binary {
-                            left: Box::new(left),
-                            op: WithPos::new(ast::BinaryOperator::Div, pos),
-                            right: Box::new(WithPos::new(
-                                WithType::new(
-                                    Expr::Number {
-                                        value: base.get_size() as i64,
-                                    },
-                                    Type::TyInt { name: None },
-                                ),
-                                pos,
-                            )),
-                        },
-                        Type::TyInt { name: None },
-                    ),
-                    pos,
-                );
+                let num = ExprWithPos::new_number(base.get_size() as i64, pos);
+                lhs = ExprWithPos::new_binary(BinaryOperator::Sub, lhs, rhs, pos);
+                lhs = ExprWithPos::new_binary(BinaryOperator::Div, lhs, num, pos);
             }
             // other
             _ => panic!("invalid operands for pointer arithmetic sub."),
@@ -1824,35 +1760,14 @@ impl<'a> Parser<'a> {
                 Type::TyInt { .. } | Type::TyLong { .. },
             ) => {
                 // num * 8
-                rhs = WithPos::new(
-                    WithType::new(
-                        Expr::Binary {
-                            left: Box::new(rhs),
-                            op: WithPos::new(ast::BinaryOperator::Mul, pos),
-                            right: Box::new(WithPos::new(
-                                WithType::new(
-                                    Expr::Number {
-                                        value: base.get_size() as i64,
-                                    },
-                                    Type::TyLong { name: None },
-                                ),
-                                pos,
-                            )),
-                        },
-                        Type::TyLong { name: None },
-                    ),
+                let num = ExprWithPos::new_number(base.get_size() as i64, pos);
+                rhs = ExprWithPos::new_binary(ast::BinaryOperator::Mul, rhs, num, pos);
+                lhs = ExprWithPos::new_binary_with_type(
+                    ast::BinaryOperator::Add,
+                    lhs.clone(),
+                    rhs,
                     pos,
-                );
-                lhs = WithPos::new(
-                    WithType::new(
-                        Expr::Binary {
-                            left: Box::new(lhs.clone()),
-                            op: WithPos::new(ast::BinaryOperator::Add, pos),
-                            right: Box::new(rhs),
-                        },
-                        lhs.node.ty.clone(),
-                    ),
-                    pos,
+                    lhs.node.ty,
                 );
             }
             // num + ptr
@@ -1861,50 +1776,19 @@ impl<'a> Parser<'a> {
                 Type::TyPtr { base, .. } | Type::TyArray { base, .. },
             ) => {
                 // num * 8
-                lhs = WithPos::new(
-                    WithType::new(
-                        Expr::Binary {
-                            left: Box::new(lhs),
-                            op: WithPos::new(ast::BinaryOperator::Mul, pos),
-                            right: Box::new(WithPos::new(
-                                WithType::new(
-                                    Expr::Number {
-                                        value: base.get_size() as i64,
-                                    },
-                                    Type::TyLong { name: None },
-                                ),
-                                pos,
-                            )),
-                        },
-                        Type::TyLong { name: None },
-                    ),
+                let num = ExprWithPos::new_number(base.get_size() as i64, pos);
+                lhs = ExprWithPos::new_binary(ast::BinaryOperator::Mul, lhs, num, pos);
+                lhs = ExprWithPos::new_binary_with_type(
+                    ast::BinaryOperator::Add,
+                    rhs.clone(),
+                    lhs,
                     pos,
-                );
-                lhs = WithPos::new(
-                    WithType::new(
-                        Expr::Binary {
-                            left: Box::new(rhs.clone()),
-                            op: WithPos::new(ast::BinaryOperator::Add, pos),
-                            right: Box::new(lhs),
-                        },
-                        rhs.node.ty.clone(),
-                    ),
-                    pos,
+                    rhs.node.ty,
                 );
             }
             // num + num
             _ if lhs.node.ty.is_integer() && rhs.node.ty.is_integer() => {
-                lhs = WithPos::new(
-                    WithType::new(
-                        Expr::Binary {
-                            left: Box::new(lhs.clone()),
-                            op: WithPos::new(ast::BinaryOperator::Add, pos),
-                            right: Box::new(rhs),
-                        },
-                        lhs.node.ty.clone(),
-                    ),
-                    pos,
-                );
+                lhs = ExprWithPos::new_binary(ast::BinaryOperator::Add, lhs, rhs, pos);
             }
             // other
             _ => panic!("invalid operands for pointer arithmetic add."),
