@@ -69,6 +69,19 @@ pub type ExprWithPos = WithPos<ExprWithType>;
 pub type ExprWithType = WithType<Expr>;
 
 impl ExprWithPos {
+    pub fn new_member_expr(strct: ExprWithPos, member: Member, pos: Pos) -> Self {
+        WithPos::new(
+            WithType::new(
+                Expr::MemberExpr {
+                    strct: Box::new(strct),
+                    member,
+                },
+                Type::TyPlaceholder,
+            ),
+            pos,
+        )
+    }
+
     pub fn new_memzero(var: Rc<RefCell<Obj>>, pos: Pos) -> Self {
         WithPos::new(
             WithType::new(Expr::MemZero { var }, Type::TyPlaceholder),
@@ -561,6 +574,7 @@ pub struct InitDesg {
     pub idx: i64,
     pub var: Option<Rc<RefCell<Obj>>>,
     pub next: Option<Box<InitDesg>>,
+    pub member: Option<Member>,
 }
 
 impl InitDesg {

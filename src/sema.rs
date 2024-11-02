@@ -99,6 +99,13 @@ impl Type {
         }
     }
 
+    pub fn is_struct(&self) -> bool {
+        match self {
+            Type::TyStruct { .. } => true,
+            _ => false,
+        }
+    }
+
     pub fn get_array_len(&self) -> i32 {
         match self {
             Type::TyArray { array_len, .. } => *array_len,

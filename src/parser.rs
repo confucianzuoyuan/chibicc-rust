@@ -117,7 +117,7 @@ impl<'a> Parser<'a> {
         unique_name
     }
 
-    fn new_initializer(&mut self, ty: Type, is_flexible: bool) -> Result<Initializer> {
+    fn new_initializer(&mut self, mut ty: Type, is_flexible: bool) -> Result<Initializer> {
         let mut init = Initializer::new(ty.clone());
 
         if ty.is_array() {
@@ -130,12 +130,20 @@ impl<'a> Parser<'a> {
             }
         }
 
+        if ty.is_struct() {
+            for mem in ty.get_struct_members().unwrap() {
+                init.add_child(self.new_initializer(mem.ty, false)?);
+            }
+
+            return Ok(init);
+        }
+
         Ok(init)
     }
 
     fn skip_excess_element(&mut self) -> Result<()> {
-        if self.peek()?.token == Equal {
-            eat!(self, Equal);
+        if self.peek()?.token == LeftBrace {
+            eat!(self, LeftBrace);
             self.skip_excess_element()?;
             eat!(self, RightBrace);
             return Ok(());
@@ -227,6 +235,33 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    /// struct-initializer = "{" initializer ("," initializer)* "}"
+    fn struct_initializer(&mut self, init: &mut Initializer) -> Result<()> {
+        eat!(self, LeftBrace);
+
+        let mut i = 0;
+        loop {
+            if self.peek()?.token == RightBrace {
+                eat!(self, RightBrace);
+                break;
+            }
+
+            if i > 0 {
+                eat!(self, Comma);
+            }
+
+            self.initializer2(init.get_child(i))?;
+
+            if i as usize == init.children.len() {
+                self.skip_excess_element()?;
+            }
+
+            i += 1;
+        }
+
+        Ok(())
+    }
+
     /// initializer = "{" initializer ("," initializer)* "}"
     ///             | assign
     fn initializer2(&mut self, init: &mut Initializer) -> Result<()> {
@@ -241,6 +276,11 @@ impl<'a> Parser<'a> {
                     return Ok(());
                 }
             }
+        }
+
+        if init.ty.is_struct() {
+            self.struct_initializer(init)?;
+            return Ok(());
         }
 
         init.expr = Some(self.assign()?);
@@ -258,6 +298,13 @@ impl<'a> Parser<'a> {
     fn init_desg_expr(&mut self, desg: &mut InitDesg, tok: Token) -> Result<ExprWithPos> {
         if let Some(var) = &desg.var {
             return Ok(ExprWithPos::new_var(var.clone(), tok.pos.clone()));
+        } else if let Some(mem) = desg.member.clone() {
+            let node = ExprWithPos::new_member_expr(
+                self.init_desg_expr(desg.next(), tok.clone())?,
+                mem,
+                tok.pos.clone(),
+            );
+            return Ok(node);
         } else {
             let lhs = self.init_desg_expr(desg.next(), tok.clone())?;
             let rhs = ExprWithPos::new_number(desg.idx, tok.pos);
@@ -271,7 +318,7 @@ impl<'a> Parser<'a> {
     fn create_local_var_init(
         &mut self,
         init: &mut Initializer,
-        ty: Type,
+        mut ty: Type,
         desg: &mut InitDesg,
         tok: Token,
     ) -> Result<ExprWithPos> {
@@ -282,6 +329,7 @@ impl<'a> Parser<'a> {
                     idx: i as i64,
                     next: Some(Box::new(desg.clone())),
                     var: None,
+                    member: None,
                 };
                 let rhs = self.create_local_var_init(
                     init.get_child(i),
@@ -290,6 +338,25 @@ impl<'a> Parser<'a> {
                     tok.clone(),
                 )?;
                 node = ExprWithPos::new_comma(node, rhs, tok.pos.clone());
+            }
+
+            return Ok(node);
+        }
+
+        if ty.is_struct() {
+            let mut node = ExprWithPos::new_null_expr(self.peek()?.pos);
+            let mut i = 0;
+            for mem in ty.get_struct_members().unwrap() {
+                let mut desg2 = InitDesg {
+                    next: Some(Box::new(desg.clone())),
+                    idx: 0,
+                    member: Some(mem.clone()),
+                    var: None,
+                };
+                let rhs =
+                    self.create_local_var_init(init.get_child(i), mem.ty, &mut desg2, tok.clone())?;
+                node = ExprWithPos::new_comma(node, rhs, tok.pos.clone());
+                i += 1;
             }
 
             return Ok(node);
@@ -324,6 +391,7 @@ impl<'a> Parser<'a> {
             var: Some(var.clone()),
             idx: 0,
             next: None,
+            member: None,
         };
         let tok = self.peek()?.clone();
         // If a partial initializer list is given, the standard requires

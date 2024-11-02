@@ -1,4 +1,4 @@
 int main() {
   // hello
-  return ({ typedef int t; t t=1; t t=2; t; });
+  return ({ struct {int a; int b; int c;} x={1,2,3}; x.a; });
 }
