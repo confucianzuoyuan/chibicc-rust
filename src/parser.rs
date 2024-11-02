@@ -2039,7 +2039,7 @@ impl<'a> Parser<'a> {
                                         Expr::MemberExpr {
                                             strct: Box::new(node),
                                             member: match mem_found.clone() {
-                                                Some(m) => m.clone(),
+                                                Some(m) => m.borrow().clone(),
                                                 None => panic!(),
                                             },
                                         },
@@ -2073,7 +2073,7 @@ impl<'a> Parser<'a> {
                         Expr::MemberExpr {
                             strct: Box::new(node),
                             member: match mem_found.clone() {
-                                Some(m) => m.clone(),
+                                Some(m) => m.borrow().clone(),
                                 None => panic!(),
                             },
                         },

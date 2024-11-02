@@ -195,7 +195,7 @@ impl CodeGenerator {
             ast::Expr::MemberExpr { strct, member } => {
                 self.gen_addr(&strct);
                 self.output
-                    .push(format!("  add ${}, %rax", member.borrow().offset));
+                    .push(format!("  add ${}, %rax", member.offset));
             }
             _ => panic!("not an lvalue"),
         }

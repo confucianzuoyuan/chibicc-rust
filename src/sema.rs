@@ -404,7 +404,7 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
             }
         }
         ast::Expr::CommaExpr { right, .. } => e.node.ty = right.node.ty.clone(),
-        ast::Expr::MemberExpr { member, .. } => e.node.ty = member.borrow().ty.clone(),
+        ast::Expr::MemberExpr { member, .. } => e.node.ty = member.ty.clone(),
 
         ast::Expr::CastExpr { .. } => (),
         ast::Expr::Null => (),

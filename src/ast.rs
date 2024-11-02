@@ -47,7 +47,7 @@ pub enum Expr {
     /// . (struct member access)
     MemberExpr {
         strct: Box<ExprWithPos>,
-        member: Rc<RefCell<Member>>,
+        member: Member,
     },
     CastExpr {
         expr: Box<ExprWithPos>,
