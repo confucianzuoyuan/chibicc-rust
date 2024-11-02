@@ -68,7 +68,7 @@ pub struct Parser<'a> {
     unique_name_count: i32,
 
     var_env: Symbols<Rc<RefCell<Obj>>>,
-    struct_tag_env: Symbols<Rc<RefCell<Type>>>,
+    struct_tag_env: Symbols<Type>,
     var_attr_env: Symbols<VarAttr>,
 
     // Points to the function object the parser is currently parsing.
@@ -730,13 +730,11 @@ impl<'a> Parser<'a> {
                 if let Some(struct_tag) = tag {
                     let ty = self.struct_tag_env.look(self.symbols.symbol(&struct_tag));
                     if let Some(_ty) = ty {
-                        return Ok(_ty.borrow_mut().clone());
+                        return Ok(_ty.clone());
                     } else {
                         let ty = Type::struct_type(tag_token, vec![], -1, 1);
-                        self.struct_tag_env.enter(
-                            self.symbols.symbol(&struct_tag),
-                            Rc::new(RefCell::new(ty.clone())),
-                        );
+                        self.struct_tag_env
+                            .enter(self.symbols.symbol(&struct_tag), ty.clone());
                         return Ok(ty);
                     }
                 }
@@ -761,7 +759,7 @@ impl<'a> Parser<'a> {
 
             ty.set_size(sema::align_to(offset, ty.get_align()));
             self.struct_tag_env
-                .enter(self.symbols.symbol(&tag), Rc::new(RefCell::new(ty.clone())));
+                .enter(self.symbols.symbol(&tag), ty.clone());
         }
 
         return Ok(ty);
@@ -813,7 +811,7 @@ impl<'a> Parser<'a> {
                 if let Some(union_tag) = tag {
                     let ty = self.struct_tag_env.look(self.symbols.symbol(&union_tag));
                     if let Some(_ty) = ty {
-                        return Ok(_ty.borrow_mut().clone());
+                        return Ok(_ty.clone());
                     } else {
                         panic!("unknown union type: {}", union_tag);
                     }
@@ -877,10 +875,8 @@ impl<'a> Parser<'a> {
             align: union_align,
         };
         if let Some(struct_tag) = tag {
-            self.struct_tag_env.enter(
-                self.symbols.symbol(&struct_tag),
-                Rc::new(RefCell::new(union_ty.clone())),
-            );
+            self.struct_tag_env
+                .enter(self.symbols.symbol(&struct_tag), union_ty.clone());
         }
         Ok(union_ty)
     }
@@ -2020,7 +2016,7 @@ impl<'a> Parser<'a> {
                     let ty = self.struct_tag_env.look(self.symbols.symbol(&name));
 
                     if let Some(ty) = ty {
-                        match ty.borrow().clone() {
+                        match ty.clone() {
                             Type::TyStruct {
                                 name: Some(_),
                                 members,
@@ -2373,7 +2369,7 @@ impl<'a> Parser<'a> {
                                     return Ok(WithPos::new(
                                         WithType::new(
                                             Expr::Number {
-                                                value: ty.borrow().clone().get_size() as i64,
+                                                value: ty.get_size() as i64,
                                             },
                                             Type::TyInt { name: None },
                                         ),
@@ -2894,9 +2890,9 @@ impl<'a> Parser<'a> {
 
                         self.struct_tag_env.enter(
                             self.symbols.symbol(&ident),
-                            Rc::new(RefCell::new(Type::TyEnum {
+                            Type::TyEnum {
                                 name: Some(ident_tok.clone()),
-                            })),
+                            },
                         );
 
                         Ok(Type::TyEnum {
@@ -2905,7 +2901,7 @@ impl<'a> Parser<'a> {
                     }
                     _ => {
                         if let Some(ty) = self.struct_tag_env.look(self.symbols.symbol(&ident)) {
-                            return Ok(ty.borrow_mut().clone());
+                            return Ok(ty.clone());
                         } else {
                             panic!()
                         }
