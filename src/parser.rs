@@ -129,23 +129,42 @@ impl<'a> Parser<'a> {
         Ok(init)
     }
 
+    fn skip_excess_element(&mut self) -> Result<()> {
+        if self.peek()?.token == Equal {
+            eat!(self, Equal);
+            self.skip_excess_element()?;
+            eat!(self, RightBrace);
+            return Ok(());
+        }
+        self.assign()?;
+        Ok(())
+    }
+
     /// initializer = "{" initializer ("," initializer)* "}"
     ///             | assign
     fn initializer2(&mut self, init: &mut Initializer) -> Result<()> {
         if init.ty.is_array() {
             eat!(self, LeftBrace);
 
-            for i in 0..init.ty.get_array_len() {
+            let mut i = 0;
+            loop {
                 if self.peek()?.token == RightBrace {
+                    eat!(self, RightBrace);
                     break;
                 }
+
                 if i > 0 {
                     eat!(self, Comma);
                 }
-                self.initializer2(init.get_child(i))?;
-            }
 
-            eat!(self, RightBrace);
+                if i < init.ty.get_array_len() {
+                    self.initializer2(init.get_child(i))?;
+                } else {
+                    self.skip_excess_element()?;
+                }
+
+                i += 1;
+            }
 
             return Ok(());
         }
