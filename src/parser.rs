@@ -140,33 +140,66 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    /// string-initializer = string-literal
+    fn string_initializer(&mut self, init: &mut Initializer) -> Result<()> {
+        let mut s;
+        let pos = eat!(self, Str, s);
+        s.push('\0');
+        let len = if init.ty.get_array_len() as usize > s.len() {
+            s.len()
+        } else {
+            init.ty.get_array_len() as usize
+        };
+
+        for i in 0..len {
+            let num = s.as_bytes().get(i).unwrap();
+            init.get_child(i as i32).expr = Some(ExprWithPos::new_number(*num as i64, pos));
+        }
+
+        Ok(())
+    }
+
+    /// array-initializer = "{" initializer ("," initializer)* "}"
+    fn array_initializer(&mut self, init: &mut Initializer) -> Result<()> {
+        eat!(self, LeftBrace);
+
+        let mut i = 0;
+        loop {
+            if self.peek()?.token == RightBrace {
+                eat!(self, RightBrace);
+                break;
+            }
+
+            if i > 0 {
+                eat!(self, Comma);
+            }
+
+            if i < init.ty.get_array_len() {
+                self.initializer2(init.get_child(i))?;
+            } else {
+                self.skip_excess_element()?;
+            }
+
+            i += 1;
+        }
+
+        Ok(())
+    }
+
     /// initializer = "{" initializer ("," initializer)* "}"
     ///             | assign
     fn initializer2(&mut self, init: &mut Initializer) -> Result<()> {
         if init.ty.is_array() {
-            eat!(self, LeftBrace);
-
-            let mut i = 0;
-            loop {
-                if self.peek()?.token == RightBrace {
-                    eat!(self, RightBrace);
-                    break;
+            match self.peek()?.token {
+                Tok::Str(_) => {
+                    self.string_initializer(init)?;
+                    return Ok(());
                 }
-
-                if i > 0 {
-                    eat!(self, Comma);
+                _ => {
+                    self.array_initializer(init)?;
+                    return Ok(());
                 }
-
-                if i < init.ty.get_array_len() {
-                    self.initializer2(init.get_child(i))?;
-                } else {
-                    self.skip_excess_element()?;
-                }
-
-                i += 1;
             }
-
-            return Ok(());
         }
 
         init.expr = Some(self.assign()?);
