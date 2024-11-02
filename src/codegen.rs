@@ -424,6 +424,15 @@ impl CodeGenerator {
                 self.output.push(format!("  mov $0, %rax"));
                 self.output.push(format!("  call {}", name));
             }
+            ast::Expr::MemZero { var } => {
+                // `rep stosb` is equivalent to `memset(%rdi, %al, %rcx)`.
+                self.output
+                    .push(format!("  mov ${}, %rcx", var.borrow().ty.get_size()));
+                self.output
+                    .push(format!("  lea {}(%rbp), %rdi", var.borrow().offset));
+                self.output.push(format!("  mov $0, %al"));
+                self.output.push(format!("  rep stosb"));
+            }
             ast::Expr::Binary {
                 left, op, right, ..
             } => {

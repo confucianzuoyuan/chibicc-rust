@@ -58,6 +58,10 @@ pub enum Expr {
         then_clause: Box<ExprWithPos>,
         else_clause: Box<ExprWithPos>,
     },
+    /// Zero-clear a stack variable
+    MemZero {
+        var: Rc<RefCell<Obj>>,
+    },
     Null,
 }
 
@@ -65,21 +69,31 @@ pub type ExprWithPos = WithPos<ExprWithType>;
 pub type ExprWithType = WithType<Expr>;
 
 impl ExprWithPos {
+    pub fn new_memzero(var: Rc<RefCell<Obj>>, pos: Pos) -> Self {
+        WithPos::new(
+            WithType::new(Expr::MemZero { var }, Type::TyPlaceholder),
+            pos,
+        )
+    }
+
     pub fn new_null_expr(pos: Pos) -> Self {
         WithPos::new(WithType::new(Expr::Null, Type::TyPlaceholder), pos)
     }
+
     pub fn new_number(i: i64, pos: Pos) -> Self {
         WithPos::new(
             WithType::new(Expr::Number { value: i }, Type::TyLong { name: None }),
             pos,
         )
     }
+
     pub fn new_var(obj: Rc<RefCell<Obj>>, pos: Pos) -> Self {
         WithPos::new(
             WithType::new(Expr::Variable { obj }, Type::TyPlaceholder),
             pos,
         )
     }
+
     pub fn new_deref(expr: ExprWithPos, pos: Pos) -> Self {
         WithPos::new(
             WithType::new(
@@ -91,6 +105,7 @@ impl ExprWithPos {
             pos,
         )
     }
+
     pub fn new_comma(left: ExprWithPos, right: ExprWithPos, pos: Pos) -> Self {
         WithPos::new(
             WithType::new(
@@ -218,6 +233,7 @@ impl Display for ExprWithPos {
                     } => {
                         return format!("{} ? {} : {}", condition, then_clause, else_clause);
                     }
+                    Expr::MemZero { var } => format!("{}", var.borrow()),
                     Expr::Null => format!("null expr"),
                 },
             };

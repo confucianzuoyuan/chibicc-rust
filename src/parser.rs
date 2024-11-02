@@ -136,6 +136,9 @@ impl<'a> Parser<'a> {
             eat!(self, LeftBrace);
 
             for i in 0..init.ty.get_array_len() {
+                if self.peek()?.token == RightBrace {
+                    break;
+                }
                 if i > 0 {
                     eat!(self, Comma);
                 }
@@ -198,6 +201,10 @@ impl<'a> Parser<'a> {
             return Ok(node);
         }
 
+        if init.expr.is_none() {
+            return Ok(ExprWithPos::new_null_expr(self.peek()?.pos.clone()));
+        }
+
         let mut lhs = self.init_desg_expr(desg, tok.clone())?;
         add_type(&mut lhs);
         let mut rhs = init.expr.clone().unwrap();
@@ -225,7 +232,14 @@ impl<'a> Parser<'a> {
             next: None,
         };
         let tok = self.peek()?.clone();
-        self.create_local_var_init(&mut init, var.borrow().ty.clone(), &mut desg, tok)
+        // If a partial initializer list is given, the standard requires
+        // that unspecified elements are set to 0. Here, we simply
+        // zero-initialize the entire memory region of a variable before
+        // initializing it with user-supplied values.
+        let lhs = ExprWithPos::new_memzero(var.clone(), tok.pos.clone());
+        let rhs =
+            self.create_local_var_init(&mut init, var.borrow().ty.clone(), &mut desg, tok.clone())?;
+        Ok(ExprWithPos::new_comma(lhs, rhs, tok.pos.clone()))
     }
 
     /// stmt = "return" expr ";"

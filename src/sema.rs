@@ -412,6 +412,7 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
                 e.node.ty = then_clause.node.ty.clone();
             }
         }
+        ast::Expr::MemZero { .. } => (),
     }
 }
 
