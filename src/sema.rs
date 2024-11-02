@@ -1,6 +1,3 @@
-use std::cell::RefCell;
-use std::rc::Rc;
-
 use crate::ast::BinaryOperator::*;
 use crate::ast::{self, BinaryOperatorWithPos, Expr, ExprWithPos, UnaryOperatorWithPos};
 use crate::position::WithPos;
@@ -45,13 +42,13 @@ pub enum Type {
     },
     TyStruct {
         name: Option<Token>,
-        members: Vec<Rc<RefCell<Member>>>,
+        members: Vec<Member>,
         type_size: i32,
         align: i32,
     },
     TyUnion {
         name: Option<Token>,
-        members: Vec<Rc<RefCell<Member>>>,
+        members: Vec<Member>,
         type_size: i32,
         align: i32,
     },
@@ -61,7 +58,7 @@ pub enum Type {
 impl Type {
     pub fn struct_type(
         name: Option<Token>,
-        members: Vec<Rc<RefCell<Member>>>,
+        members: Vec<Member>,
         type_size: i32,
         align: i32,
     ) -> Self {
@@ -191,7 +188,7 @@ impl Type {
         }
     }
 
-    pub fn set_struct_members(&mut self, new_members: Vec<Rc<RefCell<Member>>>) {
+    pub fn set_struct_members(&mut self, new_members: Vec<Member>) {
         match self {
             Type::TyStruct {
                 ref mut members, ..
@@ -200,7 +197,7 @@ impl Type {
         }
     }
 
-    pub fn get_struct_members(&mut self) -> Option<Vec<Rc<RefCell<Member>>>> {
+    pub fn get_struct_members(&mut self) -> Option<Vec<Member>> {
         match self {
             Type::TyStruct { members, .. } => Some(members.clone()),
             _ => None,

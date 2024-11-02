@@ -692,11 +692,11 @@ impl<'a> Parser<'a> {
                             _ => {
                                 let member_ty = self.declarator(basety.clone())?;
                                 let member_name = self.get_ident_token(member_ty.clone())?;
-                                let member = Rc::new(RefCell::new(sema::Member {
+                                let member = sema::Member {
                                     ty: member_ty,
                                     name: member_name,
                                     offset: 0,
-                                }));
+                                };
                                 members.push(member);
                             }
                         }
@@ -747,17 +747,20 @@ impl<'a> Parser<'a> {
         if let Some(tag) = tag {
             // Assign offsets within the struct to members.
             let mut offset = 0;
-            for mem in ty.get_struct_members().unwrap() {
-                offset = align_to(offset, mem.borrow_mut().ty.get_align());
-                mem.borrow_mut().offset = offset;
-                offset += mem.borrow_mut().ty.get_size();
+            let mut members = ty.get_struct_members().unwrap();
+            for mem in &mut members {
+                offset = align_to(offset, mem.ty.get_align());
+                mem.offset = offset;
+                offset += mem.ty.get_size();
 
-                if ty.get_align() < mem.borrow_mut().ty.get_align() {
-                    ty.set_align(mem.borrow_mut().ty.get_align());
+                if ty.get_align() < mem.ty.get_align() {
+                    ty.set_align(mem.ty.get_align());
                 }
             }
 
             ty.set_size(sema::align_to(offset, ty.get_align()));
+            ty.set_struct_members(members);
+
             self.struct_tag_env
                 .enter(self.symbols.symbol(&tag), ty.clone());
         }
@@ -775,17 +778,19 @@ impl<'a> Parser<'a> {
 
         // Assign offsets within the struct to members.
         let mut offset = 0;
-        for mem in ty.get_struct_members().unwrap() {
-            offset = align_to(offset, mem.borrow_mut().ty.get_align());
-            mem.borrow_mut().offset = offset;
-            offset += mem.borrow_mut().ty.get_size();
+        let mut members = ty.get_struct_members().unwrap();
+        for mem in &mut members {
+            offset = align_to(offset, mem.ty.get_align());
+            mem.offset = offset;
+            offset += mem.ty.get_size();
 
-            if ty.get_align() < mem.borrow_mut().ty.get_align() {
-                ty.set_align(mem.borrow_mut().ty.get_align());
+            if ty.get_align() < mem.ty.get_align() {
+                ty.set_align(mem.ty.get_align());
             }
         }
 
         ty.set_size(sema::align_to(offset, ty.get_align()));
+        ty.set_struct_members(members);
 
         Ok(ty)
     }
@@ -841,11 +846,11 @@ impl<'a> Parser<'a> {
                             _ => {
                                 let member_ty = self.declarator(basety.clone())?;
                                 let member_name = self.get_ident_token(member_ty.clone())?;
-                                let member = Rc::new(RefCell::new(sema::Member {
+                                let member = sema::Member {
                                     ty: member_ty,
                                     name: member_name,
                                     offset: 0,
-                                }));
+                                };
                                 members.push(member);
                             }
                         }
@@ -860,11 +865,11 @@ impl<'a> Parser<'a> {
         let mut union_align = 1;
         let mut type_size = 0;
         for mem in members.clone() {
-            if union_align < mem.borrow_mut().ty.get_align() {
-                union_align = mem.borrow_mut().ty.get_align();
+            if union_align < mem.ty.get_align() {
+                union_align = mem.ty.get_align();
             }
-            if type_size < mem.borrow_mut().ty.get_size() {
-                type_size = mem.borrow_mut().ty.get_size();
+            if type_size < mem.ty.get_size() {
+                type_size = mem.ty.get_size();
             }
         }
 
@@ -2023,7 +2028,7 @@ impl<'a> Parser<'a> {
                                 ..
                             } => {
                                 for mem in members {
-                                    match mem.borrow_mut().name.token.clone() {
+                                    match mem.name.token.clone() {
                                         Tok::Ident(tok_name) => {
                                             if mem_ident == tok_name {
                                                 mem_found = Some(mem.clone());
@@ -2039,12 +2044,12 @@ impl<'a> Parser<'a> {
                                         Expr::MemberExpr {
                                             strct: Box::new(node),
                                             member: match mem_found.clone() {
-                                                Some(m) => m.borrow().clone(),
+                                                Some(m) => m.clone(),
                                                 None => panic!(),
                                             },
                                         },
                                         match mem_found.clone() {
-                                            Some(m) => m.borrow_mut().ty.clone(),
+                                            Some(m) => m.ty.clone(),
                                             None => panic!(),
                                         },
                                     ),
@@ -2057,7 +2062,7 @@ impl<'a> Parser<'a> {
                 }
 
                 for mem in members {
-                    match mem.borrow_mut().name.token.clone() {
+                    match mem.name.token.clone() {
                         Tok::Ident(tok_name) => {
                             if mem_ident == tok_name {
                                 mem_found = Some(mem.clone());
@@ -2073,12 +2078,12 @@ impl<'a> Parser<'a> {
                         Expr::MemberExpr {
                             strct: Box::new(node),
                             member: match mem_found.clone() {
-                                Some(m) => m.borrow().clone(),
+                                Some(m) => m.clone(),
                                 None => panic!(),
                             },
                         },
                         match mem_found.clone() {
-                            Some(m) => m.borrow_mut().ty.clone(),
+                            Some(m) => m.ty.clone(),
                             None => panic!(),
                         },
                     ),
