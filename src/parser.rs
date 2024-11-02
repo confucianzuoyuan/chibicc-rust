@@ -117,12 +117,16 @@ impl<'a> Parser<'a> {
         unique_name
     }
 
-    fn new_initializer(&mut self, ty: Type) -> Result<Initializer> {
+    fn new_initializer(&mut self, ty: Type, is_flexible: bool) -> Result<Initializer> {
         let mut init = Initializer::new(ty.clone());
 
         if ty.is_array() {
+            if is_flexible && ty.get_size() < 0 {
+                init.is_flexible = true;
+                return Ok(init);
+            }
             for _ in 0..=ty.get_array_len() - 1 {
-                init.add_child(self.new_initializer(ty.base().unwrap())?);
+                init.add_child(self.new_initializer(ty.base().unwrap(), false)?);
             }
         }
 
@@ -145,6 +149,14 @@ impl<'a> Parser<'a> {
         let mut s;
         let pos = eat!(self, Str, s);
         s.push('\0');
+
+        if init.is_flexible {
+            *init = self.new_initializer(
+                Type::array_type(init.ty.base().unwrap(), s.len() as i32),
+                false,
+            )?;
+        }
+
         let len = if init.ty.get_array_len() as usize > s.len() {
             s.len()
         } else {
@@ -159,9 +171,38 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    fn count_array_init_elements(&mut self, ty: Type) -> Result<i32> {
+        let mut dummy = self.new_initializer(ty.base().unwrap(), false)?;
+        let mut i = 0;
+        loop {
+            if self.peek()?.token == RightBrace {
+                eat!(self, RightBrace);
+                break;
+            }
+
+            if i > 0 {
+                eat!(self, Comma);
+            }
+
+            self.initializer2(&mut dummy)?;
+
+            i += 1;
+        }
+        Ok(i)
+    }
+
     /// array-initializer = "{" initializer ("," initializer)* "}"
     fn array_initializer(&mut self, init: &mut Initializer) -> Result<()> {
         eat!(self, LeftBrace);
+
+        let old_current_pos = self.current_pos;
+
+        if init.is_flexible {
+            let len = self.count_array_init_elements(init.ty.clone())?;
+            *init = self.new_initializer(Type::array_type(init.ty.base().unwrap(), len), false)?;
+        }
+
+        self.current_pos = old_current_pos;
 
         let mut i = 0;
         loop {
@@ -207,9 +248,10 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn initializer(&mut self, ty: Type) -> Result<Initializer> {
-        let mut init = self.new_initializer(ty)?;
+    fn initializer(&mut self, ty: &mut Type) -> Result<Initializer> {
+        let mut init = self.new_initializer(ty.clone(), true)?;
         self.initializer2(&mut init)?;
+        *ty = init.ty.clone();
         Ok(init)
     }
 
@@ -277,7 +319,7 @@ impl<'a> Parser<'a> {
     ///   x[1][0] = 8;
     ///   x[1][1] = 9;
     fn local_var_initializer(&mut self, var: Rc<RefCell<Obj>>) -> Result<ExprWithPos> {
-        let mut init = self.initializer(var.borrow().ty.clone())?;
+        let mut init = self.initializer(&mut var.borrow_mut().ty)?;
         let mut desg = InitDesg {
             var: Some(var.clone()),
             idx: 0,
@@ -595,21 +637,29 @@ impl<'a> Parser<'a> {
                 }
                 _ => {
                     let ty = self.declarator(basety.clone())?;
-                    match ty {
-                        Type::TyVoid { name } => panic!("{:#?} variable declared void.", name),
-                        Type::TyArray { array_len, .. } if array_len < 0 => {
-                            panic!("variable has incomplete type {:?}.", ty);
-                        }
-                        _ => (),
+                    if ty.is_void() {
+                        panic!("{:#?} variable declared void.", ty);
                     }
                     let ident = self.get_ident(ty.clone())?;
-                    let var = self.new_local_variable(ident, ty.clone())?;
+                    let var = self.new_local_variable(ident.clone(), ty.clone())?;
 
                     if self.peek()?.token == Equal {
                         let pos = eat!(self, Equal);
-                        let expr = self.local_var_initializer(var)?;
+                        let expr = self.local_var_initializer(var.clone())?;
                         let expr_stmt = WithPos::new(Stmt::ExprStmt { expr }, pos);
                         decls.push(expr_stmt);
+                    }
+
+                    if self
+                        .var_attr_env
+                        .look(self.symbols.symbol(&ident))
+                        .is_none()
+                        && var.borrow().ty.get_size() < 0
+                    {
+                        panic!("variable {} has incomplete type", var.borrow());
+                    }
+                    if var.borrow().ty.is_void() {
+                        panic!("variable {} declared void", var.borrow());
                     }
                 }
             }
@@ -1173,12 +1223,15 @@ impl<'a> Parser<'a> {
                     break;
                 }
                 _ => {
-                    // { typedef int t; t t=1; t; }
+                    // { typedef int t; t t=1; t t=2; t; }
                     let tok = self.peek()?.token.clone();
                     match tok.clone() {
                         Tok::Ident(name) => {
                             let sym = self.symbols.symbol(&name);
-                            if self.var_env.look(sym).is_some() {
+                            // handle case like `t t=2`;
+                            if self.var_env.look(sym).is_some()
+                                && !self.peek_next_one()?.token.is_ident()
+                            {
                                 let mut stmt = self.stmt()?;
                                 sema_stmt(&mut stmt);
                                 stmts.push(stmt);

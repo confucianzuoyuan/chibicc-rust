@@ -529,6 +529,7 @@ pub struct Initializer {
     // If it's not an aggregate type and has an initializer,
     // `expr` has an initialization expression.
     pub expr: Option<ExprWithPos>,
+    pub is_flexible: bool,
     pub tok: Option<Token>,
 }
 
@@ -539,6 +540,7 @@ impl Initializer {
             ty,
             expr: None,
             tok: None,
+            is_flexible: false,
         }
     }
 

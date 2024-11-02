@@ -73,6 +73,14 @@ impl Type {
         }
     }
 
+    pub fn array_type(base: Type, len: i32) -> Self {
+        Type::TyArray {
+            name: None,
+            base: Box::new(base),
+            array_len: len,
+        }
+    }
+
     pub fn base(&self) -> Option<Type> {
         match self {
             Type::TyArray { base, .. } => Some(*base.clone()),

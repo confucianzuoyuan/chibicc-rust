@@ -88,6 +88,13 @@ impl Tok {
             _ => None,
         }
     }
+
+    pub fn is_ident(&self) -> bool {
+        match self {
+            Tok::Ident(..) => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
