@@ -279,6 +279,17 @@ impl<'a> Parser<'a> {
         }
 
         if init.ty.is_struct() {
+            // A struct can be initialized with another struct. E.g.
+            // `struct T x = y;` where y is a variable of type `struct T`.
+            // Handle that case first.
+            if self.peek()?.token != LeftBrace {
+                let mut expr = self.assign()?;
+                add_type(&mut expr);
+                if expr.node.ty.is_struct() {
+                    init.expr = Some(expr);
+                    return Ok(());
+                }
+            }
             self.struct_initializer(init)?;
             return Ok(());
         }
@@ -343,7 +354,7 @@ impl<'a> Parser<'a> {
             return Ok(node);
         }
 
-        if ty.is_struct() {
+        if ty.is_struct() && init.expr.is_none() {
             let mut node = ExprWithPos::new_null_expr(self.peek()?.pos);
             let mut i = 0;
             for mem in ty.get_struct_members().unwrap() {
