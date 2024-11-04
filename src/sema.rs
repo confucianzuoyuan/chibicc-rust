@@ -207,6 +207,13 @@ impl Type {
         }
     }
 
+    pub fn is_union(&self) -> bool {
+        match self.ty {
+            Ty::TyUnion { .. } => true,
+            _ => false,
+        }
+    }
+
     pub fn get_array_len(&self) -> i32 {
         match &self.ty {
             Ty::TyArray { array_len, .. } => *array_len,
@@ -278,6 +285,13 @@ impl Type {
     pub fn get_struct_members(&mut self) -> Option<Vec<Member>> {
         match &self.ty {
             Ty::TyStruct { members, .. } => Some(members.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn get_union_members(&mut self) -> Option<Vec<Member>> {
+        match &self.ty {
+            Ty::TyUnion { members, .. } => Some(members.clone()),
             _ => None,
         }
     }

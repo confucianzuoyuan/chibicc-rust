@@ -1,4 +1,4 @@
 int main() {
   // hello
-  return ({ typedef struct {int a,b;} T; T x={1,2}; T y=x; y.a; });
+  return ({ union { int a; char b[4]; } x={0x01020304}; x.b[0]; });
 }

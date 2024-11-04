@@ -138,6 +138,14 @@ impl<'a> Parser<'a> {
             return Ok(init);
         }
 
+        if ty.is_union() {
+            for mem in ty.get_union_members().unwrap() {
+                init.add_child(self.new_initializer(mem.ty, false)?);
+            }
+
+            return Ok(init);
+        }
+
         Ok(init)
     }
 
@@ -262,7 +270,18 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    /// initializer = "{" initializer ("," initializer)* "}"
+    fn union_initializer(&mut self, init: &mut Initializer) -> Result<()> {
+        // Unlike structs, union initializers take only one initializer,
+        // and that initializes the first union member.
+        eat!(self, LeftBrace);
+        self.initializer2(init.get_child(0))?;
+        eat!(self, RightBrace);
+
+        Ok(())
+    }
+
+    /// initializer = string-initializer | array-initializer
+    ///             | struct-initializer | union-initializer
     ///             | assign
     fn initializer2(&mut self, init: &mut Initializer) -> Result<()> {
         if init.ty.is_array() {
@@ -291,6 +310,11 @@ impl<'a> Parser<'a> {
                 }
             }
             self.struct_initializer(init)?;
+            return Ok(());
+        }
+
+        if init.ty.is_union() {
+            self.union_initializer(init)?;
             return Ok(());
         }
 
@@ -371,6 +395,17 @@ impl<'a> Parser<'a> {
             }
 
             return Ok(node);
+        }
+
+        if ty.is_union() {
+            let member = ty.get_union_members().unwrap().get(0).unwrap().clone();
+            let mut desg2 = InitDesg {
+                next: Some(Box::new(desg.clone())),
+                idx: 0,
+                member: Some(member.clone()),
+                var: None,
+            };
+            return self.create_local_var_init(init.get_child(0), member.ty, &mut desg2, tok);
         }
 
         if init.expr.is_none() {
