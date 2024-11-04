@@ -537,6 +537,7 @@ impl Display for StmtWithPos {
 #[derive(Clone, Debug, PartialEq)]
 pub enum InitData {
     StringInitData(String),
+    BytesInitData(Vec<u8>),
     IntInitData(i32),
 }
 

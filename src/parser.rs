@@ -450,6 +450,78 @@ impl<'a> Parser<'a> {
         Ok(ExprWithPos::new_comma(lhs, rhs, tok.pos.clone()))
     }
 
+    /// Initializers for global variables are evaluated at compile-time and
+    /// embedded to .data section. This function serializes Initializer
+    /// objects to a flat byte array. It is a compile error if an
+    /// initializer list contains a non-constant expression.
+    fn global_var_initializer(&mut self, var: Rc<RefCell<Obj>>) -> Result<()> {
+        let mut init = self.initializer(&mut var.borrow_mut().ty)?;
+        let mut buf: Vec<u8> = vec![0; var.borrow().ty.get_size() as usize];
+        self.write_global_var_data(&mut init, var.borrow().ty.clone(), &mut buf, 0)?;
+
+        var.borrow_mut().init_data = Some(ast::InitData::BytesInitData(buf));
+
+        Ok(())
+    }
+
+    fn write_global_var_data(
+        &mut self,
+        init: &mut Initializer,
+        ty: Type,
+        buf: &mut Vec<u8>,
+        offset: i32,
+    ) -> Result<()> {
+        if ty.is_array() {
+            let sz = ty.base().unwrap().get_size();
+            for i in 0..ty.get_array_len() {
+                self.write_global_var_data(
+                    init.get_child(i),
+                    ty.base().unwrap().clone(),
+                    buf,
+                    offset + sz * i,
+                )?;
+            }
+            return Ok(());
+        }
+
+        if let Some(init_expr) = &init.expr {
+            let val = self.eval_constexpr(init_expr.clone())?;
+            self.write_buf(buf, offset, val, ty.get_size());
+        }
+
+        Ok(())
+    }
+
+    fn write_buf(&mut self, buf: &mut Vec<u8>, offset: i32, val: i64, sz: i32) {
+        match sz {
+            1 => buf[offset as usize] = val as u8,
+            2 => {
+                let val = val as u16;
+                buf[offset as usize] = val as u8;
+                buf[(offset + 1) as usize] = (val << 8) as u8;
+            }
+            4 => {
+                let val = val as u32;
+                buf[offset as usize] = val as u8;
+                buf[(offset + 1) as usize] = (val << 8) as u8;
+                buf[(offset + 2) as usize] = (val << 16) as u8;
+                buf[(offset + 3) as usize] = (val << 24) as u8;
+            }
+            8 => {
+                let val = val as u64;
+                buf[offset as usize] = val as u8;
+                buf[(offset + 1) as usize] = (val << 8) as u8;
+                buf[(offset + 2) as usize] = (val << 16) as u8;
+                buf[(offset + 3) as usize] = (val << 24) as u8;
+                buf[(offset + 4) as usize] = (val << 32) as u8;
+                buf[(offset + 5) as usize] = (val << 40) as u8;
+                buf[(offset + 6) as usize] = (val << 48) as u8;
+                buf[(offset + 7) as usize] = (val << 56) as u8;
+            }
+            _ => unreachable!(),
+        }
+    }
+
     /// stmt = "return" expr ";"
     ///      | "if" "(" expr ")" stmt ("else" stmt)?
     ///      | "switch" "(" expr ")" stmt
@@ -2760,7 +2832,11 @@ impl<'a> Parser<'a> {
                 _ => {
                     let ty = self.declarator(basety.clone())?;
                     let var_name = ty.get_ident().unwrap();
-                    self.new_global_variable(var_name, ty, None)?;
+                    let var = self.new_global_variable(var_name, ty, None)?;
+                    if self.peek()?.token == Equal {
+                        eat!(self, Equal);
+                        self.global_var_initializer(var)?;
+                    }
                 }
             }
         }

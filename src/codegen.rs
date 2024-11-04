@@ -565,6 +565,11 @@ impl CodeGenerator {
                         self.output.push(format!("  .byte {}", c as u8));
                     }
                 }
+                Some(InitData::BytesInitData(bytes)) => {
+                    for b in bytes {
+                        self.output.push(format!("  .byte {}", b));
+                    }
+                }
                 _ => self
                     .output
                     .push(format!("  .zero {}", global.borrow().ty.get_size())),
