@@ -2,7 +2,7 @@ use std::{collections::HashMap, io::Write};
 
 use crate::{
     ast::{self, Function, InitData},
-    sema::{self, Type},
+    sema::{self, Ty, Type},
 };
 
 static ARGREG_64: [&str; 6] = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"];
@@ -40,10 +40,10 @@ pub fn typeid_to_usize(t: TypeId) -> usize {
 }
 
 pub fn get_type_id(ty: Type) -> TypeId {
-    match ty {
-        Type::TyChar { .. } => TypeId::I8,
-        Type::TyShort { .. } => TypeId::I16,
-        Type::TyInt { .. } => TypeId::I32,
+    match ty.ty {
+        Ty::TyChar => TypeId::I8,
+        Ty::TyShort => TypeId::I16,
+        Ty::TyInt => TypeId::I32,
         _ => TypeId::I64,
     }
 }
@@ -87,16 +87,16 @@ impl CodeGenerator {
 
     // Load a value from where %rax is pointing to.
     fn load(&mut self, ty: &Type) {
-        match ty {
+        match ty.ty {
             // If it is an array, do not attempt to load a value to the
             // register because in general we can't load an entire array to a
             // register. As a result, the result of an evaluation of an array
             // becomes not the array itself but the address of the array.
             // This is where "array is automatically converted to a pointer to
             // the first element of the array in C" occurs.
-            Type::TyArray { .. } => (),
-            Type::TyStruct { .. } => (),
-            Type::TyUnion { .. } => (),
+            Ty::TyArray { .. } => (),
+            Ty::TyStruct { .. } => (),
+            Ty::TyUnion { .. } => (),
             // When we load a char or a short value to a register, we always
             // extend them to the size of int, so we can assume the lower half of
             // a register always contains a valid value. The upper half of a
@@ -114,8 +114,8 @@ impl CodeGenerator {
     // Store %rax to an address that the stack top is pointing to.
     fn store(&mut self, ty: &Type) {
         self.pop("%rdi".to_string());
-        match ty {
-            Type::TyStruct { type_size, .. } | Type::TyUnion { type_size, .. } => {
+        match ty.ty {
+            Ty::TyStruct { type_size, .. } | Ty::TyUnion { type_size, .. } => {
                 for i in 0..=type_size - 1 {
                     self.output.push(format!("  mov {}(%rax), %r8b", i));
                     self.output.push(format!("  mov %r8b, {}(%rdi)", i));
@@ -149,9 +149,9 @@ impl CodeGenerator {
     }
 
     fn cast(&mut self, from: Type, to: Type) {
-        match to {
-            Type::TyVoid { .. } => (),
-            Type::TyBool { .. } => {
+        match to.ty {
+            Ty::TyVoid { .. } => (),
+            Ty::TyBool { .. } => {
                 self.cmp_zero(from);
                 self.output.push(format!("  setne %al"));
                 self.output.push(format!("  movzx %al, %eax"));
@@ -194,8 +194,7 @@ impl CodeGenerator {
             }
             ast::Expr::MemberExpr { strct, member } => {
                 self.gen_addr(&strct);
-                self.output
-                    .push(format!("  add ${}, %rax", member.offset));
+                self.output.push(format!("  add ${}, %rax", member.offset));
             }
             _ => panic!("not an lvalue"),
         }
@@ -442,13 +441,9 @@ impl CodeGenerator {
                 self.push();
                 self.gen_expr(left);
                 self.pop("%rdi".to_string());
-                let (ax, di) = match (left.node.ty.clone(), right.node.ty.clone()) {
-                    (Type::TyLong { .. } | Type::TyArray { .. } | Type::TyPtr { .. }, _) => {
-                        ("%rax", "%rdi")
-                    }
-                    (_, Type::TyLong { .. } | Type::TyArray { .. } | Type::TyPtr { .. }) => {
-                        ("%rax", "%rdi")
-                    }
+                let (ax, di) = match (left.node.ty.clone().ty, right.node.ty.clone().ty) {
+                    (Ty::TyLong | Ty::TyArray { .. } | Ty::TyPtr { .. }, _) => ("%rax", "%rdi"),
+                    (_, Ty::TyLong | Ty::TyArray { .. } | Ty::TyPtr { .. }) => ("%rax", "%rdi"),
                     _ => ("%eax", "%edi"),
                 };
                 match op.node {

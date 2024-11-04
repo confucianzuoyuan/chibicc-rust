@@ -1,53 +1,34 @@
 use crate::ast::BinaryOperator::*;
 use crate::ast::{self, BinaryOperatorWithPos, Expr, ExprWithPos, UnaryOperatorWithPos};
 use crate::position::WithPos;
-use crate::token::Token;
+use crate::token::{Tok, Token};
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Type {
-    TyEnum {
-        name: Option<Token>,
-    },
-    TyBool {
-        name: Option<Token>,
-    },
-    TyVoid {
-        name: Option<Token>,
-    },
-    TyShort {
-        name: Option<Token>,
-    },
-    TyLong {
-        name: Option<Token>,
-    },
-    TyInt {
-        name: Option<Token>,
-    },
-    TyChar {
-        name: Option<Token>,
-    },
+pub enum Ty {
+    TyEnum,
+    TyBool,
+    TyVoid,
+    TyShort,
+    TyLong,
+    TyInt,
+    TyChar,
     TyPtr {
         base: Box<Type>,
-        name: Option<Token>,
     },
     TyArray {
-        name: Option<Token>,
         base: Box<Type>,
         array_len: i32,
     },
     TyFunc {
-        name: Option<Token>,
         params: Vec<Type>,
         return_ty: Box<Type>,
     },
     TyStruct {
-        name: Option<Token>,
         members: Vec<Member>,
         type_size: i32,
         align: i32,
     },
     TyUnion {
-        name: Option<Token>,
         members: Vec<Member>,
         type_size: i32,
         align: i32,
@@ -55,149 +36,239 @@ pub enum Type {
     TyPlaceholder,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct Type {
+    pub ty: Ty,
+    pub name: Option<Token>,
+}
+
 impl Type {
+    pub fn new_placeholder() -> Self {
+        Type {
+            ty: Ty::TyPlaceholder,
+            name: None,
+        }
+    }
+
+    pub fn new_void() -> Self {
+        Type {
+            ty: Ty::TyVoid,
+            name: None,
+        }
+    }
+
+    pub fn new_bool() -> Self {
+        Type {
+            ty: Ty::TyBool,
+            name: None,
+        }
+    }
+
+    pub fn new_char() -> Self {
+        Type {
+            ty: Ty::TyChar,
+            name: None,
+        }
+    }
+
+    pub fn new_short() -> Self {
+        Type {
+            ty: Ty::TyShort,
+            name: None,
+        }
+    }
+
+    pub fn new_int() -> Self {
+        Type {
+            ty: Ty::TyInt,
+            name: None,
+        }
+    }
+
+    pub fn new_enum() -> Self {
+        Type {
+            ty: Ty::TyEnum,
+            name: None,
+        }
+    }
+
+    pub fn new_long() -> Self {
+        Type {
+            ty: Ty::TyLong,
+            name: None,
+        }
+    }
+
+    pub fn new_union(members: Vec<Member>, type_size: i32, align: i32) -> Self {
+        Type {
+            ty: Ty::TyUnion {
+                members,
+                type_size,
+                align,
+            },
+            name: None,
+        }
+    }
+
+    pub fn new_func(params: Vec<Type>, return_ty: Type) -> Self {
+        Type {
+            ty: Ty::TyFunc {
+                params,
+                return_ty: Box::new(return_ty),
+            },
+            name: None,
+        }
+    }
+
+    pub fn new_ptr(base: Type) -> Self {
+        Type {
+            ty: Ty::TyPtr {
+                base: Box::new(base),
+            },
+            name: None,
+        }
+    }
+
+    pub fn new_array(base: Type, array_len: i32) -> Self {
+        Type {
+            ty: Ty::TyArray {
+                base: Box::new(base),
+                array_len,
+            },
+            name: None,
+        }
+    }
+
+    pub fn get_token(&self) -> Option<Token> {
+        self.name.clone()
+    }
+
+    pub fn get_ident(&self) -> Option<String> {
+        match &self.name {
+            Some(t) => match t.token.clone() {
+                Tok::Ident(name) => Some(name),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
     pub fn struct_type(
         name: Option<Token>,
         members: Vec<Member>,
         type_size: i32,
         align: i32,
     ) -> Self {
-        Type::TyStruct {
+        Self {
+            ty: Ty::TyStruct {
+                members,
+                type_size,
+                align,
+            },
             name,
-            members,
-            type_size,
-            align,
         }
     }
 
     pub fn array_type(base: Type, len: i32) -> Self {
-        Type::TyArray {
+        Self {
+            ty: Ty::TyArray {
+                base: Box::new(base),
+                array_len: len,
+            },
             name: None,
-            base: Box::new(base),
-            array_len: len,
         }
     }
 
     pub fn base(&self) -> Option<Type> {
-        match self {
-            Type::TyArray { base, .. } => Some(*base.clone()),
+        match &self.ty {
+            Ty::TyArray { base, .. } => Some(*base.clone()),
             _ => None,
         }
     }
 
     pub fn is_void(&self) -> bool {
-        match self {
-            Type::TyVoid { .. } => true,
+        match self.ty {
+            Ty::TyVoid => true,
             _ => false,
         }
     }
 
     pub fn is_array(&self) -> bool {
-        match self {
-            Type::TyArray { .. } => true,
+        match self.ty {
+            Ty::TyArray { .. } => true,
             _ => false,
         }
     }
 
     pub fn is_struct(&self) -> bool {
-        match self {
-            Type::TyStruct { .. } => true,
+        match self.ty {
+            Ty::TyStruct { .. } => true,
             _ => false,
         }
     }
 
     pub fn get_array_len(&self) -> i32 {
-        match self {
-            Type::TyArray { array_len, .. } => *array_len,
+        match &self.ty {
+            Ty::TyArray { array_len, .. } => *array_len,
             _ => 0,
         }
     }
 
     pub fn get_size(&self) -> i32 {
-        match self {
-            Type::TyEnum { .. } => 4,
-            Type::TyBool { .. } => 1,
-            Type::TyVoid { .. } => 1,
-            Type::TyLong { .. } => 8,
-            Type::TyInt { .. } => 4,
-            Type::TyShort { .. } => 2,
-            Type::TyChar { .. } => 1,
-            Type::TyArray {
-                name: _,
-                base,
-                array_len,
-            } => base.get_size() * *array_len,
-            Type::TyPtr { .. } => 8,
-            Type::TyStruct { type_size, .. } => *type_size,
-            Type::TyUnion { type_size, .. } => *type_size,
+        match &self.ty {
+            Ty::TyBool | Ty::TyChar | Ty::TyVoid => 1,
+            Ty::TyShort => 2,
+            Ty::TyInt | Ty::TyEnum => 4,
+            Ty::TyLong | Ty::TyPtr { .. } => 8,
+            Ty::TyArray { base, array_len } => base.get_size() * *array_len,
+            Ty::TyStruct { type_size, .. } => *type_size,
+            Ty::TyUnion { type_size, .. } => *type_size,
             _ => 0,
         }
     }
 
     pub fn set_size(&mut self, sz: i32) {
-        match self {
-            Type::TyStruct { type_size, .. } => *type_size = sz,
+        match self.ty {
+            Ty::TyStruct {
+                ref mut type_size, ..
+            } => *type_size = sz,
             _ => (),
         }
     }
 
     pub fn get_align(&self) -> i32 {
-        match self {
-            Type::TyEnum { .. } => 4,
-            Type::TyBool { .. } => 1,
-            Type::TyVoid { .. } => 1,
-            Type::TyStruct { align, .. } => *align,
-            Type::TyUnion { align, .. } => *align,
-            Type::TyLong { .. } => 8,
-            Type::TyInt { .. } => 4,
-            Type::TyShort { .. } => 2,
-            Type::TyChar { .. } => 1,
-            Type::TyArray { base, .. } => base.get_align(),
-            Type::TyPtr { .. } => 8,
+        match &self.ty {
+            Ty::TyChar | Ty::TyBool | Ty::TyVoid => 1,
+            Ty::TyShort => 2,
+            Ty::TyInt | Ty::TyEnum => 4,
+            Ty::TyLong | Ty::TyPtr { .. } => 8,
+            Ty::TyStruct { align, .. } | Ty::TyUnion { align, .. } => *align,
+            Ty::TyArray { base, .. } => base.get_align(),
             _ => panic!("type {:?} has no align infomation.", self),
         }
     }
 
     pub fn set_align(&mut self, new_align: i32) {
-        match self {
-            Type::TyStruct { align, .. } => *align = new_align,
+        match self.ty {
+            Ty::TyStruct { ref mut align, .. } => *align = new_align,
             _ => (),
         }
     }
 
     pub fn is_integer(&self) -> bool {
-        match self {
-            Type::TyBool { .. }
-            | Type::TyChar { .. }
-            | Type::TyEnum { .. }
-            | Type::TyInt { .. }
-            | Type::TyShort { .. }
-            | Type::TyLong { .. } => true,
+        match self.ty {
+            Ty::TyBool | Ty::TyChar | Ty::TyEnum | Ty::TyInt | Ty::TyShort | Ty::TyLong => true,
             _ => false,
         }
     }
 
     pub fn set_name(&mut self, tok: Token) {
-        match self {
-            Type::TyInt { ref mut name }
-            | Type::TyVoid { ref mut name }
-            | Type::TyBool { ref mut name }
-            | Type::TyChar { ref mut name }
-            | Type::TyShort { ref mut name }
-            | Type::TyLong { ref mut name }
-            | Type::TyPtr { ref mut name, .. }
-            | Type::TyFunc { ref mut name, .. }
-            | Type::TyArray { ref mut name, .. }
-            | Type::TyEnum { ref mut name, .. }
-            | Type::TyStruct { ref mut name, .. }
-            | Type::TyUnion { ref mut name, .. } => *name = Some(tok.clone()),
-            _ => (),
-        }
+        self.name = Some(tok.clone());
     }
 
     pub fn set_struct_members(&mut self, new_members: Vec<Member>) {
-        match self {
-            Type::TyStruct {
+        match self.ty {
+            Ty::TyStruct {
                 ref mut members, ..
             } => *members = new_members,
             _ => (),
@@ -205,8 +276,8 @@ impl Type {
     }
 
     pub fn get_struct_members(&mut self) -> Option<Vec<Member>> {
-        match self {
-            Type::TyStruct { members, .. } => Some(members.clone()),
+        match &self.ty {
+            Ty::TyStruct { members, .. } => Some(members.clone()),
             _ => None,
         }
     }
@@ -232,17 +303,25 @@ impl<T> WithType<T> {
 }
 
 pub fn pointer_to(base: Type) -> Type {
-    Type::TyPtr {
-        base: Box::new(base),
+    Type {
+        ty: Ty::TyPtr {
+            base: Box::new(base),
+        },
         name: None,
     }
 }
 
 pub fn get_common_type(ty1: Type, ty2: Type) -> Type {
-    match (ty1.clone(), ty2.clone()) {
-        (Type::TyArray { base, .. } | Type::TyPtr { base, .. }, _) => pointer_to(*base),
-        _ if ty1.get_size() == 8 || ty2.get_size() == 8 => Type::TyLong { name: None },
-        _ => Type::TyInt { name: None },
+    match (ty1.clone().ty, ty2.clone().ty) {
+        (Ty::TyArray { base, .. } | Ty::TyPtr { base, .. }, _) => pointer_to(*base),
+        _ if ty1.get_size() == 8 || ty2.get_size() == 8 => Type {
+            ty: Ty::TyLong,
+            name: None,
+        },
+        _ => Type {
+            ty: Ty::TyInt,
+            name: None,
+        },
     }
 }
 
@@ -289,7 +368,10 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
             ref mut right,
         } => {
             usual_arith_conv(left, right);
-            e.node.ty = Type::TyInt { name: None };
+            e.node.ty = Type {
+                ty: Ty::TyInt,
+                name: None,
+            };
         }
         ast::Expr::Binary {
             op:
@@ -310,22 +392,33 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
                     ..
                 },
             ..
-        } => e.node.ty = Type::TyInt { name: None },
+        } => {
+            e.node.ty = Type {
+                ty: Ty::TyInt,
+                name: None,
+            }
+        }
         ast::Expr::Number { value } => {
             if *value == *value as i32 as i64 {
-                e.node.ty = Type::TyInt { name: None };
+                e.node.ty = Type {
+                    ty: Ty::TyInt,
+                    name: None,
+                };
             } else {
-                e.node.ty = Type::TyLong { name: None };
+                e.node.ty = Type {
+                    ty: Ty::TyLong,
+                    name: None,
+                };
             }
         }
         ast::Expr::Variable { obj } => e.node.ty = obj.borrow().ty.clone(),
         ast::Expr::Assign {
             l_value,
             ref mut r_value,
-        } => match l_value.node.ty {
-            Type::TyPlaceholder => e.node.ty = l_value.node.ty.clone(),
-            Type::TyArray { .. } => panic!("array type is not lvalue. {:?}", l_value.node.ty),
-            Type::TyStruct { .. } => e.node.ty = l_value.node.ty.clone(),
+        } => match l_value.node.ty.ty {
+            Ty::TyPlaceholder => e.node.ty = l_value.node.ty.clone(),
+            Ty::TyArray { .. } => panic!("array type is not lvalue. {:?}", l_value.node.ty),
+            Ty::TyStruct { .. } => e.node.ty = l_value.node.ty.clone(),
             _ => {
                 r_value.node.node = Expr::CastExpr {
                     expr: r_value.clone(),
@@ -342,7 +435,13 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
                 },
             expr,
         } => {
-            let ty = get_common_type(Type::TyInt { name: None }, expr.node.ty.clone());
+            let ty = get_common_type(
+                Type {
+                    ty: Ty::TyInt,
+                    name: None,
+                },
+                expr.node.ty.clone(),
+            );
             expr.node.node = Expr::CastExpr {
                 expr: expr.clone(),
                 ty: ty.clone(),
@@ -356,7 +455,12 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
                     ..
                 },
             ..
-        } => e.node.ty = Type::TyInt { name: None },
+        } => {
+            e.node.ty = Type {
+                ty: Ty::TyInt,
+                name: None,
+            }
+        }
         ast::Expr::Unary {
             op:
                 UnaryOperatorWithPos {
@@ -373,24 +477,16 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
             ..
         } => e.node.ty = left.node.ty.clone(),
         // "&" addr
-        ast::Expr::Addr { expr } => match e.node.ty.clone() {
-            Type::TyPlaceholder => e.node.ty = pointer_to(expr.node.ty.clone()),
-            Type::TyArray {
-                name: _,
-                base,
-                array_len: _,
-            } => e.node.ty = pointer_to(*base),
+        ast::Expr::Addr { expr } => match e.node.ty.clone().ty {
+            Ty::TyPlaceholder => e.node.ty = pointer_to(expr.node.ty.clone()),
+            Ty::TyArray { base, array_len: _ } => e.node.ty = pointer_to(*base),
             _ => (),
         },
         // "*" dereference
-        ast::Expr::Deref { expr } => match expr.node.ty.clone() {
-            Type::TyPtr { base, .. } => e.node.ty = *base,
-            Type::TyArray {
-                name: _,
-                base,
-                array_len: _,
-            } => match *base {
-                Type::TyVoid { name } => panic!("{:?} dereferencing a void pointer.", name),
+        ast::Expr::Deref { expr } => match expr.node.ty.clone().ty {
+            Ty::TyPtr { base, .. } => e.node.ty = *base,
+            Ty::TyArray { base, array_len: _ } => match base.ty {
+                Ty::TyVoid => panic!("{:?} dereferencing a void pointer.", base.name),
                 _ => e.node.ty = *base,
             },
             _ => panic!("invalid pointer dereference: {:#?}", expr),
@@ -418,7 +514,10 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
             ref mut else_clause,
         } => {
             if then_clause.node.ty.is_void() || else_clause.node.ty.is_void() {
-                e.node.ty = Type::TyVoid { name: None }
+                e.node.ty = Type {
+                    ty: Ty::TyVoid,
+                    name: None,
+                }
             } else {
                 usual_arith_conv(then_clause, else_clause);
                 e.node.ty = then_clause.node.ty.clone();

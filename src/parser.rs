@@ -7,7 +7,7 @@ use crate::{
     },
     error::Error::{self, UnexpectedToken},
     position::{Pos, WithPos},
-    sema::{self, add_type, align_to, pointer_to, sema_stmt, Type, WithType},
+    sema::{self, add_type, align_to, pointer_to, sema_stmt, Ty, Type, WithType},
     symbol::{Strings, Symbols},
     token::{
         Tok::{self, *},
@@ -423,20 +423,14 @@ impl<'a> Parser<'a> {
                 let pos = eat!(self, KeywordReturn);
                 let mut expr = self.expr()?;
                 add_type(&mut expr);
-                let return_ty = match self.current_fn.clone() {
-                    Some(ast::Function {
-                        ty: Type::TyFunc { return_ty, .. },
-                        ..
-                    }) => return_ty,
-                    _ => unreachable!(),
-                };
+                let return_ty = self.current_fn.as_mut().unwrap().get_return_ty().unwrap();
                 expr = WithPos::new(
                     WithType::new(
                         Expr::CastExpr {
                             expr: Box::new(expr),
-                            ty: *return_ty.clone(),
+                            ty: return_ty.clone(),
                         },
-                        *return_ty.clone(),
+                        return_ty.clone(),
                     ),
                     pos,
                 );
@@ -708,7 +702,7 @@ impl<'a> Parser<'a> {
                     if ty.is_void() {
                         panic!("{:#?} variable declared void.", ty);
                     }
-                    let ident = self.get_ident(ty.clone())?;
+                    let ident = ty.get_ident().unwrap();
                     let var = self.new_local_variable(ident.clone(), ty.clone())?;
 
                     if self.peek()?.token == Equal {
@@ -759,7 +753,7 @@ impl<'a> Parser<'a> {
                             }
                             _ => {
                                 let member_ty = self.declarator(basety.clone())?;
-                                let member_name = self.get_ident_token(member_ty.clone())?;
+                                let member_name = member_ty.get_token().unwrap();
                                 let member = sema::Member {
                                     ty: member_ty,
                                     name: member_name,
@@ -913,7 +907,7 @@ impl<'a> Parser<'a> {
                             }
                             _ => {
                                 let member_ty = self.declarator(basety.clone())?;
-                                let member_name = self.get_ident_token(member_ty.clone())?;
+                                let member_name = member_ty.get_token().unwrap();
                                 let member = sema::Member {
                                     ty: member_ty,
                                     name: member_name,
@@ -941,12 +935,8 @@ impl<'a> Parser<'a> {
             }
         }
 
-        let union_ty = Type::TyUnion {
-            name: None,
-            members,
-            type_size: sema::align_to(type_size, union_align),
-            align: union_align,
-        };
+        let union_ty =
+            Type::new_union(members, sema::align_to(type_size, union_align), union_align);
         if let Some(struct_tag) = tag {
             self.struct_tag_env
                 .enter(self.symbols.symbol(&struct_tag), union_ty.clone());
@@ -987,7 +977,7 @@ impl<'a> Parser<'a> {
 
         let mut counter = 0;
         // typedef t; t为int
-        let mut ty = Type::TyInt { name: None };
+        let mut ty = Type::new_int();
 
         let mut typedef_static_count = 0;
 
@@ -1093,25 +1083,25 @@ impl<'a> Parser<'a> {
             }
 
             if counter == Counter::VOID as i32 {
-                ty = Type::TyVoid { name: None };
+                ty = Type::new_void();
             } else if counter == Counter::BOOL as i32 {
-                ty = Type::TyBool { name: None };
+                ty = Type::new_bool();
             } else if counter == Counter::CHAR as i32 {
-                ty = Type::TyChar { name: None };
+                ty = Type::new_char();
             } else if counter == Counter::SHORT as i32 {
-                ty = Type::TyShort { name: None };
+                ty = Type::new_short();
             } else if counter == Counter::SHORT as i32 + Counter::INT as i32 {
-                ty = Type::TyShort { name: None };
+                ty = Type::new_short();
             } else if counter == Counter::INT as i32 {
-                ty = Type::TyInt { name: None };
+                ty = Type::new_int();
             } else if counter == Counter::LONG as i32 + Counter::LONG as i32 + Counter::INT as i32 {
-                ty = Type::TyLong { name: None };
+                ty = Type::new_long();
             } else if counter == Counter::LONG as i32 + Counter::INT as i32 {
-                ty = Type::TyLong { name: None };
+                ty = Type::new_long();
             } else if counter == Counter::LONG as i32 + Counter::LONG as i32 {
-                ty = Type::TyLong { name: None };
+                ty = Type::new_long();
             } else if counter == Counter::LONG as i32 {
-                ty = Type::TyLong { name: None };
+                ty = Type::new_long();
             } else {
                 panic!("invalid type.");
             }
@@ -1139,19 +1129,13 @@ impl<'a> Parser<'a> {
 
                     // "array of T" is converted to "pointer to T" only in the parameter
                     // context. For example, *argv[] is converted to **argv by this.
-                    match ty2 {
-                        Type::TyArray {
-                            name: old_name,
-                            base,
-                            array_len: _,
-                        } => {
-                            ty2 = pointer_to(*base);
-                            match ty2 {
-                                Type::TyPtr {
-                                    name: ref mut new_name,
-                                    ..
-                                } => {
-                                    *new_name = old_name;
+                    match ty2.ty.clone() {
+                        Ty::TyArray { base, array_len: _ } => {
+                            let mut _ty2 = pointer_to(*base);
+                            match _ty2.ty {
+                                Ty::TyPtr { .. } => {
+                                    _ty2.set_name(ty2.name.unwrap());
+                                    ty2 = _ty2;
                                 }
                                 _ => (),
                             }
@@ -1164,11 +1148,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        let node = Type::TyFunc {
-            name: None,
-            params,
-            return_ty: Box::new(ty),
-        };
+        let node = Type::new_func(params, ty);
         Ok(node)
     }
 
@@ -1218,9 +1198,9 @@ impl<'a> Parser<'a> {
                             let mut _ty = self.declarator(ty.clone())?;
                             eat!(self, RightParen);
                             let ty = self.type_suffix(ty)?;
-                            match _ty {
-                                Type::TyPtr { ref mut base, .. }
-                                | Type::TyArray { ref mut base, .. } => {
+                            match _ty.ty {
+                                Ty::TyPtr { ref mut base, .. }
+                                | Ty::TyArray { ref mut base, .. } => {
                                     *base = Box::new(ty);
                                 }
                                 _ => panic!(),
@@ -1232,8 +1212,8 @@ impl<'a> Parser<'a> {
                         let mut _ty = self.declarator(ty.clone())?;
                         eat!(self, RightParen);
                         let ty = self.type_suffix(ty)?;
-                        match _ty {
-                            Type::TyPtr { ref mut base, .. } => {
+                        match _ty.ty {
+                            Ty::TyPtr { ref mut base, .. } => {
                                 *base = Box::new(ty);
                             }
                             _ => panic!(),
@@ -1363,7 +1343,7 @@ impl<'a> Parser<'a> {
                             left: Box::new(node),
                             right: Box::new(self.expr()?),
                         },
-                        Type::TyPlaceholder,
+                        Type::new_placeholder(),
                     ),
                     pos,
                 ))
@@ -1872,7 +1852,7 @@ impl<'a> Parser<'a> {
                             op,
                             expr: Box::new(expr),
                         },
-                        Type::TyPlaceholder,
+                        Type::new_placeholder(),
                     ),
                     pos,
                 ))
@@ -1886,7 +1866,7 @@ impl<'a> Parser<'a> {
                         Expr::Addr {
                             expr: Box::new(expr),
                         },
-                        Type::TyPlaceholder,
+                        Type::new_placeholder(),
                     ),
                     pos,
                 ))
@@ -1900,7 +1880,7 @@ impl<'a> Parser<'a> {
                         Expr::Deref {
                             expr: Box::new(expr),
                         },
-                        Type::TyPlaceholder,
+                        Type::new_placeholder(),
                     ),
                     pos,
                 ))
@@ -1915,7 +1895,7 @@ impl<'a> Parser<'a> {
                             op,
                             expr: Box::new(expr),
                         },
-                        Type::TyPlaceholder,
+                        Type::new_placeholder(),
                     ),
                     pos,
                 ))
@@ -1930,7 +1910,7 @@ impl<'a> Parser<'a> {
                             op,
                             expr: Box::new(expr),
                         },
-                        Type::TyPlaceholder,
+                        Type::new_placeholder(),
                     ),
                     pos,
                 ))
@@ -1998,13 +1978,13 @@ impl<'a> Parser<'a> {
         add_type(&mut lhs);
         add_type(&mut rhs);
 
-        match (lhs.node.ty.clone(), rhs.node.ty.clone()) {
+        match (lhs.node.ty.clone().ty, rhs.node.ty.clone().ty) {
             // num - num
             _ if lhs.node.ty.is_integer() && rhs.node.ty.is_integer() => {
                 lhs = ExprWithPos::new_binary(BinaryOperator::Sub, lhs, rhs, pos);
             }
             // ptr - num
-            (Type::TyPtr { base, .. }, Type::TyInt { .. } | Type::TyLong { .. }) => {
+            (Ty::TyPtr { base, .. }, Ty::TyInt | Ty::TyLong) => {
                 // num * 8
                 let num = ExprWithPos::new_number(base.get_size() as i64, pos);
                 rhs = ExprWithPos::new_binary(BinaryOperator::Mul, rhs, num, pos);
@@ -2012,7 +1992,7 @@ impl<'a> Parser<'a> {
                 lhs = ExprWithPos::new_binary(BinaryOperator::Sub, lhs, rhs, pos);
             }
             // ptr - ptr, which returns how many elements are between the two.
-            (Type::TyPtr { base, .. }, Type::TyPtr { .. }) => {
+            (Ty::TyPtr { base, .. }, Ty::TyPtr { .. }) => {
                 let num = ExprWithPos::new_number(base.get_size() as i64, pos);
                 lhs = ExprWithPos::new_binary(BinaryOperator::Sub, lhs, rhs, pos);
                 lhs = ExprWithPos::new_binary(BinaryOperator::Div, lhs, num, pos);
@@ -2033,12 +2013,9 @@ impl<'a> Parser<'a> {
         add_type(&mut lhs);
         add_type(&mut rhs);
 
-        match (lhs.node.ty.clone(), rhs.node.ty.clone()) {
+        match (lhs.node.ty.clone().ty, rhs.node.ty.clone().ty) {
             // ptr + num
-            (
-                Type::TyPtr { base, .. } | Type::TyArray { base, .. },
-                Type::TyInt { .. } | Type::TyLong { .. },
-            ) => {
+            (Ty::TyPtr { base, .. } | Ty::TyArray { base, .. }, Ty::TyInt | Ty::TyLong) => {
                 // num * 8
                 let num = ExprWithPos::new_number(base.get_size() as i64, pos);
                 rhs = ExprWithPos::new_binary(ast::BinaryOperator::Mul, rhs, num, pos);
@@ -2051,10 +2028,7 @@ impl<'a> Parser<'a> {
                 );
             }
             // num + ptr
-            (
-                Type::TyInt { .. } | Type::TyLong { .. },
-                Type::TyPtr { base, .. } | Type::TyArray { base, .. },
-            ) => {
+            (Ty::TyInt | Ty::TyLong, Ty::TyPtr { base, .. } | Ty::TyArray { base, .. }) => {
                 // num * 8
                 let num = ExprWithPos::new_number(base.get_size() as i64, pos);
                 lhs = ExprWithPos::new_binary(ast::BinaryOperator::Mul, lhs, num, pos);
@@ -2078,23 +2052,20 @@ impl<'a> Parser<'a> {
     }
 
     fn struct_ref(&mut self, node: ExprWithPos) -> Result<ExprWithPos> {
-        match node.node.ty.clone() {
-            Type::TyStruct { members, name, .. } | Type::TyUnion { members, name, .. } => {
+        match node.node.ty.clone().ty {
+            Ty::TyStruct { members, .. } | Ty::TyUnion { members, .. } => {
                 let mem_ident;
                 let pos = eat!(self, Ident, mem_ident);
                 let mut mem_found = None;
+                let name = node.node.ty.get_ident();
 
                 if name.is_some() {
-                    let name = self.get_ident(node.node.ty.clone())?;
+                    let name = node.node.ty.get_ident().unwrap();
                     let ty = self.struct_tag_env.look(self.symbols.symbol(&name));
 
                     if let Some(ty) = ty {
-                        match ty.clone() {
-                            Type::TyStruct {
-                                name: Some(_),
-                                members,
-                                ..
-                            } => {
+                        match ty.clone().ty {
+                            Ty::TyStruct { members, .. } => {
                                 for mem in members {
                                     match mem.name.token.clone() {
                                         Tok::Ident(tok_name) => {
@@ -2175,7 +2146,7 @@ impl<'a> Parser<'a> {
                 Expr::Number {
                     value: addend as i64,
                 },
-                Type::TyLong { name: None },
+                Type::new_long(),
             ),
             pos,
         );
@@ -2186,7 +2157,7 @@ impl<'a> Parser<'a> {
                 Expr::Number {
                     value: -addend as i64,
                 },
-                Type::TyLong { name: None },
+                Type::new_long(),
             ),
             pos,
         );
@@ -2229,7 +2200,7 @@ impl<'a> Parser<'a> {
                             Expr::Deref {
                                 expr: Box::new(self.new_add(node, idx, pos)?),
                             },
-                            Type::TyPlaceholder,
+                            Type::new_placeholder(),
                         ),
                         pos,
                     )
@@ -2247,7 +2218,7 @@ impl<'a> Parser<'a> {
                             Expr::Deref {
                                 expr: Box::new(node),
                             },
-                            Type::TyPlaceholder,
+                            Type::new_placeholder(),
                         ),
                         pos,
                     );
@@ -2289,8 +2260,8 @@ impl<'a> Parser<'a> {
         let pos = eat!(self, LeftParen);
         let mut args = vec![];
 
-        let params_ty = match func_found.clone().unwrap().ty.clone() {
-            Type::TyFunc { params, .. } => params,
+        let params_ty = match func_found.clone().unwrap().ty.clone().ty {
+            Ty::TyFunc { params, .. } => params,
             _ => unreachable!(),
         };
 
@@ -2307,8 +2278,8 @@ impl<'a> Parser<'a> {
                 _ => {
                     let mut arg_exp = self.assign()?;
                     add_type(&mut arg_exp);
-                    args.push(match arg_exp.node.ty.clone() {
-                        Type::TyStruct { .. } | Type::TyUnion { .. } => {
+                    args.push(match arg_exp.node.ty.clone().ty {
+                        Ty::TyStruct { .. } | Ty::TyUnion { .. } => {
                             panic!("passing struct or union is not supported yet.")
                         }
                         _ => WithPos::new(
@@ -2339,8 +2310,8 @@ impl<'a> Parser<'a> {
                     name: funname,
                     args,
                 },
-                match func_found.unwrap().ty {
-                    Type::TyFunc { return_ty, .. } => *return_ty,
+                match func_found.unwrap().ty.ty {
+                    Ty::TyFunc { return_ty, .. } => *return_ty,
                     _ => unreachable!(),
                 },
             ),
@@ -2364,13 +2335,10 @@ impl<'a> Parser<'a> {
         match self.peek()?.token {
             Tok::LeftParen => {
                 eat!(self, LeftParen);
-                self.abstract_declarator(Type::TyPlaceholder)?;
+                self.abstract_declarator(Type::new_placeholder())?;
                 eat!(self, RightParen);
                 ty = self.type_suffix(ty)?;
-                Ok(Type::TyPtr {
-                    base: Box::new(ty),
-                    name: None,
-                })
+                Ok(Type::new_ptr(ty))
             }
             _ => self.type_suffix(ty),
         }
@@ -2403,7 +2371,10 @@ impl<'a> Parser<'a> {
                             _ => panic!(),
                         };
                         eat!(self, RightParen);
-                        Ok(WithPos::new(WithType::new(node, Type::TyPlaceholder), pos))
+                        Ok(WithPos::new(
+                            WithType::new(node, Type::new_placeholder()),
+                            pos,
+                        ))
                     }
                     _ => {
                         let expr = self.expr()?;
@@ -2415,10 +2386,8 @@ impl<'a> Parser<'a> {
             Number(_) => {
                 let value;
                 let pos = eat!(self, Number, value);
-                let mut node = WithPos::new(
-                    WithType::new(Expr::Number { value }, Type::TyLong { name: None }),
-                    pos,
-                );
+                let mut node =
+                    WithPos::new(WithType::new(Expr::Number { value }, Type::new_long()), pos);
                 add_type(&mut node);
                 Ok(node)
             }
@@ -2444,7 +2413,7 @@ impl<'a> Parser<'a> {
                                             Expr::Number {
                                                 value: ty.get_size() as i64,
                                             },
-                                            Type::TyInt { name: None },
+                                            Type::new_int(),
                                         ),
                                         pos,
                                     ));
@@ -2461,7 +2430,7 @@ impl<'a> Parser<'a> {
                                     Expr::Number {
                                         value: ty.get_size() as i64,
                                     },
-                                    Type::TyInt { name: None },
+                                    Type::new_int(),
                                 ),
                                 pos,
                             ))
@@ -2475,7 +2444,7 @@ impl<'a> Parser<'a> {
                                     Expr::Number {
                                         value: node.node.ty.get_size() as i64,
                                     },
-                                    Type::TyInt { name: None },
+                                    Type::new_int(),
                                 ),
                                 pos,
                             );
@@ -2491,7 +2460,7 @@ impl<'a> Parser<'a> {
                                 Expr::Number {
                                     value: node.node.ty.get_size() as i64,
                                 },
-                                Type::TyInt { name: None },
+                                Type::new_int(),
                             ),
                             pos,
                         ))
@@ -2508,8 +2477,8 @@ impl<'a> Parser<'a> {
                 // variable
                 if let Some(var) = self.var_env.look(self.symbols.symbol(&name)) {
                     let _ty = var.borrow_mut().ty.clone();
-                    match _ty {
-                        Type::TyEnum { .. } => {
+                    match _ty.ty {
+                        Ty::TyEnum { .. } => {
                             if let Some(InitData::IntInitData(i)) = var.borrow_mut().init_data {
                                 return Ok(WithPos::new(
                                     WithType::new(Expr::Number { value: i as i64 }, _ty),
@@ -2540,11 +2509,7 @@ impl<'a> Parser<'a> {
                 let pos = eat!(self, Str, string);
                 let unique_name = self.new_unique_name();
                 string.push_str("\0");
-                let var_type = Type::TyArray {
-                    name: None,
-                    base: Box::new(Type::TyChar { name: None }),
-                    array_len: string.len() as i32, // `+1` means add `'\0'`
-                };
+                let var_type = Type::new_array(Type::new_char(), string.len() as i32);
                 let var = self.new_global_variable(
                     unique_name,
                     var_type.clone(),
@@ -2598,11 +2563,6 @@ impl<'a> Parser<'a> {
 
         let ty = self.declarator(basety)?;
 
-        match ty.clone() {
-            Type::TyFunc { ref mut name, .. } => *name = Some(self.get_ident_token(ty.clone())?),
-            _ => panic!("{:?} must be function name.", self.get_ident(ty)?),
-        }
-
         let is_definition = match self.peek()?.token {
             Tok::Semicolon => {
                 eat!(self, Semicolon);
@@ -2623,17 +2583,9 @@ impl<'a> Parser<'a> {
         self.var_attr_env.begin_scope();
 
         let ident;
-        match ty.clone() {
-            Type::TyFunc {
-                name:
-                    Some(Token {
-                        token: Tok::Ident(ident_name),
-                        ..
-                    }),
-                params,
-                ..
-            } => {
-                ident = ident_name;
+        match ty.clone().ty {
+            Ty::TyFunc { params, .. } => {
+                ident = ty.get_ident().unwrap();
                 let pos = self.peek()?.pos.clone();
                 // 为了处理fib这样的递归调用，需要先把函数声明记录下来。
                 self.functions.push(ast::Function {
@@ -2661,7 +2613,7 @@ impl<'a> Parser<'a> {
                 });
 
                 for p in params {
-                    let param_name = self.get_ident(p.clone())?;
+                    let param_name = p.get_ident().unwrap();
                     self.new_local_variable(param_name, p)?;
                 }
             }
@@ -2706,124 +2658,13 @@ impl<'a> Parser<'a> {
                 Ok(false)
             }
             _ => {
-                let dummy = Type::TyPlaceholder;
+                let dummy = Type::new_placeholder();
                 let ty = self.declarator(dummy)?;
-                match ty {
-                    Type::TyFunc { .. } => Ok(true),
+                match ty.ty {
+                    Ty::TyFunc { .. } => Ok(true),
                     _ => Ok(false),
                 }
             }
-        }
-    }
-
-    fn get_ident_token(&mut self, ty: Type) -> Result<Token> {
-        match ty {
-            Type::TyArray { name: Some(t), .. }
-            | Type::TyInt { name: Some(t), .. }
-            | Type::TyBool { name: Some(t), .. }
-            | Type::TyChar { name: Some(t), .. }
-            | Type::TyShort { name: Some(t), .. }
-            | Type::TyLong { name: Some(t), .. }
-            | Type::TyPtr { name: Some(t), .. }
-            | Type::TyStruct { name: Some(t), .. }
-            | Type::TyUnion { name: Some(t), .. }
-            | Type::TyEnum { name: Some(t), .. }
-            | Type::TyFunc { name: Some(t), .. } => Ok(t),
-            _ => panic!("ty {:?} has no token.", ty),
-        }
-    }
-
-    fn get_ident(&mut self, ty: Type) -> Result<String> {
-        match ty {
-            Type::TyArray {
-                name:
-                    Some(Token {
-                        token: Tok::Ident(param_name),
-                        ..
-                    }),
-                ..
-            }
-            | Type::TyInt {
-                name:
-                    Some(Token {
-                        token: Tok::Ident(param_name),
-                        ..
-                    }),
-                ..
-            }
-            | Type::TyChar {
-                name:
-                    Some(Token {
-                        token: Tok::Ident(param_name),
-                        ..
-                    }),
-                ..
-            }
-            | Type::TyShort {
-                name:
-                    Some(Token {
-                        token: Tok::Ident(param_name),
-                        ..
-                    }),
-                ..
-            }
-            | Type::TyLong {
-                name:
-                    Some(Token {
-                        token: Tok::Ident(param_name),
-                        ..
-                    }),
-                ..
-            }
-            | Type::TyPtr {
-                name:
-                    Some(Token {
-                        token: Tok::Ident(param_name),
-                        ..
-                    }),
-                ..
-            }
-            | Type::TyFunc {
-                name:
-                    Some(Token {
-                        token: Tok::Ident(param_name),
-                        ..
-                    }),
-                ..
-            }
-            | Type::TyStruct {
-                name:
-                    Some(Token {
-                        token: Tok::Ident(param_name),
-                        ..
-                    }),
-                ..
-            }
-            | Type::TyUnion {
-                name:
-                    Some(Token {
-                        token: Tok::Ident(param_name),
-                        ..
-                    }),
-                ..
-            }
-            | Type::TyBool {
-                name:
-                    Some(Token {
-                        token: Tok::Ident(param_name),
-                        ..
-                    }),
-                ..
-            }
-            | Type::TyEnum {
-                name:
-                    Some(Token {
-                        token: Tok::Ident(param_name),
-                        ..
-                    }),
-                ..
-            } => Ok(param_name),
-            _ => panic!("ty {:?} has no token.", ty),
         }
     }
 
@@ -2872,7 +2713,7 @@ impl<'a> Parser<'a> {
                 }
                 _ => {
                     let ty = self.declarator(basety.clone())?;
-                    let var_name = self.get_ident(ty.clone())?;
+                    let var_name = ty.get_ident().unwrap();
                     self.new_global_variable(var_name, ty, None)?;
                 }
             }
@@ -2892,7 +2733,7 @@ impl<'a> Parser<'a> {
                 }
                 _ => {
                     let ty = self.declarator(basety.clone())?;
-                    let ident = self.get_ident(ty.clone())?;
+                    let ident = ty.get_ident().unwrap();
                     self.var_attr_env.enter(
                         self.symbols.symbol(&ident),
                         VarAttr::Typedef { type_def: Some(ty) },
@@ -2946,14 +2787,14 @@ impl<'a> Parser<'a> {
                                     }
 
                                     // 将enum添加到`变量`作用域
+                                    let mut ty = Type::new_enum();
+                                    ty.set_name(ident_tok.clone());
                                     let enum_var = Rc::new(RefCell::new(Obj {
                                         name: name.clone(),
                                         offset: 0,
                                         is_local: false,
                                         init_data: Some(InitData::IntInitData(val)),
-                                        ty: Type::TyEnum {
-                                            name: Some(ident_tok.clone()),
-                                        },
+                                        ty,
                                     }));
                                     val += 1;
                                     self.var_env.enter(self.symbols.symbol(&name), enum_var);
@@ -2961,16 +2802,12 @@ impl<'a> Parser<'a> {
                             }
                         }
 
-                        self.struct_tag_env.enter(
-                            self.symbols.symbol(&ident),
-                            Type::TyEnum {
-                                name: Some(ident_tok.clone()),
-                            },
-                        );
+                        let mut ty = Type::new_enum();
+                        ty.set_name(ident_tok);
+                        self.struct_tag_env
+                            .enter(self.symbols.symbol(&ident), ty.clone());
 
-                        Ok(Type::TyEnum {
-                            name: Some(ident_tok.clone()),
-                        })
+                        Ok(ty)
                     }
                     _ => {
                         if let Some(ty) = self.struct_tag_env.look(self.symbols.symbol(&ident)) {
@@ -3018,7 +2855,7 @@ impl<'a> Parser<'a> {
                                     offset: 0,
                                     is_local: false,
                                     init_data: Some(InitData::IntInitData(val)),
-                                    ty: Type::TyEnum { name: None },
+                                    ty: Type::new_enum(),
                                 }));
                                 val += 1;
                                 self.var_env.enter(self.symbols.symbol(&name), enum_var);
@@ -3026,7 +2863,7 @@ impl<'a> Parser<'a> {
                         }
                     }
 
-                    Ok(Type::TyEnum { name: None })
+                    Ok(Type::new_enum())
                 }
                 _ => panic!(),
             },
@@ -3039,21 +2876,13 @@ impl<'a> Parser<'a> {
             Tok::RightBracket => {
                 eat!(self, RightBracket);
                 ty = self.type_suffix(ty)?;
-                Ok(Type::TyArray {
-                    name: None,
-                    base: Box::new(ty),
-                    array_len: -1,
-                })
+                Ok(Type::new_array(ty, -1))
             }
             _ => {
                 let sz = self.const_expr()?;
                 eat!(self, RightBracket);
                 ty = self.type_suffix(ty)?;
-                Ok(Type::TyArray {
-                    name: None,
-                    base: Box::new(ty),
-                    array_len: sz as i32,
-                })
+                Ok(Type::new_array(ty, sz as i32))
             }
         }
     }

@@ -2,7 +2,7 @@ use std::{cell::RefCell, collections::HashMap, fmt::Display, rc::Rc};
 
 use crate::{
     position::{Pos, WithPos},
-    sema::{Member, Type, WithType},
+    sema::{Member, Ty, Type, WithType},
     token::Token,
 };
 
@@ -76,7 +76,10 @@ impl ExprWithPos {
                     strct: Box::new(strct),
                     member,
                 },
-                Type::TyPlaceholder,
+                Type {
+                    ty: Ty::TyPlaceholder,
+                    name: None,
+                },
             ),
             pos,
         )
@@ -84,25 +87,52 @@ impl ExprWithPos {
 
     pub fn new_memzero(var: Rc<RefCell<Obj>>, pos: Pos) -> Self {
         WithPos::new(
-            WithType::new(Expr::MemZero { var }, Type::TyPlaceholder),
+            WithType::new(
+                Expr::MemZero { var },
+                Type {
+                    ty: Ty::TyPlaceholder,
+                    name: None,
+                },
+            ),
             pos,
         )
     }
 
     pub fn new_null_expr(pos: Pos) -> Self {
-        WithPos::new(WithType::new(Expr::Null, Type::TyPlaceholder), pos)
+        WithPos::new(
+            WithType::new(
+                Expr::Null,
+                Type {
+                    ty: Ty::TyPlaceholder,
+                    name: None,
+                },
+            ),
+            pos,
+        )
     }
 
     pub fn new_number(i: i64, pos: Pos) -> Self {
         WithPos::new(
-            WithType::new(Expr::Number { value: i }, Type::TyLong { name: None }),
+            WithType::new(
+                Expr::Number { value: i },
+                Type {
+                    ty: Ty::TyLong,
+                    name: None,
+                },
+            ),
             pos,
         )
     }
 
     pub fn new_var(obj: Rc<RefCell<Obj>>, pos: Pos) -> Self {
         WithPos::new(
-            WithType::new(Expr::Variable { obj }, Type::TyPlaceholder),
+            WithType::new(
+                Expr::Variable { obj },
+                Type {
+                    ty: Ty::TyPlaceholder,
+                    name: None,
+                },
+            ),
             pos,
         )
     }
@@ -113,7 +143,10 @@ impl ExprWithPos {
                 Expr::Deref {
                     expr: Box::new(expr),
                 },
-                Type::TyPlaceholder,
+                Type {
+                    ty: Ty::TyPlaceholder,
+                    name: None,
+                },
             ),
             pos,
         )
@@ -126,7 +159,10 @@ impl ExprWithPos {
                     left: Box::new(left),
                     right: Box::new(right),
                 },
-                Type::TyPlaceholder,
+                Type {
+                    ty: Ty::TyPlaceholder,
+                    name: None,
+                },
             ),
             pos,
         )
@@ -139,7 +175,10 @@ impl ExprWithPos {
                     l_value: Box::new(left),
                     r_value: Box::new(right),
                 },
-                Type::TyPlaceholder,
+                Type {
+                    ty: Ty::TyPlaceholder,
+                    name: None,
+                },
             ),
             pos,
         )
@@ -153,7 +192,10 @@ impl ExprWithPos {
                     op: WithPos::new(op, pos),
                     right: Box::new(right),
                 },
-                Type::TyPlaceholder,
+                Type {
+                    ty: Ty::TyPlaceholder,
+                    name: None,
+                },
             ),
             pos,
         )
@@ -192,7 +234,10 @@ impl ExprWithPos {
                     else_clause: Box::new(else_clause),
                     condition: Box::new(condition),
                 },
-                Type::TyPlaceholder,
+                Type {
+                    ty: Ty::TyPlaceholder,
+                    name: None,
+                },
             ),
             pos,
         )
@@ -528,6 +573,15 @@ pub struct Function {
     pub ty: Type,
     pub is_static: bool,
     pub goto_labels: HashMap<String, String>,
+}
+
+impl Function {
+    pub fn get_return_ty(&self) -> Option<Type> {
+        match &self.ty.ty {
+            Ty::TyFunc { return_ty, .. } => Some(*return_ty.clone()),
+            _ => None,
+        }
+    }
 }
 
 /// This struct represents a variable initializer. Since initializers
