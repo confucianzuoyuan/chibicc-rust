@@ -457,7 +457,7 @@ impl<'a> Parser<'a> {
     fn global_var_initializer(&mut self, var: Rc<RefCell<Obj>>) -> Result<()> {
         let mut init = self.initializer(&mut var.borrow_mut().ty)?;
         let mut buf: Vec<u8> = vec![0; var.borrow().ty.get_size() as usize];
-        self.write_global_var_data(&mut init, var.borrow().ty.clone(), &mut buf, 0)?;
+        self.write_global_var_data(&mut init, &mut var.borrow_mut().ty.clone(), &mut buf, 0)?;
 
         var.borrow_mut().init_data = Some(ast::InitData::BytesInitData(buf));
 
@@ -467,7 +467,7 @@ impl<'a> Parser<'a> {
     fn write_global_var_data(
         &mut self,
         init: &mut Initializer,
-        ty: Type,
+        ty: &mut Type,
         buf: &mut Vec<u8>,
         offset: i32,
     ) -> Result<()> {
@@ -476,10 +476,19 @@ impl<'a> Parser<'a> {
             for i in 0..ty.get_array_len() {
                 self.write_global_var_data(
                     init.get_child(i),
-                    ty.base().unwrap().clone(),
+                    &mut ty.base().unwrap().clone(),
                     buf,
                     offset + sz * i,
                 )?;
+            }
+            return Ok(());
+        }
+
+        if ty.is_struct() {
+            let mut i = 0;
+            for mem in &mut ty.get_struct_members().unwrap() {
+                self.write_global_var_data(init.get_child(i), &mut mem.ty, buf, offset + mem.offset)?;
+                i += 1;
             }
             return Ok(());
         }
