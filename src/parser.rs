@@ -3,7 +3,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc, result};
 use crate::{
     ast::{
         self, BinaryOperator, Expr, ExprWithPos, Function, InitData, InitDesg, Initializer, Obj,
-        Program, Stmt, StmtWithPos, UnaryOperator, VarAttr,
+        Program, Relocation, Stmt, StmtWithPos, UnaryOperator, VarAttr,
     },
     error::Error::{self, UnexpectedToken},
     position::{Pos, WithPos},
@@ -457,9 +457,11 @@ impl<'a> Parser<'a> {
     fn global_var_initializer(&mut self, var: Rc<RefCell<Obj>>) -> Result<()> {
         let mut init = self.initializer(&mut var.borrow_mut().ty)?;
         let mut buf: Vec<u8> = vec![0; var.borrow().ty.get_size() as usize];
-        self.write_global_var_data(&mut init, &mut var.borrow_mut().ty.clone(), &mut buf, 0)?;
+        let rels =
+            self.write_global_var_data(&mut init, &mut var.borrow_mut().ty.clone(), &mut buf, 0)?;
 
         var.borrow_mut().init_data = Some(ast::InitData::BytesInitData(buf));
+        var.borrow_mut().rel = rels;
 
         Ok(())
     }
@@ -470,35 +472,64 @@ impl<'a> Parser<'a> {
         ty: &mut Type,
         buf: &mut Vec<u8>,
         offset: i32,
-    ) -> Result<()> {
+    ) -> Result<Vec<Relocation>> {
         if ty.is_array() {
             let sz = ty.base().unwrap().get_size();
+            let mut rels = vec![];
             for i in 0..ty.get_array_len() {
-                self.write_global_var_data(
+                let mut rel = self.write_global_var_data(
                     init.get_child(i),
                     &mut ty.base().unwrap().clone(),
                     buf,
                     offset + sz * i,
                 )?;
+                rels.append(&mut rel);
             }
-            return Ok(());
+            return Ok(rels);
         }
 
         if ty.is_struct() {
             let mut i = 0;
+            let mut rels = vec![];
             for mem in &mut ty.get_struct_members().unwrap() {
-                self.write_global_var_data(init.get_child(i), &mut mem.ty, buf, offset + mem.offset)?;
+                let mut rel = self.write_global_var_data(
+                    init.get_child(i),
+                    &mut mem.ty,
+                    buf,
+                    offset + mem.offset,
+                )?;
+                rels.append(&mut rel);
                 i += 1;
             }
-            return Ok(());
+            return Ok(rels);
         }
 
-        if let Some(init_expr) = &init.expr {
-            let val = self.eval_constexpr(init_expr.clone())?;
-            self.write_buf(buf, offset, val, ty.get_size());
+        if ty.is_union() {
+            return self.write_global_var_data(
+                init.get_child(0),
+                &mut ty.get_union_members().unwrap().get(0).unwrap().ty.clone(),
+                buf,
+                offset,
+            );
         }
 
-        Ok(())
+        if let Some(init_expr) = &mut init.expr {
+            let mut label = None;
+            let val = self.eval_constexpr_with_label(init_expr, &mut label)?;
+            if let Some(label) = label {
+                let rel = Relocation {
+                    offset,
+                    label,
+                    addend: val,
+                };
+                return Ok(vec![rel]);
+            } else {
+                self.write_buf(buf, offset, val, ty.get_size());
+                return Ok(vec![]);
+            }
+        } else {
+            return Ok(vec![]);
+        }
     }
 
     fn write_buf(&mut self, buf: &mut Vec<u8>, offset: i32, val: i64, sz: i32) {
@@ -507,25 +538,25 @@ impl<'a> Parser<'a> {
             2 => {
                 let val = val as u16;
                 buf[offset as usize] = val as u8;
-                buf[(offset + 1) as usize] = (val << 8) as u8;
+                buf[(offset + 1) as usize] = (val >> 8) as u8;
             }
             4 => {
                 let val = val as u32;
                 buf[offset as usize] = val as u8;
-                buf[(offset + 1) as usize] = (val << 8) as u8;
-                buf[(offset + 2) as usize] = (val << 16) as u8;
-                buf[(offset + 3) as usize] = (val << 24) as u8;
+                buf[(offset + 1) as usize] = (val >> 8) as u8;
+                buf[(offset + 2) as usize] = (val >> 16) as u8;
+                buf[(offset + 3) as usize] = (val >> 24) as u8;
             }
             8 => {
                 let val = val as u64;
                 buf[offset as usize] = val as u8;
-                buf[(offset + 1) as usize] = (val << 8) as u8;
-                buf[(offset + 2) as usize] = (val << 16) as u8;
-                buf[(offset + 3) as usize] = (val << 24) as u8;
-                buf[(offset + 4) as usize] = (val << 32) as u8;
-                buf[(offset + 5) as usize] = (val << 40) as u8;
-                buf[(offset + 6) as usize] = (val << 48) as u8;
-                buf[(offset + 7) as usize] = (val << 56) as u8;
+                buf[(offset + 1) as usize] = (val >> 8) as u8;
+                buf[(offset + 2) as usize] = (val >> 16) as u8;
+                buf[(offset + 3) as usize] = (val >> 24) as u8;
+                buf[(offset + 4) as usize] = (val >> 32) as u8;
+                buf[(offset + 5) as usize] = (val >> 40) as u8;
+                buf[(offset + 6) as usize] = (val >> 48) as u8;
+                buf[(offset + 7) as usize] = (val >> 56) as u8;
             }
             _ => unreachable!(),
         }
@@ -1962,7 +1993,7 @@ impl<'a> Parser<'a> {
 
     /// unary = ("+" | "-" | "*" | "&" | "!" | "~") cast
     ///       | ("++" | "--") unary
-    ///       | primary
+    ///       | postfix
     fn unary(&mut self) -> Result<ExprWithPos> {
         match self.peek()?.token {
             Plus => {
@@ -2111,7 +2142,7 @@ impl<'a> Parser<'a> {
                 lhs = ExprWithPos::new_binary(BinaryOperator::Sub, lhs, rhs, pos);
             }
             // ptr - num
-            (Ty::TyPtr { base, .. }, Ty::TyInt | Ty::TyLong) => {
+            (Ty::TyPtr { base, .. } | Ty::TyArray { base, .. }, Ty::TyInt | Ty::TyLong) => {
                 // num * 8
                 let num = ExprWithPos::new_number(base.get_size() as i64, pos);
                 rhs = ExprWithPos::new_binary(BinaryOperator::Mul, rhs, num, pos);
@@ -2125,7 +2156,10 @@ impl<'a> Parser<'a> {
                 lhs = ExprWithPos::new_binary(BinaryOperator::Div, lhs, num, pos);
             }
             // other
-            _ => panic!("invalid operands for pointer arithmetic sub."),
+            _ => panic!(
+                "invalid operands for pointer arithmetic sub. {:?} ===== {:?}",
+                lhs, rhs
+            ),
         }
 
         Ok(lhs)
@@ -2605,7 +2639,7 @@ impl<'a> Parser<'a> {
                 if let Some(var) = self.var_env.look(self.symbols.symbol(&name)) {
                     let _ty = var.borrow_mut().ty.clone();
                     match _ty.ty {
-                        Ty::TyEnum { .. } => {
+                        Ty::TyEnum => {
                             if let Some(InitData::IntInitData(i)) = var.borrow_mut().init_data {
                                 return Ok(WithPos::new(
                                     WithType::new(Expr::Number { value: i as i64 }, _ty),
@@ -2619,10 +2653,12 @@ impl<'a> Parser<'a> {
                             }
                         }
                         _ => {
-                            return Ok(WithPos::new(
+                            let mut node = WithPos::new(
                                 WithType::new(Expr::Variable { obj: var.clone() }, _ty),
                                 pos,
-                            ));
+                            );
+                            add_type(&mut node);
+                            return Ok(node);
                         }
                     }
                 } else {
@@ -2802,6 +2838,7 @@ impl<'a> Parser<'a> {
             offset: 0,
             is_local: false,
             init_data: None,
+            rel: vec![],
         }));
         self.var_env.enter(self.symbols.symbol(&name), var.clone());
         Ok(var)
@@ -2926,6 +2963,7 @@ impl<'a> Parser<'a> {
                                         is_local: false,
                                         init_data: Some(InitData::IntInitData(val)),
                                         ty,
+                                        rel: vec![],
                                     }));
                                     val += 1;
                                     self.var_env.enter(self.symbols.symbol(&name), enum_var);
@@ -2987,6 +3025,7 @@ impl<'a> Parser<'a> {
                                     is_local: false,
                                     init_data: Some(InitData::IntInitData(val)),
                                     ty: Type::new_enum(),
+                                    rel: vec![],
                                 }));
                                 val += 1;
                                 self.var_env.enter(self.symbols.symbol(&name), enum_var);
@@ -3019,101 +3058,153 @@ impl<'a> Parser<'a> {
     }
 
     fn const_expr(&mut self) -> Result<i64> {
-        let node = self.conditional()?;
-        Ok(self.eval_constexpr(node)?)
+        let mut node = self.conditional()?;
+        Ok(self.eval_constexpr(&mut node)?)
     }
 
-    fn eval_constexpr(&mut self, mut node: ExprWithPos) -> Result<i64> {
-        add_type(&mut node);
+    fn eval_constexpr(&mut self, node: &mut ExprWithPos) -> Result<i64> {
+        self.eval_constexpr_with_label(node, &mut None)
+    }
 
-        match node.node.node {
-            Expr::Binary { left, op, right } => match op.node {
-                ast::BinaryOperator::Add => {
-                    Ok(self.eval_constexpr(*left)? + self.eval_constexpr(*right)?)
-                }
-                ast::BinaryOperator::Sub => {
-                    Ok(self.eval_constexpr(*left)? - self.eval_constexpr(*right)?)
-                }
+    /// Evaluate a given node as a constant expression.
+    ///
+    /// A constant expression is either just a number or ptr+n where ptr
+    /// is a pointer to a global variable and n is a postiive/negative
+    /// number. The latter form is accepted only as an initialization
+    /// expression for a global variable.
+    fn eval_constexpr_with_label(
+        &mut self,
+        node: &mut ExprWithPos,
+        label: &mut Option<String>,
+    ) -> Result<i64> {
+        add_type(node);
+
+        match node.node.node.clone() {
+            Expr::Binary {
+                mut left,
+                op,
+                mut right,
+            } => match op.node {
+                ast::BinaryOperator::Add => Ok(self.eval_constexpr_with_label(&mut left, label)?
+                    + self.eval_constexpr(&mut right)?),
+                ast::BinaryOperator::Sub => Ok(self.eval_constexpr_with_label(&mut left, label)?
+                    - self.eval_constexpr(&mut right)?),
                 ast::BinaryOperator::Mul => {
-                    Ok(self.eval_constexpr(*left)? * self.eval_constexpr(*right)?)
+                    Ok(self.eval_constexpr(&mut left)? * self.eval_constexpr(&mut right)?)
                 }
                 ast::BinaryOperator::Div => {
-                    Ok(self.eval_constexpr(*left)? / self.eval_constexpr(*right)?)
+                    Ok(self.eval_constexpr(&mut left)? / self.eval_constexpr(&mut right)?)
                 }
                 ast::BinaryOperator::Mod => {
-                    Ok(self.eval_constexpr(*left)? % self.eval_constexpr(*right)?)
+                    Ok(self.eval_constexpr(&mut left)? % self.eval_constexpr(&mut right)?)
                 }
                 ast::BinaryOperator::BitAnd => {
-                    Ok(self.eval_constexpr(*left)? & self.eval_constexpr(*right)?)
+                    Ok(self.eval_constexpr(&mut left)? & self.eval_constexpr(&mut right)?)
                 }
                 ast::BinaryOperator::BitOr => {
-                    Ok(self.eval_constexpr(*left)? | self.eval_constexpr(*right)?)
+                    Ok(self.eval_constexpr(&mut left)? | self.eval_constexpr(&mut right)?)
                 }
                 ast::BinaryOperator::BitXor => {
-                    Ok(self.eval_constexpr(*left)? ^ self.eval_constexpr(*right)?)
+                    Ok(self.eval_constexpr(&mut left)? ^ self.eval_constexpr(&mut right)?)
                 }
                 ast::BinaryOperator::SHL => {
-                    Ok(self.eval_constexpr(*left)? << self.eval_constexpr(*right)?)
+                    Ok(self.eval_constexpr(&mut left)? << self.eval_constexpr(&mut right)?)
                 }
                 ast::BinaryOperator::SHR => {
-                    Ok(self.eval_constexpr(*left)? >> self.eval_constexpr(*right)?)
+                    Ok(self.eval_constexpr(&mut left)? >> self.eval_constexpr(&mut right)?)
                 }
-                ast::BinaryOperator::Eq => {
-                    Ok((self.eval_constexpr(*left)? == self.eval_constexpr(*right)?) as i64)
-                }
-                ast::BinaryOperator::Ne => {
-                    Ok((self.eval_constexpr(*left)? != self.eval_constexpr(*right)?) as i64)
-                }
-                ast::BinaryOperator::Le => {
-                    Ok((self.eval_constexpr(*left)? <= self.eval_constexpr(*right)?) as i64)
-                }
-                ast::BinaryOperator::Lt => {
-                    Ok((self.eval_constexpr(*left)? < self.eval_constexpr(*right)?) as i64)
-                }
-                ast::BinaryOperator::Ge => {
-                    Ok((self.eval_constexpr(*left)? >= self.eval_constexpr(*right)?) as i64)
-                }
-                ast::BinaryOperator::Gt => {
-                    Ok((self.eval_constexpr(*left)? > self.eval_constexpr(*right)?) as i64)
-                }
-                ast::BinaryOperator::LogAnd => Ok((self.eval_constexpr(*left)? != 0
-                    && self.eval_constexpr(*right)? != 0)
+                ast::BinaryOperator::Eq => Ok((self.eval_constexpr(&mut left)?
+                    == self.eval_constexpr(&mut right)?)
                     as i64),
-                ast::BinaryOperator::LogOr => Ok((self.eval_constexpr(*left)? != 0
-                    || self.eval_constexpr(*right)? != 0)
+                ast::BinaryOperator::Ne => Ok((self.eval_constexpr(&mut left)?
+                    != self.eval_constexpr(&mut right)?)
+                    as i64),
+                ast::BinaryOperator::Le => Ok((self.eval_constexpr(&mut left)?
+                    <= self.eval_constexpr(&mut right)?)
+                    as i64),
+                ast::BinaryOperator::Lt => {
+                    Ok((self.eval_constexpr(&mut left)? < self.eval_constexpr(&mut right)?) as i64)
+                }
+                ast::BinaryOperator::Ge => Ok((self.eval_constexpr(&mut left)?
+                    >= self.eval_constexpr(&mut right)?)
+                    as i64),
+                ast::BinaryOperator::Gt => {
+                    Ok((self.eval_constexpr(&mut left)? > self.eval_constexpr(&mut right)?) as i64)
+                }
+                ast::BinaryOperator::LogAnd => Ok((self.eval_constexpr(&mut left)? != 0
+                    && self.eval_constexpr(&mut right)? != 0)
+                    as i64),
+                ast::BinaryOperator::LogOr => Ok((self.eval_constexpr(&mut left)? != 0
+                    || self.eval_constexpr(&mut right)? != 0)
                     as i64),
             },
-            Expr::Unary { op, expr } => match op.node {
-                ast::UnaryOperator::Neg => Ok(-self.eval_constexpr(*expr)?),
+            Expr::Unary { op, mut expr } => match op.node {
+                ast::UnaryOperator::Neg => Ok(-self.eval_constexpr(&mut expr)?),
                 ast::UnaryOperator::Not => {
-                    if self.eval_constexpr(*expr)? == 0 {
+                    if self.eval_constexpr(&mut expr)? == 0 {
                         return Ok(1);
                     } else {
                         return Ok(0);
                     }
                 }
-                ast::UnaryOperator::BitNot => Ok(!self.eval_constexpr(*expr)?),
+                ast::UnaryOperator::BitNot => Ok(!self.eval_constexpr(&mut expr)?),
             },
-            Expr::CommaExpr { right, .. } => Ok(self.eval_constexpr(*right)?),
-            Expr::CastExpr { expr, ty } => match ty.is_integer() {
-                true => match ty.get_size() {
-                    1 => Ok(self.eval_constexpr(*expr)? as u8 as i64),
-                    2 => Ok(self.eval_constexpr(*expr)? as u16 as i64),
-                    4 => Ok(self.eval_constexpr(*expr)? as u32 as i64),
-                    _ => Ok(self.eval_constexpr(*expr)?),
-                },
-                false => Ok(self.eval_constexpr(*expr)?),
-            },
+            Expr::CommaExpr { mut right, .. } => {
+                Ok(self.eval_constexpr_with_label(&mut right, label)?)
+            }
+            Expr::CastExpr { mut expr, ty } => {
+                let val = self.eval_constexpr_with_label(&mut expr, label)?;
+                match ty.is_integer() {
+                    true => match ty.get_size() {
+                        1 => Ok(val as u8 as i64),
+                        2 => Ok(val as u16 as i64),
+                        4 => Ok(val as u32 as i64),
+                        _ => Ok(val),
+                    },
+                    false => Ok(val),
+                }
+            }
             Expr::TernaryExpr {
-                condition,
-                then_clause,
-                else_clause,
-            } => match self.eval_constexpr(*condition)? {
-                0 => Ok(self.eval_constexpr(*else_clause)?),
-                _ => Ok(self.eval_constexpr(*then_clause)?),
+                mut condition,
+                mut then_clause,
+                mut else_clause,
+            } => match self.eval_constexpr(&mut condition)? {
+                0 => Ok(self.eval_constexpr_with_label(&mut else_clause, label)?),
+                _ => Ok(self.eval_constexpr_with_label(&mut then_clause, label)?),
             },
+            Expr::Addr { mut expr } => self.eval_rvalue(&mut expr, label),
+            Expr::MemberExpr { mut strct, member } => {
+                if !node.node.ty.is_array() {
+                    panic!()
+                }
+                return Ok(self.eval_rvalue(&mut strct, label)? + member.offset as i64);
+            }
+            Expr::Variable { obj } => {
+                if !obj.borrow().ty.is_array() && !obj.borrow().ty.is_func() {
+                    panic!()
+                }
+                *label = Some(obj.borrow().name.clone());
+                return Ok(0);
+            }
             Expr::Number { value } => Ok(value),
             _ => panic!("not a compile-time constant. {:?}", node.node.clone()),
+        }
+    }
+
+    fn eval_rvalue(&mut self, node: &mut ExprWithPos, label: &mut Option<String>) -> Result<i64> {
+        match node.node.node.clone() {
+            Expr::Variable { obj } => {
+                if obj.borrow().is_local {
+                    panic!("{} not a compile-time constant", obj.borrow());
+                }
+                *label = Some(obj.borrow().name.clone());
+                return Ok(0);
+            }
+            Expr::Deref { mut expr } => return self.eval_constexpr_with_label(&mut expr, label),
+            Expr::MemberExpr { mut strct, member } => {
+                return Ok(self.eval_rvalue(&mut strct, label)? + member.offset as i64);
+            }
+            _ => panic!("{:?} invalid initializer", node.pos),
         }
     }
 

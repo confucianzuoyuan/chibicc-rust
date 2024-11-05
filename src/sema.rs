@@ -200,6 +200,13 @@ impl Type {
         }
     }
 
+    pub fn is_func(&self) -> bool {
+        match self.ty {
+            Ty::TyFunc { .. } => true,
+            _ => false,
+        }
+    }
+
     pub fn is_struct(&self) -> bool {
         match self.ty {
             Ty::TyStruct { .. } => true,
@@ -491,10 +498,9 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
             ..
         } => e.node.ty = left.node.ty.clone(),
         // "&" addr
-        ast::Expr::Addr { expr } => match e.node.ty.clone().ty {
-            Ty::TyPlaceholder => e.node.ty = pointer_to(expr.node.ty.clone()),
+        ast::Expr::Addr { expr } => match expr.node.ty.clone().ty {
             Ty::TyArray { base, array_len: _ } => e.node.ty = pointer_to(*base),
-            _ => (),
+            _ => e.node.ty = pointer_to(expr.node.ty.clone()),
         },
         // "*" dereference
         ast::Expr::Deref { expr } => match expr.node.ty.clone().ty {

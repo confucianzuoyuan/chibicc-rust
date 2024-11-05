@@ -561,13 +561,47 @@ impl CodeGenerator {
             self.output.push(format!("{}:", global.borrow().name));
             match &global.borrow().init_data {
                 Some(InitData::StringInitData(s)) => {
-                    for c in s.chars() {
-                        self.output.push(format!("  .byte {}", c as u8));
+                    let rels = &global.borrow().rel;
+                    let mut pos = 0;
+                    let mut i = 0;
+                    while pos < global.borrow().ty.get_size() {
+                        let r = rels.get(i);
+                        if r.is_some() && r.unwrap().offset == pos {
+                            self.output.push(format!(
+                                "  .quad {}{:+}",
+                                r.unwrap().label,
+                                r.unwrap().addend
+                            ));
+                            i += 1;
+                            pos += 8;
+                        } else {
+                            self.output.push(format!(
+                                "  .byte {}",
+                                s.as_bytes().get(pos as usize).unwrap()
+                            ));
+                            pos += 1;
+                        }
                     }
                 }
                 Some(InitData::BytesInitData(bytes)) => {
-                    for b in bytes {
-                        self.output.push(format!("  .byte {}", b));
+                    let rels = &global.borrow().rel;
+                    let mut pos = 0;
+                    let mut i = 0;
+                    while pos < global.borrow().ty.get_size() {
+                        let r = rels.get(i);
+                        if r.is_some() && r.unwrap().offset == pos {
+                            self.output.push(format!(
+                                "  .quad {}{:+}",
+                                r.unwrap().label,
+                                r.unwrap().addend
+                            ));
+                            i += 1;
+                            pos += 8;
+                        } else {
+                            self.output
+                                .push(format!("  .byte {}", bytes.get(pos as usize).unwrap()));
+                            pos += 1;
+                        }
                     }
                 }
                 _ => self

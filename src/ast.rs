@@ -548,12 +548,20 @@ pub struct Obj {
     pub ty: Type,
     pub is_local: bool,
     pub init_data: Option<InitData>,
+    pub rel: Vec<Relocation>,
 }
 
 impl Display for Obj {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.name)
     }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Relocation {
+    pub offset: i32,
+    pub label: String,
+    pub addend: i64,
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -1,5 +1,8 @@
-short g3 = 3;
+int strcmp(char *p, char *q);
+
+char g17[] = "foobar";
+char *g22 = &g17-3;
 int main() {
   // hello
-  return g3;
+  return strcmp(g22+3, "foobar");
 }
