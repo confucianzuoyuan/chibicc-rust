@@ -193,6 +193,13 @@ impl Type {
         }
     }
 
+    pub fn is_enum(&self) -> bool {
+        match self.ty {
+            Ty::TyEnum => true,
+            _ => false,
+        }
+    }
+
     pub fn is_array(&self) -> bool {
         match self.ty {
             Ty::TyArray { .. } => true,

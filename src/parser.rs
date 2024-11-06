@@ -117,6 +117,31 @@ impl<'a> Parser<'a> {
         unique_name
     }
 
+    fn is_end(&mut self) -> Result<bool> {
+        if self.peek()?.token == RightBrace {
+            Ok(true)
+        } else if self.peek()?.token == Comma && self.peek_next_one()?.token == RightBrace {
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    fn consume_end(&mut self) -> Result<bool> {
+        if self.peek()?.token == RightBrace {
+            eat!(self, RightBrace);
+            return Ok(true);
+        }
+
+        if self.peek()?.token == Comma && self.peek_next_one()?.token == RightBrace {
+            eat!(self, Comma);
+            eat!(self, RightBrace);
+            return Ok(true);
+        }
+
+        Ok(false)
+    }
+
     fn new_initializer(&mut self, mut ty: Type, is_flexible: bool) -> Result<Initializer> {
         let mut init = Initializer::new(ty.clone());
 
@@ -190,24 +215,17 @@ impl<'a> Parser<'a> {
     fn count_array_init_elements(&mut self, ty: Type) -> Result<i32> {
         let mut dummy = self.new_initializer(ty.base().unwrap(), false)?;
         let mut i = 0;
-        loop {
-            if self.peek()?.token == RightBrace {
-                eat!(self, RightBrace);
-                break;
-            }
-
+        while !self.consume_end()? {
             if i > 0 {
                 eat!(self, Comma);
             }
-
             self.initializer2(&mut dummy)?;
-
             i += 1;
         }
         Ok(i)
     }
 
-    /// array-initializer1 = "{" initializer ("," initializer)* "}"
+    /// array-initializer1 = "{" initializer ("," initializer)* ","? "}"
     fn array_initializer1(&mut self, init: &mut Initializer) -> Result<()> {
         eat!(self, LeftBrace);
 
@@ -221,12 +239,7 @@ impl<'a> Parser<'a> {
         self.current_pos = old_current_pos;
 
         let mut i = 0;
-        loop {
-            if self.peek()?.token == RightBrace {
-                eat!(self, RightBrace);
-                break;
-            }
-
+        while !self.consume_end()? {
             if i > 0 {
                 eat!(self, Comma);
             }
@@ -273,21 +286,17 @@ impl<'a> Parser<'a> {
         eat!(self, LeftBrace);
 
         let mut i = 0;
-        loop {
-            if self.peek()?.token == RightBrace {
-                eat!(self, RightBrace);
-                break;
+        while !self.consume_end()? {
+            if i > 0 {
+                eat!(self, Comma);
             }
+
             if (i as usize) < init.children.len() {
-                if i > 0 {
-                    eat!(self, Comma);
-                }
                 self.initializer2(init.get_child(i))?;
+                i += 1;
             } else {
                 self.skip_excess_element()?;
             }
-
-            i += 1;
         }
 
         Ok(())
@@ -296,7 +305,7 @@ impl<'a> Parser<'a> {
     /// struct-initializer2 = initializer ("," initializer)*
     fn struct_initializer2(&mut self, init: &mut Initializer) -> Result<()> {
         let mut i = 0;
-        while i < init.ty.get_struct_members().unwrap().len() && self.peek()?.token != RightBrace {
+        while i < init.ty.get_struct_members().unwrap().len() && !self.is_end()? {
             if i > 0 {
                 eat!(self, Comma);
             }
@@ -314,6 +323,9 @@ impl<'a> Parser<'a> {
         if self.peek()?.token == LeftBrace {
             eat!(self, LeftBrace);
             self.initializer2(init.get_child(0))?;
+            if self.peek()?.token == Comma {
+                eat!(self, Comma);
+            }
             eat!(self, RightBrace);
         } else {
             self.initializer2(init.get_child(0))?;
@@ -2974,129 +2986,71 @@ impl<'a> Parser<'a> {
     // enum-specifier = ident? "{" enum-list? "}"
     //                | ident ("{" enum-list? "}")?
     //
-    // enum-list      = ident ("=" num)? ("," ident ("=" num)?)*
+    // enum-list      = ident ("=" num)? ("," ident ("=" num)?)* ","?
     fn enum_specifier(&mut self) -> Result<Type> {
-        // read a enum tag
-        match self.peek()?.token.clone() {
-            Tok::Ident(..) => {
-                let ident_tok = self.peek()?.clone();
-                let ident;
-                eat!(self, Ident, ident);
-                match self.peek()?.token.clone() {
-                    Tok::LeftBrace => {
-                        eat!(self, LeftBrace);
-                        // read an enum-list
-                        let mut val = 0;
-                        loop {
-                            match self.peek()?.token {
-                                Tok::RightBrace => {
-                                    eat!(self, RightBrace);
-                                    break;
-                                }
-                                Tok::Comma => {
-                                    eat!(self, Comma);
-                                }
-                                _ => {
-                                    let name;
-                                    eat!(self, Ident, name);
-                                    match self.peek()?.token {
-                                        Tok::Equal => {
-                                            eat!(self, Equal);
-                                            match self.peek()?.token {
-                                                Tok::Number(..) => {
-                                                    let i = self.const_expr()?;
-                                                    val = i as i32;
-                                                }
-                                                _ => panic!(),
-                                            }
-                                        }
-                                        _ => (),
-                                    }
+        let ty = Type::new_enum();
 
-                                    // 将enum添加到`变量`作用域
-                                    let mut ty = Type::new_enum();
-                                    ty.set_name(ident_tok.clone());
-                                    let enum_var = Rc::new(RefCell::new(Obj {
-                                        name: name.clone(),
-                                        offset: 0,
-                                        is_local: false,
-                                        init_data: Some(InitData::IntInitData(val)),
-                                        ty,
-                                        rel: vec![],
-                                    }));
-                                    val += 1;
-                                    self.var_env.enter(self.symbols.symbol(&name), enum_var);
-                                }
-                            }
-                        }
-
-                        let mut ty = Type::new_enum();
-                        ty.set_name(ident_tok);
-                        self.struct_tag_env
-                            .enter(self.symbols.symbol(&ident), ty.clone());
-
-                        Ok(ty)
-                    }
-                    _ => {
-                        if let Some(ty) = self.struct_tag_env.look(self.symbols.symbol(&ident)) {
-                            return Ok(ty.clone());
-                        } else {
-                            panic!()
-                        }
-                    }
-                }
-            }
-            _ => match self.peek()?.token {
-                Tok::LeftBrace => {
-                    eat!(self, LeftBrace);
-                    // read an enum-list
-                    let mut val = 0;
-                    loop {
-                        match self.peek()?.token {
-                            Tok::RightBrace => {
-                                eat!(self, RightBrace);
-                                break;
-                            }
-                            Tok::Comma => {
-                                eat!(self, Comma);
-                            }
-                            _ => {
-                                let name;
-                                eat!(self, Ident, name);
-                                match self.peek()?.token {
-                                    Tok::Equal => {
-                                        eat!(self, Equal);
-                                        match self.peek()?.token {
-                                            Tok::Number(..) => {
-                                                let i = self.const_expr()?;
-                                                val = i as i32;
-                                            }
-                                            _ => panic!(),
-                                        }
-                                    }
-                                    _ => (),
-                                }
-
-                                // 将enum添加到`变量`作用域
-                                let enum_var = Rc::new(RefCell::new(Obj {
-                                    name: name.clone(),
-                                    offset: 0,
-                                    is_local: false,
-                                    init_data: Some(InitData::IntInitData(val)),
-                                    ty: Type::new_enum(),
-                                    rel: vec![],
-                                }));
-                                val += 1;
-                                self.var_env.enter(self.symbols.symbol(&name), enum_var);
-                            }
-                        }
-                    }
-
-                    Ok(Type::new_enum())
-                }
-                _ => panic!(),
-            },
+        let mut tag = None;
+        if self.peek()?.token.is_ident() {
+            tag = Some(self.peek()?.clone());
+            self.token()?;
         }
+
+        if tag.is_some() && self.peek()?.token != LeftBrace {
+            let ty = self.struct_tag_env.look(
+                self.symbols
+                    .symbol(&tag.clone().unwrap().token.get_ident_name().unwrap()),
+            );
+            match ty {
+                Some(t) => {
+                    if !t.is_enum() {
+                        panic!();
+                    } else {
+                        return Ok(t.clone());
+                    }
+                }
+                None => panic!(),
+            }
+        }
+
+        eat!(self, LeftBrace);
+
+        let mut i = 0;
+        let mut val = 0;
+        while !self.consume_end()? {
+            if i > 0 {
+                eat!(self, Comma);
+            }
+            i += 1;
+
+            let name;
+            eat!(self, Ident, name);
+
+            if self.peek()?.token == Equal {
+                eat!(self, Equal);
+                val = self.const_expr()?;
+            }
+
+            let enum_var = Rc::new(RefCell::new(Obj {
+                name: name.clone(),
+                offset: 0,
+                is_local: false,
+                init_data: Some(InitData::IntInitData(val as i32)),
+                ty: ty.clone(),
+                rel: vec![],
+            }));
+            val += 1;
+            self.var_env.enter(self.symbols.symbol(&name), enum_var);
+        }
+
+        if tag.is_some() {
+            self.struct_tag_env.enter(
+                self.symbols
+                    .symbol(&tag.clone().unwrap().token.get_ident_name().unwrap()),
+                ty.clone(),
+            );
+        }
+        Ok(ty)
     }
 
     /// array-dimensions = const-expr? "]" type-suffix
