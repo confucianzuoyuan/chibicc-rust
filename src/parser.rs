@@ -207,8 +207,8 @@ impl<'a> Parser<'a> {
         Ok(i)
     }
 
-    /// array-initializer = "{" initializer ("," initializer)* "}"
-    fn array_initializer(&mut self, init: &mut Initializer) -> Result<()> {
+    /// array-initializer1 = "{" initializer ("," initializer)* "}"
+    fn array_initializer1(&mut self, init: &mut Initializer) -> Result<()> {
         eat!(self, LeftBrace);
 
         let old_current_pos = self.current_pos;
@@ -243,8 +243,33 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    /// struct-initializer = "{" initializer ("," initializer)* "}"
-    fn struct_initializer(&mut self, init: &mut Initializer) -> Result<()> {
+    /// array-initializer2 = initializer ("," initializer)*
+    fn array_initializer2(&mut self, init: &mut Initializer) -> Result<()> {
+        let old_current_pos = self.current_pos;
+
+        if init.is_flexible {
+            let len = self.count_array_init_elements(init.ty.clone())?;
+            *init = self.new_initializer(Type::array_type(init.ty.base().unwrap(), len), false)?;
+        }
+
+        self.current_pos = old_current_pos;
+
+        let mut i = 0;
+        while i < init.ty.get_array_len() && self.peek()?.token != RightBrace {
+            if i > 0 {
+                eat!(self, Comma);
+            }
+
+            self.initializer2(init.get_child(i))?;
+
+            i += 1;
+        }
+
+        Ok(())
+    }
+
+    /// struct-initializer1 = "{" initializer ("," initializer)* "}"
+    fn struct_initializer1(&mut self, init: &mut Initializer) -> Result<()> {
         eat!(self, LeftBrace);
 
         let mut i = 0;
@@ -253,14 +278,12 @@ impl<'a> Parser<'a> {
                 eat!(self, RightBrace);
                 break;
             }
-
-            if i > 0 {
-                eat!(self, Comma);
-            }
-
-            self.initializer2(init.get_child(i))?;
-
-            if i as usize == init.children.len() {
+            if (i as usize) < init.children.len() {
+                if i > 0 {
+                    eat!(self, Comma);
+                }
+                self.initializer2(init.get_child(i))?;
+            } else {
                 self.skip_excess_element()?;
             }
 
@@ -270,12 +293,31 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    /// struct-initializer2 = initializer ("," initializer)*
+    fn struct_initializer2(&mut self, init: &mut Initializer) -> Result<()> {
+        let mut i = 0;
+        while i < init.ty.get_struct_members().unwrap().len() && self.peek()?.token != RightBrace {
+            if i > 0 {
+                eat!(self, Comma);
+            }
+
+            self.initializer2(init.get_child(i as i32))?;
+            i += 1;
+        }
+
+        Ok(())
+    }
+
     fn union_initializer(&mut self, init: &mut Initializer) -> Result<()> {
         // Unlike structs, union initializers take only one initializer,
         // and that initializes the first union member.
-        eat!(self, LeftBrace);
-        self.initializer2(init.get_child(0))?;
-        eat!(self, RightBrace);
+        if self.peek()?.token == LeftBrace {
+            eat!(self, LeftBrace);
+            self.initializer2(init.get_child(0))?;
+            eat!(self, RightBrace);
+        } else {
+            self.initializer2(init.get_child(0))?;
+        }
 
         Ok(())
     }
@@ -291,25 +333,33 @@ impl<'a> Parser<'a> {
                     return Ok(());
                 }
                 _ => {
-                    self.array_initializer(init)?;
+                    if self.peek()?.token == LeftBrace {
+                        self.array_initializer1(init)?;
+                    } else {
+                        self.array_initializer2(init)?;
+                    }
                     return Ok(());
                 }
             }
         }
 
         if init.ty.is_struct() {
+            if self.peek()?.token == LeftBrace {
+                self.struct_initializer1(init)?;
+                return Ok(());
+            }
             // A struct can be initialized with another struct. E.g.
             // `struct T x = y;` where y is a variable of type `struct T`.
             // Handle that case first.
-            if self.peek()?.token != LeftBrace {
-                let mut expr = self.assign()?;
-                add_type(&mut expr);
-                if expr.node.ty.is_struct() {
-                    init.expr = Some(expr);
-                    return Ok(());
-                }
+            let old_pos = self.current_pos;
+            let mut expr = self.assign()?;
+            add_type(&mut expr);
+            if expr.node.ty.is_struct() {
+                init.expr = Some(expr);
+                return Ok(());
             }
-            self.struct_initializer(init)?;
+            self.current_pos = old_pos;
+            self.struct_initializer2(init)?;
             return Ok(());
         }
 

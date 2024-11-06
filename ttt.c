@@ -1,8 +1,5 @@
-int strcmp(char *p, char *q);
-
-char g17[] = "foobar";
-char *g22 = &g17-3;
+struct {int a[2];} g40[2] = {{1, 2}, 3, 4};
 int main() {
   // hello
-  return strcmp(g22+3, "foobar");
+  return 0;
 }
