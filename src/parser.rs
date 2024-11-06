@@ -368,6 +368,15 @@ impl<'a> Parser<'a> {
             return Ok(());
         }
 
+        if self.peek()?.token == LeftBrace {
+            // An initializer for a scalar variable can be surrounded by
+            // braces. E.g. `int x = {3};`. Handle that case.
+            eat!(self, LeftBrace);
+            self.initializer2(init)?;
+            eat!(self, RightBrace);
+            return Ok(());
+        }
+
         init.expr = Some(self.assign()?);
 
         Ok(())
