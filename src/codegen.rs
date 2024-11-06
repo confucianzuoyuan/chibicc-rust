@@ -555,12 +555,12 @@ impl CodeGenerator {
 
     fn emit_data(&mut self, ast: &mut ast::Program) {
         for global in &mut ast.globals {
-            self.output.push(format!("  .data"));
             self.output
                 .push(format!("  .globl {}", global.borrow().name));
-            self.output.push(format!("{}:", global.borrow().name));
             match &global.borrow().init_data {
-                Some(InitData::StringInitData(s)) => {
+                Some(val) => {
+                    self.output.push(format!("  .data"));
+                    self.output.push(format!("{}:", global.borrow().name));
                     let rels = &global.borrow().rel;
                     let mut pos = 0;
                     let mut i = 0;
@@ -575,38 +575,27 @@ impl CodeGenerator {
                             i += 1;
                             pos += 8;
                         } else {
-                            self.output.push(format!(
-                                "  .byte {}",
-                                s.as_bytes().get(pos as usize).unwrap()
-                            ));
+                            match val {
+                                InitData::StringInitData(s) => self.output.push(format!(
+                                    "  .byte {}",
+                                    s.as_bytes().get(pos as usize).unwrap()
+                                )),
+                                InitData::BytesInitData(bytes) => self
+                                    .output
+                                    .push(format!("  .byte {}", bytes.get(pos as usize).unwrap())),
+                                _ => panic!(),
+                            }
                             pos += 1;
                         }
                     }
+                    continue;
                 }
-                Some(InitData::BytesInitData(bytes)) => {
-                    let rels = &global.borrow().rel;
-                    let mut pos = 0;
-                    let mut i = 0;
-                    while pos < global.borrow().ty.get_size() {
-                        let r = rels.get(i);
-                        if r.is_some() && r.unwrap().offset == pos {
-                            self.output.push(format!(
-                                "  .quad {}{:+}",
-                                r.unwrap().label,
-                                r.unwrap().addend
-                            ));
-                            i += 1;
-                            pos += 8;
-                        } else {
-                            self.output
-                                .push(format!("  .byte {}", bytes.get(pos as usize).unwrap()));
-                            pos += 1;
-                        }
-                    }
+                _ => {
+                    self.output.push(format!("  .bss"));
+                    self.output.push(format!("{}:", global.borrow().name));
+                    self.output
+                        .push(format!("  .zero {}", global.borrow().ty.get_size()));
                 }
-                _ => self
-                    .output
-                    .push(format!("  .zero {}", global.borrow().ty.get_size())),
             }
         }
     }
