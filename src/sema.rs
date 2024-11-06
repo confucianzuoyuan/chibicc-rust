@@ -235,6 +235,15 @@ impl Type {
         }
     }
 
+    pub fn set_array_len(&mut self, sz: i32) {
+        match self.ty {
+            Ty::TyArray {
+                ref mut array_len, ..
+            } => *array_len = sz,
+            _ => (),
+        }
+    }
+
     pub fn get_size(&self) -> i32 {
         match &self.ty {
             Ty::TyBool | Ty::TyChar | Ty::TyVoid => 1,

@@ -996,6 +996,16 @@ impl<'a> Parser<'a> {
             }
         }
 
+        if members.last().is_some()
+            && members.last().unwrap().ty.is_array()
+            && members.last().unwrap().ty.get_array_len() < 0
+        {
+            let mut m = members.last().unwrap().clone();
+            m.ty.set_array_len(0);
+            members.remove(members.len() - 1);
+            members.push(m);
+        }
+
         ty.set_struct_members(members);
         Ok(())
     }
