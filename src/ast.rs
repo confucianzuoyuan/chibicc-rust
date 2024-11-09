@@ -152,6 +152,21 @@ impl ExprWithPos {
         )
     }
 
+    pub fn new_addr(expr: ExprWithPos, pos: Pos) -> Self {
+        WithPos::new(
+            WithType::new(
+                Expr::Addr {
+                    expr: Box::new(expr),
+                },
+                Type {
+                    ty: Ty::TyPlaceholder,
+                    name: None,
+                },
+            ),
+            pos,
+        )
+    }
+
     pub fn new_comma(left: ExprWithPos, right: ExprWithPos, pos: Pos) -> Self {
         WithPos::new(
             WithType::new(

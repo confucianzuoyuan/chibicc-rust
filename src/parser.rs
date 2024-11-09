@@ -1607,90 +1607,25 @@ impl<'a> Parser<'a> {
                     self.new_local_variable("".to_string(), pointer_to(left.node.ty.clone()))?;
 
                 // tmp = &A
-                let expr1 = WithPos::new(
-                    WithType::new(
-                        Expr::Assign {
-                            l_value: Box::new(WithPos::new(
-                                WithType::new(
-                                    Expr::Variable { obj: var.clone() },
-                                    var.borrow().ty.clone(),
-                                ),
-                                left.pos,
-                            )),
-                            r_value: Box::new(WithPos::new(
-                                WithType::new(
-                                    Expr::Addr { expr: left.clone() },
-                                    var.borrow().ty.clone(),
-                                ),
-                                left.pos,
-                            )),
-                        },
-                        var.borrow().ty.clone(),
-                    ),
-                    left.pos,
-                );
+                // tmp
+                let mut l_value = ExprWithPos::new_var(var.clone(), left.pos.clone());
+                add_type(&mut l_value);
+                let mut r_value = ExprWithPos::new_addr(*left.clone(), left.pos.clone());
+                add_type(&mut r_value);
+                let mut expr1 = ExprWithPos::new_assign(l_value.clone(), r_value, left.pos.clone());
+                add_type(&mut expr1);
 
                 // *tmp = *tmp op B
-                let expr2 = WithPos::new(
-                    WithType::new(
-                        Expr::Assign {
-                            // *tmp
-                            l_value: Box::new(WithPos::new(
-                                WithType::new(
-                                    Expr::Deref {
-                                        expr: Box::new(WithPos::new(
-                                            WithType::new(
-                                                Expr::Variable { obj: var.clone() },
-                                                var.borrow().ty.clone(),
-                                            ),
-                                            left.pos,
-                                        )),
-                                    },
-                                    left.node.ty.clone(),
-                                ),
-                                left.pos,
-                            )),
-                            r_value: Box::new(WithPos::new(
-                                WithType::new(
-                                    Expr::Binary {
-                                        left: Box::new(WithPos::new(
-                                            WithType::new(
-                                                Expr::Deref {
-                                                    expr: Box::new(WithPos::new(
-                                                        WithType::new(
-                                                            Expr::Variable { obj: var.clone() },
-                                                            var.borrow().ty.clone(),
-                                                        ),
-                                                        left.pos,
-                                                    )),
-                                                },
-                                                left.node.ty.clone(),
-                                            ),
-                                            left.pos,
-                                        )),
-                                        op,
-                                        right: right.clone(),
-                                    },
-                                    left.node.ty.clone(),
-                                ),
-                                left.pos,
-                            )),
-                        },
-                        left.node.ty.clone(),
-                    ),
-                    left.pos,
-                );
+                let mut l_value = ExprWithPos::new_deref(l_value, left.pos);
+                add_type(&mut l_value);
+                let mut r_value =
+                    ExprWithPos::new_binary(op.node, l_value.clone(), *right, left.pos);
+                add_type(&mut r_value);
+                let mut expr2 = ExprWithPos::new_assign(l_value, r_value, left.pos);
+                add_type(&mut expr2);
 
-                let node = WithPos::new(
-                    WithType::new(
-                        Expr::CommaExpr {
-                            left: Box::new(expr1.clone()),
-                            right: Box::new(expr2.clone()),
-                        },
-                        expr2.node.ty.clone(),
-                    ),
-                    left.pos,
-                );
+                let mut node = ExprWithPos::new_comma(expr1, expr2, left.pos);
+                add_type(&mut node);
 
                 Ok(node)
             }
