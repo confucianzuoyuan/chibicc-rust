@@ -557,6 +557,8 @@ impl CodeGenerator {
         for global in &mut ast.globals {
             self.output
                 .push(format!("  .globl {}", global.borrow().name));
+            self.output
+                .push(format!("  .align {}", global.borrow().ty.get_align()));
             match &global.borrow().init_data {
                 Some(val) => {
                     self.output.push(format!("  .data"));
