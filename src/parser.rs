@@ -1643,16 +1643,7 @@ impl<'a> Parser<'a> {
             Tok::Equal => {
                 let pos = eat!(self, Equal);
                 let r_value = self.assign()?;
-                expr = WithPos::new(
-                    WithType::new(
-                        Expr::Assign {
-                            l_value: Box::new(expr.clone()),
-                            r_value: Box::new(r_value),
-                        },
-                        expr.node.ty,
-                    ),
-                    pos,
-                )
+                expr = ExprWithPos::new_assign(expr, r_value, pos);
             }
             Tok::PlusEqual => {
                 let pos = eat!(self, PlusEqual);
@@ -1669,97 +1660,49 @@ impl<'a> Parser<'a> {
             Tok::StarEqual => {
                 let pos = eat!(self, StarEqual);
                 let rhs = self.assign()?;
-                expr = ExprWithPos::new_binary_with_type(
-                    ast::BinaryOperator::Mul,
-                    expr.clone(),
-                    rhs,
-                    pos,
-                    expr.node.ty,
-                );
+                expr = ExprWithPos::new_binary(ast::BinaryOperator::Mul, expr, rhs, pos);
                 expr = self.to_assign(expr)?;
             }
             Tok::SlashEqual => {
                 let pos = eat!(self, SlashEqual);
                 let rhs = self.assign()?;
-                expr = ExprWithPos::new_binary_with_type(
-                    ast::BinaryOperator::Div,
-                    expr.clone(),
-                    rhs,
-                    pos,
-                    expr.node.ty,
-                );
+                expr = ExprWithPos::new_binary(ast::BinaryOperator::Div, expr, rhs, pos);
                 expr = self.to_assign(expr)?;
             }
             Tok::PercentEqual => {
                 let pos = eat!(self, PercentEqual);
                 let rhs = self.assign()?;
-                expr = ExprWithPos::new_binary_with_type(
-                    ast::BinaryOperator::Mod,
-                    expr.clone(),
-                    rhs,
-                    pos,
-                    expr.node.ty,
-                );
+                expr = ExprWithPos::new_binary(ast::BinaryOperator::Mod, expr, rhs, pos);
                 expr = self.to_assign(expr)?;
             }
             Tok::AmpEqual => {
                 let pos = eat!(self, AmpEqual);
                 let rhs = self.assign()?;
-                expr = ExprWithPos::new_binary_with_type(
-                    ast::BinaryOperator::BitAnd,
-                    expr.clone(),
-                    rhs,
-                    pos,
-                    expr.node.ty,
-                );
+                expr = ExprWithPos::new_binary(ast::BinaryOperator::BitAnd, expr, rhs, pos);
                 expr = self.to_assign(expr)?;
             }
             Tok::BarEqual => {
                 let pos = eat!(self, BarEqual);
                 let rhs = self.assign()?;
-                expr = ExprWithPos::new_binary_with_type(
-                    ast::BinaryOperator::BitOr,
-                    expr.clone(),
-                    rhs,
-                    pos,
-                    expr.node.ty,
-                );
+                expr = ExprWithPos::new_binary(ast::BinaryOperator::BitOr, expr, rhs, pos);
                 expr = self.to_assign(expr)?;
             }
             Tok::HatEqual => {
                 let pos = eat!(self, HatEqual);
                 let rhs = self.assign()?;
-                expr = ExprWithPos::new_binary_with_type(
-                    ast::BinaryOperator::BitXor,
-                    expr.clone(),
-                    rhs,
-                    pos,
-                    expr.node.ty,
-                );
+                expr = ExprWithPos::new_binary(ast::BinaryOperator::BitXor, expr, rhs, pos);
                 expr = self.to_assign(expr)?;
             }
             Tok::LesserLesserEqual => {
                 let pos = eat!(self, LesserLesserEqual);
                 let rhs = self.assign()?;
-                expr = ExprWithPos::new_binary_with_type(
-                    ast::BinaryOperator::SHL,
-                    expr.clone(),
-                    rhs,
-                    pos,
-                    expr.node.ty,
-                );
+                expr = ExprWithPos::new_binary(ast::BinaryOperator::SHL, expr, rhs, pos);
                 expr = self.to_assign(expr)?;
             }
             Tok::GreaterGreaterEqual => {
                 let pos = eat!(self, GreaterGreaterEqual);
                 let rhs = self.assign()?;
-                expr = ExprWithPos::new_binary_with_type(
-                    ast::BinaryOperator::SHR,
-                    expr.clone(),
-                    rhs,
-                    pos,
-                    expr.node.ty,
-                );
+                expr = ExprWithPos::new_binary(ast::BinaryOperator::SHR, expr, rhs, pos);
                 expr = self.to_assign(expr)?;
             }
             _ => (),
