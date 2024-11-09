@@ -27,11 +27,13 @@ pub enum Ty {
         members: Vec<Member>,
         type_size: i32,
         align: i32,
+        is_flexible: bool,
     },
     TyUnion {
         members: Vec<Member>,
         type_size: i32,
         align: i32,
+        is_flexible: bool,
     },
     TyPlaceholder,
 }
@@ -105,6 +107,7 @@ impl Type {
                 members,
                 type_size,
                 align,
+                is_flexible: false,
             },
             name: None,
         }
@@ -164,6 +167,7 @@ impl Type {
                 members,
                 type_size,
                 align,
+                is_flexible: false,
             },
             name,
         }
@@ -183,6 +187,39 @@ impl Type {
         match &self.ty {
             Ty::TyArray { base, .. } => Some(*base.clone()),
             _ => None,
+        }
+    }
+
+    pub fn is_flexible(&self) -> bool {
+        match self.ty {
+            Ty::TyStruct { is_flexible, .. } | Ty::TyUnion { is_flexible, .. } => is_flexible,
+            _ => false,
+        }
+    }
+
+    pub fn set_flexible(&mut self, v: bool) {
+        match self.ty {
+            Ty::TyStruct {
+                ref mut is_flexible,
+                ..
+            }
+            | Ty::TyUnion {
+                ref mut is_flexible,
+                ..
+            } => *is_flexible = v,
+            _ => (),
+        }
+    }
+
+    pub fn set_last_member_type(&mut self, ty: Type) {
+        match self.ty {
+            Ty::TyStruct {
+                ref mut members, ..
+            }
+            | Ty::TyUnion {
+                ref mut members, ..
+            } => members.last_mut().unwrap().ty = ty,
+            _ => (),
         }
     }
 

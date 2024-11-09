@@ -625,13 +625,13 @@ pub struct Initializer {
 }
 
 impl Initializer {
-    pub fn new(ty: Type) -> Self {
+    pub fn new(ty: Type, is_flexible: bool) -> Self {
         Self {
             children: vec![],
             ty,
             expr: None,
             tok: None,
-            is_flexible: false,
+            is_flexible,
         }
     }
 

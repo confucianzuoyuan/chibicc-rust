@@ -143,7 +143,7 @@ impl<'a> Parser<'a> {
     }
 
     fn new_initializer(&mut self, mut ty: Type, is_flexible: bool) -> Result<Initializer> {
-        let mut init = Initializer::new(ty.clone());
+        let mut init = Initializer::new(ty.clone(), false);
 
         if ty.is_array() {
             if is_flexible && ty.get_size() < 0 {
@@ -156,16 +156,32 @@ impl<'a> Parser<'a> {
         }
 
         if ty.is_struct() {
+            let mut i = 0;
+            let len = ty.get_struct_members().unwrap().len();
             for mem in ty.get_struct_members().unwrap() {
-                init.add_child(self.new_initializer(mem.ty, false)?);
+                i += 1;
+                if is_flexible && ty.is_flexible() && i == len {
+                    let child = Initializer::new(mem.ty, true);
+                    init.add_child(child);
+                } else {
+                    init.add_child(self.new_initializer(mem.ty, false)?);
+                }
             }
 
             return Ok(init);
         }
 
         if ty.is_union() {
+            let mut i = 0;
+            let len = ty.get_union_members().unwrap().len();
             for mem in ty.get_union_members().unwrap() {
-                init.add_child(self.new_initializer(mem.ty, false)?);
+                i += 1;
+                if is_flexible && ty.is_flexible() && i == len {
+                    let child = Initializer::new(mem.ty, true);
+                    init.add_child(child);
+                } else {
+                    init.add_child(self.new_initializer(mem.ty, false)?);
+                }
             }
 
             return Ok(init);
@@ -397,6 +413,17 @@ impl<'a> Parser<'a> {
     fn initializer(&mut self, ty: &mut Type) -> Result<Initializer> {
         let mut init = self.new_initializer(ty.clone(), true)?;
         self.initializer2(&mut init)?;
+
+        if (ty.is_struct() || ty.is_union()) && ty.is_flexible() {
+            let _ty = &mut ty.clone();
+            let len = _ty.get_struct_members().unwrap().len();
+            _ty.set_last_member_type(init.get_child(len as i32 - 1).ty.clone());
+            _ty.set_size(_ty.get_size() + init.get_child(len as i32 - 1).ty.clone().get_size());
+
+            *ty = _ty.clone();
+            return Ok(init);
+        }
+
         *ty = init.ty.clone();
         Ok(init)
     }
@@ -1004,6 +1031,7 @@ impl<'a> Parser<'a> {
             m.ty.set_array_len(0);
             members.remove(members.len() - 1);
             members.push(m);
+            ty.set_flexible(true);
         }
 
         ty.set_struct_members(members);
@@ -2798,6 +2826,9 @@ impl<'a> Parser<'a> {
                 _ => {
                     let ty = self.declarator(basety.clone())?;
                     let var_name = ty.get_ident().unwrap();
+                    if self.peek()?.token.is_ident() {
+                        continue;
+                    }
                     let var = self.new_global_variable(var_name, ty, None)?;
                     if self.peek()?.token == Equal {
                         eat!(self, Equal);
