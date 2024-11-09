@@ -1978,29 +1978,13 @@ impl<'a> Parser<'a> {
                 let pos = eat!(self, Amp);
                 let mut expr = self.cast()?;
                 add_type(&mut expr);
-                Ok(WithPos::new(
-                    WithType::new(
-                        Expr::Addr {
-                            expr: Box::new(expr),
-                        },
-                        Type::new_placeholder(),
-                    ),
-                    pos,
-                ))
+                Ok(ExprWithPos::new_addr(expr, pos))
             }
             Star => {
                 let pos = eat!(self, Star);
                 let mut expr = self.cast()?;
                 add_type(&mut expr);
-                Ok(WithPos::new(
-                    WithType::new(
-                        Expr::Deref {
-                            expr: Box::new(expr),
-                        },
-                        Type::new_placeholder(),
-                    ),
-                    pos,
-                ))
+                Ok(ExprWithPos::new_deref(expr, pos))
             }
             Bang => {
                 let op = WithPos::new(UnaryOperator::Not, eat!(self, Bang));
@@ -2333,15 +2317,7 @@ impl<'a> Parser<'a> {
                 Tok::MinusGreater => {
                     // x->y is short for (*x).y
                     let pos = eat!(self, MinusGreater);
-                    node = WithPos::new(
-                        WithType::new(
-                            Expr::Deref {
-                                expr: Box::new(node),
-                            },
-                            Type::new_placeholder(),
-                        ),
-                        pos,
-                    );
+                    node = ExprWithPos::new_deref(node, pos);
                     add_type(&mut node);
                     node = self.struct_ref(node)?;
                 }
@@ -2559,15 +2535,7 @@ impl<'a> Parser<'a> {
                         else {
                             let mut node = self.unary()?;
                             add_type(&mut node);
-                            node = WithPos::new(
-                                WithType::new(
-                                    Expr::Number {
-                                        value: node.node.ty.get_size() as i64,
-                                    },
-                                    Type::new_int(),
-                                ),
-                                pos,
-                            );
+                            node = ExprWithPos::new_number(node.node.ty.get_size() as i64, pos);
                             Ok(node)
                         }
                     }
@@ -2575,15 +2543,8 @@ impl<'a> Parser<'a> {
                     _ => {
                         let mut node = self.unary()?;
                         add_type(&mut node);
-                        Ok(WithPos::new(
-                            WithType::new(
-                                Expr::Number {
-                                    value: node.node.ty.get_size() as i64,
-                                },
-                                Type::new_int(),
-                            ),
-                            pos,
-                        ))
+                        node = ExprWithPos::new_number(node.node.ty.get_size() as i64, pos);
+                        Ok(node)
                     }
                 }
             }
