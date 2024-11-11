@@ -1402,14 +1402,10 @@ impl<'a> Parser<'a> {
     /// declarator = "*"* ("(" ident ")" | "(" declarator ")" | ident) type-suffix
     fn declarator(&mut self, ty: Type) -> Result<Type> {
         let mut ty = ty.clone();
-        loop {
-            match self.peek()?.token {
-                Tok::Star => {
-                    eat!(self, Star);
-                    ty = sema::pointer_to(ty);
-                }
-                _ => break,
-            }
+
+        while self.peek()?.token == Star {
+            eat!(self, Star);
+            ty = sema::pointer_to(ty);
         }
 
         match self.peek()?.token {
