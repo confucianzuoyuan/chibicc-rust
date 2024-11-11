@@ -1408,37 +1408,40 @@ impl<'a> Parser<'a> {
             ty = sema::pointer_to(ty);
         }
 
-        match self.peek()?.token {
-            Tok::LeftParen => {
-                eat!(self, LeftParen);
-                if self.peek()?.token.is_ident() && self.peek_next_one()?.token == RightParen {
-                    let tok = self.token()?;
-                    eat!(self, RightParen);
-                    let mut ty = self.type_suffix(ty)?;
-                    ty.set_name(tok);
-                    return Ok(ty);
-                } else {
-                    let mut _ty = self.declarator(ty.clone())?;
-                    eat!(self, RightParen);
-                    let ty = self.type_suffix(ty)?;
-                    match _ty.ty {
-                        Ty::TyPtr { ref mut base, .. } | Ty::TyArray { ref mut base, .. } => {
-                            *base = Box::new(ty);
-                        }
-                        _ => panic!(),
-                    }
-                    return Ok(_ty);
-                }
-            }
-            Tok::Ident(..) => {
-                let tok = self.token()?;
-                ty = self.type_suffix(ty)?;
-                ty.set_name(tok);
-            }
-            _ => panic!("expected a variable name, but got {:?}", self.peek()?),
+        if self.peek()?.token == LeftParen
+            && self.peek_next_one()?.token.is_ident()
+            && self.peek_next_two()?.token == RightParen
+        {
+            eat!(self, LeftParen);
+            let tok = self.token()?;
+            eat!(self, RightParen);
+            let mut ty = self.type_suffix(ty)?;
+            ty.set_name(tok);
+            return Ok(ty);
         }
 
-        Ok(ty)
+        if self.peek()?.token == LeftParen {
+            eat!(self, LeftParen);
+            let mut _ty = self.declarator(ty.clone())?;
+            eat!(self, RightParen);
+            let ty = self.type_suffix(ty)?;
+            match _ty.ty {
+                Ty::TyPtr { ref mut base, .. } | Ty::TyArray { ref mut base, .. } => {
+                    *base = Box::new(ty);
+                }
+                _ => panic!(),
+            }
+            return Ok(_ty);
+        }
+
+        if self.peek()?.token.is_ident() {
+            let tok = self.token()?;
+            ty = self.type_suffix(ty)?;
+            ty.set_name(tok);
+            return Ok(ty);
+        }
+
+        panic!("expected a variable name, but got {:?}", self.peek()?)
     }
 
     fn is_typename(&mut self, tok: Tok) -> Result<bool> {
@@ -2599,6 +2602,14 @@ impl<'a> Parser<'a> {
 
     fn peek_next_one(&mut self) -> std::result::Result<&Token, &Error> {
         if let Some(tok) = self.tokens.get(self.current_pos + 1) {
+            Ok(tok)
+        } else {
+            panic!()
+        }
+    }
+
+    fn peek_next_two(&mut self) -> std::result::Result<&Token, &Error> {
+        if let Some(tok) = self.tokens.get(self.current_pos + 2) {
             Ok(tok)
         } else {
             panic!()
