@@ -101,18 +101,6 @@ impl Type {
         }
     }
 
-    pub fn new_union(members: Vec<Member>, type_size: i32, align: i32) -> Self {
-        Type {
-            ty: Ty::TyUnion {
-                members,
-                type_size,
-                align,
-                is_flexible: false,
-            },
-            name: None,
-        }
-    }
-
     pub fn new_func(params: Vec<Type>, return_ty: Type) -> Self {
         Type {
             ty: Ty::TyFunc {
@@ -164,6 +152,23 @@ impl Type {
     ) -> Self {
         Self {
             ty: Ty::TyStruct {
+                members,
+                type_size,
+                align,
+                is_flexible: false,
+            },
+            name,
+        }
+    }
+
+    pub fn union_type(
+        name: Option<Token>,
+        members: Vec<Member>,
+        type_size: i32,
+        align: i32,
+    ) -> Self {
+        Type {
+            ty: Ty::TyUnion {
                 members,
                 type_size,
                 align,

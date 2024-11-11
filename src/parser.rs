@@ -1127,88 +1127,33 @@ impl<'a> Parser<'a> {
     /// union-decl = "{" struct-members
     /// union-members = (declspec declarator (","  declarator)* ";")*
     fn union_decl(&mut self) -> Result<Type> {
-        // Read a union tag.
-        let tag = match self.peek()?.token {
-            Tok::Ident(..) => {
-                let ident;
-                eat!(self, Ident, ident);
-                Some(ident)
-            }
-            _ => None,
-        };
-
-        match self.peek()?.token {
-            Tok::LeftBrace => {
-                eat!(self, LeftBrace);
-            }
-            _ => {
-                if let Some(union_tag) = tag {
-                    let ty = self.struct_tag_env.look(self.symbols.symbol(&union_tag));
-                    if let Some(_ty) = ty {
-                        return Ok(_ty.clone());
-                    } else {
-                        panic!("unknown union type: {}", union_tag);
-                    }
-                }
-            }
-        }
-
-        // Construct a union object.
-        let mut members = vec![];
-        loop {
-            match self.peek()?.token {
-                Tok::RightBrace => {
-                    eat!(self, RightBrace);
-                    break;
-                }
-                _ => {
-                    let basety = self.declspec(&mut None)?;
-                    loop {
-                        match self.peek()?.token {
-                            Tok::Semicolon => {
-                                eat!(self, Semicolon);
-                                break;
-                            }
-                            Tok::Comma => {
-                                eat!(self, Comma);
-                            }
-                            _ => {
-                                let member_ty = self.declarator(basety.clone())?;
-                                let member_name = member_ty.get_token().unwrap();
-                                let member = sema::Member {
-                                    ty: member_ty,
-                                    name: member_name,
-                                    offset: 0,
-                                };
-                                members.push(member);
-                            }
-                        }
-                    }
-                }
-            }
+        let mut ty = self.struct_union_decl()?;
+        if ty.get_size() < -1 {
+            return Ok(ty);
         }
 
         // If union, we don't have to assign offsets because they
         // are already initialized to zero. We need to compute the
         // alignment and the size though.
-        let mut union_align = 1;
-        let mut type_size = 0;
-        for mem in members.clone() {
-            if union_align < mem.ty.get_align() {
-                union_align = mem.ty.get_align();
+        let mut members = ty.get_struct_members().unwrap();
+        for mem in &mut members {
+            if ty.get_align() < mem.ty.get_align() {
+                ty.set_align(mem.ty.get_align());
             }
-            if type_size < mem.ty.get_size() {
-                type_size = mem.ty.get_size();
+
+            if ty.get_size() < mem.ty.get_size() {
+                ty.set_size(mem.ty.get_size());
             }
         }
 
-        let union_ty =
-            Type::new_union(members, sema::align_to(type_size, union_align), union_align);
-        if let Some(struct_tag) = tag {
-            self.struct_tag_env
-                .enter(self.symbols.symbol(&struct_tag), union_ty.clone());
-        }
-        Ok(union_ty)
+        let ty = Type::union_type(
+            ty.name.clone(),
+            members,
+            sema::align_to(ty.get_size(), ty.get_align()),
+            ty.get_align(),
+        );
+
+        Ok(ty)
     }
 
     /// declspec = ("void" | "_Bool" | "char" | "short" | "int" | "long"
