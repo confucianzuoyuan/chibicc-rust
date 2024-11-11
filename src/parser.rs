@@ -1411,41 +1411,23 @@ impl<'a> Parser<'a> {
         match self.peek()?.token {
             Tok::LeftParen => {
                 eat!(self, LeftParen);
-                match self.peek()?.token {
-                    Tok::Ident(..) => match self.peek_next_one()?.token {
-                        Tok::RightParen => {
-                            let tok = self.token()?;
-                            eat!(self, RightParen);
-                            let mut ty = self.type_suffix(ty)?;
-                            ty.set_name(tok);
-                            return Ok(ty);
+                if self.peek()?.token.is_ident() && self.peek_next_one()?.token == RightParen {
+                    let tok = self.token()?;
+                    eat!(self, RightParen);
+                    let mut ty = self.type_suffix(ty)?;
+                    ty.set_name(tok);
+                    return Ok(ty);
+                } else {
+                    let mut _ty = self.declarator(ty.clone())?;
+                    eat!(self, RightParen);
+                    let ty = self.type_suffix(ty)?;
+                    match _ty.ty {
+                        Ty::TyPtr { ref mut base, .. } | Ty::TyArray { ref mut base, .. } => {
+                            *base = Box::new(ty);
                         }
-                        _ => {
-                            let mut _ty = self.declarator(ty.clone())?;
-                            eat!(self, RightParen);
-                            let ty = self.type_suffix(ty)?;
-                            match _ty.ty {
-                                Ty::TyPtr { ref mut base, .. }
-                                | Ty::TyArray { ref mut base, .. } => {
-                                    *base = Box::new(ty);
-                                }
-                                _ => panic!(),
-                            }
-                            return Ok(_ty);
-                        }
-                    },
-                    _ => {
-                        let mut _ty = self.declarator(ty.clone())?;
-                        eat!(self, RightParen);
-                        let ty = self.type_suffix(ty)?;
-                        match _ty.ty {
-                            Ty::TyPtr { ref mut base, .. } => {
-                                *base = Box::new(ty);
-                            }
-                            _ => panic!(),
-                        }
-                        return Ok(_ty);
+                        _ => panic!(),
                     }
+                    return Ok(_ty);
                 }
             }
             Tok::Ident(..) => {
