@@ -1585,6 +1585,18 @@ impl<'a> Parser<'a> {
                             }
                             _ => (),
                         }
+                        let pos = self.current_pos;
+                        if self.is_function()? {
+                            self.current_pos = pos;
+                            self.function(basety, &attr)?;
+                            continue;
+                        } else {
+                            self.current_pos = pos;
+                        }
+                        if attr.clone().unwrap().is_extern() {
+                            self.global_variable(basety, &attr)?;
+                            continue;
+                        }
                         let mut declaration = self.declaration(basety)?;
                         sema_stmt(&mut declaration);
                         stmts.push(declaration);
