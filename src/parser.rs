@@ -2229,27 +2229,8 @@ impl<'a> Parser<'a> {
 
         let pos = self.peek()?.pos;
 
-        // 1
-        let positive_one = WithPos::new(
-            WithType::new(
-                Expr::Number {
-                    value: addend as i64,
-                },
-                Type::new_long(),
-            ),
-            pos,
-        );
-
-        // -1
-        let negative_one = WithPos::new(
-            WithType::new(
-                Expr::Number {
-                    value: -addend as i64,
-                },
-                Type::new_long(),
-            ),
-            pos,
-        );
+        let positive_one = ExprWithPos::new_number(addend as i64, pos);
+        let negative_one = ExprWithPos::new_number(-addend as i64, pos);
 
         // A += 1
         // A + 1
@@ -2284,15 +2265,7 @@ impl<'a> Parser<'a> {
                     let pos = eat!(self, LeftBracket);
                     let idx = self.expr()?;
                     eat!(self, RightBracket);
-                    node = WithPos::new(
-                        WithType::new(
-                            Expr::Deref {
-                                expr: Box::new(self.new_add(node, idx, pos)?),
-                            },
-                            Type::new_placeholder(),
-                        ),
-                        pos,
-                    )
+                    node = ExprWithPos::new_deref(self.new_add(node, idx, pos)?, pos);
                 }
                 Tok::Dot => {
                     eat!(self, Dot);
@@ -2467,8 +2440,7 @@ impl<'a> Parser<'a> {
             Number(_) => {
                 let value;
                 let pos = eat!(self, Number, value);
-                let mut node =
-                    WithPos::new(WithType::new(Expr::Number { value }, Type::new_long()), pos);
+                let mut node = ExprWithPos::new_number(value, pos);
                 add_type(&mut node);
                 Ok(node)
             }
