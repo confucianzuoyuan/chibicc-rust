@@ -2454,22 +2454,12 @@ impl<'a> Parser<'a> {
                             let attr = self.var_attr_env.look(self.symbols.symbol(&name));
                             if let Some(VarAttr::Typedef { type_def: Some(..) }) = attr.cloned() {
                                 eat!(self, LeftParen);
-                                let ignored;
-                                let pos = eat!(self, Ident, ignored);
-                                let _ = ignored;
+                                self.token()?;
                                 eat!(self, RightParen);
 
                                 let ty = self.struct_tag_env.look(self.symbols.symbol(&name));
                                 if let Some(ty) = ty {
-                                    return Ok(WithPos::new(
-                                        WithType::new(
-                                            Expr::Number {
-                                                value: ty.get_size() as i64,
-                                            },
-                                            Type::new_int(),
-                                        ),
-                                        pos,
-                                    ));
+                                    return Ok(ExprWithPos::new_number(ty.get_size() as i64, pos));
                                 }
                             }
                         }
@@ -2478,15 +2468,7 @@ impl<'a> Parser<'a> {
                             eat!(self, LeftParen);
                             let ty = self.typename()?;
                             eat!(self, RightParen);
-                            Ok(WithPos::new(
-                                WithType::new(
-                                    Expr::Number {
-                                        value: ty.get_size() as i64,
-                                    },
-                                    Type::new_int(),
-                                ),
-                                pos,
-                            ))
+                            Ok(ExprWithPos::new_number(ty.get_size() as i64, pos))
                         }
                         // sizeof(x)
                         else {
