@@ -555,6 +555,9 @@ impl CodeGenerator {
 
     fn emit_data(&mut self, ast: &mut ast::Program) {
         for global in &mut ast.globals {
+            if !global.borrow().is_definition {
+                continue;
+            }
             self.output
                 .push(format!("  .globl {}", global.borrow().name));
             self.output

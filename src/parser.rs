@@ -1212,7 +1212,7 @@ impl<'a> Parser<'a> {
     }
 
     /// declspec = ("void" | "_Bool" | "char" | "short" | "int" | "long"
-    ///          | "typedef" | "static"
+    ///          | "typedef" | "static" | "extern"
     ///          | struct-decl | union-decl | typedef-name
     ///          | enum-specifier)+
     ///
@@ -1246,7 +1246,7 @@ impl<'a> Parser<'a> {
         // typedef t; t为int
         let mut ty = Type::new_int();
 
-        let mut typedef_static_count = 0;
+        let mut typedef_static_extern_count = 0;
 
         loop {
             let tok = self.peek()?.token.clone();
@@ -1257,9 +1257,9 @@ impl<'a> Parser<'a> {
                 Tok::KeywordTypedef => {
                     eat!(self, KeywordTypedef);
                     if attr.is_some() {
-                        typedef_static_count += 1;
-                        if typedef_static_count > 1 {
-                            panic!("typedef and static may not be used together.");
+                        typedef_static_extern_count += 1;
+                        if typedef_static_extern_count > 1 {
+                            panic!("typedef may not be used together with static or extern.");
                         }
                         *attr = Some(VarAttr::Typedef { type_def: None });
                         continue;
@@ -1270,11 +1270,24 @@ impl<'a> Parser<'a> {
                 Tok::KeywordStatic => {
                     eat!(self, KeywordStatic);
                     if attr.is_some() {
-                        typedef_static_count += 1;
-                        if typedef_static_count > 1 {
-                            panic!("typedef and static may not be used together.");
+                        typedef_static_extern_count += 1;
+                        if typedef_static_extern_count > 1 {
+                            panic!("typedef may not be used together with static or extern.");
                         }
                         *attr = Some(VarAttr::Static);
+                        continue;
+                    } else {
+                        panic!("storage class specifier is not allowed in this context.");
+                    }
+                }
+                Tok::KeywordExtern => {
+                    eat!(self, KeywordExtern);
+                    if attr.is_some() {
+                        typedef_static_extern_count += 1;
+                        if typedef_static_extern_count > 1 {
+                            panic!("typedef may not be used together with static or extern.");
+                        }
+                        *attr = Some(VarAttr::Extern);
                         continue;
                     } else {
                         panic!("storage class specifier is not allowed in this context.");
@@ -1517,6 +1530,7 @@ impl<'a> Parser<'a> {
             | Tok::KeywordUnion
             | Tok::KeywordTypedef
             | Tok::KeywordStatic
+            | Tok::KeywordExtern
             | Tok::KeywordVoid => Ok(true),
             Tok::Ident(name) => {
                 let symbol = self.symbols.symbol(&name);
@@ -2674,9 +2688,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn function(&mut self, pos: usize, basety: Type, attr: &Option<VarAttr>) -> Result<usize> {
-        self.current_pos = pos;
-
+    fn function(&mut self, basety: Type, attr: &Option<VarAttr>) -> Result<()> {
         let ty = self.declarator(basety)?;
 
         let is_definition = match self.peek()?.token {
@@ -2764,7 +2776,7 @@ impl<'a> Parser<'a> {
         });
         self.goto_labels = HashMap::new();
 
-        Ok(self.current_pos)
+        Ok(())
     }
 
     fn is_function(&mut self) -> Result<bool> {
@@ -2790,6 +2802,7 @@ impl<'a> Parser<'a> {
             ty,
             offset: 0,
             is_local: false,
+            is_definition: false,
             init_data: None,
             rel: vec![],
         }));
@@ -2805,6 +2818,7 @@ impl<'a> Parser<'a> {
     ) -> Result<Rc<RefCell<Obj>>> {
         let var = self.new_var(name, ty)?;
         var.borrow_mut().is_local = false;
+        var.borrow_mut().is_definition = true;
         var.borrow_mut().init_data = init_value;
         self.globals.insert(0, var.clone());
         Ok(var)
@@ -2817,8 +2831,7 @@ impl<'a> Parser<'a> {
         Ok(var)
     }
 
-    fn global_variable(&mut self, pos: usize, basety: Type) -> Result<usize> {
-        self.current_pos = pos;
+    fn global_variable(&mut self, basety: Type, attr: &Option<VarAttr>) -> Result<()> {
         loop {
             match self.peek()?.token {
                 Tok::Semicolon => {
@@ -2835,6 +2848,7 @@ impl<'a> Parser<'a> {
                         continue;
                     }
                     let var = self.new_global_variable(var_name, ty, None)?;
+                    var.borrow_mut().is_definition = !attr.clone().unwrap().is_extern();
                     if self.peek()?.token == Equal {
                         eat!(self, Equal);
                         self.global_var_initializer(var)?;
@@ -2842,7 +2856,7 @@ impl<'a> Parser<'a> {
                 }
             }
         }
-        Ok(self.current_pos)
+        Ok(())
     }
 
     fn parse_typedef(&mut self, basety: Type) -> Result<()> {
@@ -2920,6 +2934,7 @@ impl<'a> Parser<'a> {
                 name: name.clone(),
                 offset: 0,
                 is_local: false,
+                is_definition: false,
                 init_data: Some(InitData::IntInitData(val as i32)),
                 ty: ty.clone(),
                 rel: vec![],
@@ -3127,11 +3142,15 @@ impl<'a> Parser<'a> {
                         _ => (),
                     }
                     // 保存当前的位置
-                    let pos = self.current_pos.clone();
+                    let pos = self.current_pos;
                     if self.is_function()? {
-                        self.current_pos = self.function(pos, basety, &attr)?;
+                        // 回溯
+                        self.current_pos = pos;
+                        self.function(basety, &attr)?;
                     } else {
-                        self.current_pos = self.global_variable(pos, basety)?;
+                        // 回溯
+                        self.current_pos = pos;
+                        self.global_variable(basety, &attr)?;
                     }
                 }
             }

@@ -184,9 +184,7 @@ impl<R: Read> Lexer<R> {
                         self.advance()?;
                         self.make_token(Tok::GreaterGreaterEqual, 3)
                     }
-                    _ => {
-                        self.make_token(Tok::GreaterGreater, 2)
-                    }
+                    _ => self.make_token(Tok::GreaterGreater, 2),
                 }
             }
             _ => self.make_token(Tok::Greater, 1),
@@ -208,9 +206,7 @@ impl<R: Read> Lexer<R> {
                         self.advance()?;
                         self.make_token(Tok::LesserLesserEqual, 3)
                     }
-                    _ => {
-                        self.make_token(Tok::LesserLesser, 2)
-                    }
+                    _ => self.make_token(Tok::LesserLesser, 2),
                 }
             }
             _ => self.make_token(Tok::Lesser, 1),
@@ -279,6 +275,7 @@ impl<R: Read> Lexer<R> {
             "switch" => Tok::KeywordSwitch,
             "default" => Tok::KeywordDefault,
             "case" => Tok::KeywordCase,
+            "extern" => Tok::KeywordExtern,
             _ => Tok::Ident(ident),
         };
         self.make_token(token, len)

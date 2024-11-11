@@ -562,6 +562,7 @@ pub struct Obj {
     pub offset: i32,
     pub ty: Type,
     pub is_local: bool,
+    pub is_definition: bool,
     pub init_data: Option<InitData>,
     pub rel: Vec<Relocation>,
 }
@@ -583,7 +584,17 @@ pub struct Relocation {
 pub enum VarAttr {
     Typedef { type_def: Option<Type> },
     Static,
+    Extern,
     Placeholder,
+}
+
+impl VarAttr {
+    pub fn is_extern(&self) -> bool {
+        match self {
+            VarAttr::Extern => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
