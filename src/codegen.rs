@@ -1,7 +1,7 @@
 use std::{collections::HashMap, io::Write};
 
 use crate::{
-    ast::{self, Function, InitData},
+    ast::{self, FunctionDefinition, InitData},
     sema::{self, Ty, Type},
 };
 
@@ -51,7 +51,7 @@ pub fn get_type_id(ty: Type) -> TypeId {
 pub struct CodeGenerator {
     depth: u32,
     label_count: u32,
-    current_fn: Option<Function>,
+    current_fn: Option<FunctionDefinition>,
     output: Vec<String>,
     out_writer: Box<dyn Write>,
 

@@ -2,8 +2,8 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc, result};
 
 use crate::{
     ast::{
-        self, BinaryOperator, Expr, ExprWithPos, Function, InitData, InitDesg, Initializer, Obj,
-        Program, Relocation, Stmt, StmtWithPos, UnaryOperator, VarAttr,
+        self, BinaryOperator, Expr, ExprWithPos, FunctionDefinition, InitData, InitDesg,
+        Initializer, Obj, Program, Relocation, Stmt, StmtWithPos, UnaryOperator, VarAttr,
     },
     error::Error::{self, UnexpectedToken},
     position::{Pos, WithPos},
@@ -64,15 +64,15 @@ pub struct Parser<'a> {
     /// accumulated to this map
     locals: Vec<Rc<RefCell<Obj>>>,
     globals: Vec<Rc<RefCell<Obj>>>,
-    functions: Vec<Function>,
+    functions: Vec<FunctionDefinition>,
     unique_name_count: i32,
 
     var_env: Symbols<Rc<RefCell<Obj>>>,
-    struct_tag_env: Symbols<Type>,
+    struct_union_tag_env: Symbols<Type>,
     var_attr_env: Symbols<VarAttr>,
 
     // Points to the function object the parser is currently parsing.
-    current_fn: Option<Function>,
+    current_fn: Option<FunctionDefinition>,
 
     goto_labels: HashMap<String, String>,
     break_label: Option<String>,
@@ -85,7 +85,7 @@ pub struct Parser<'a> {
 impl<'a> Parser<'a> {
     pub fn new(tokens: Vec<Token>, symbols: &'a mut Symbols<()>, strings: Rc<Strings>) -> Self {
         let var_env = Symbols::new(Rc::clone(&strings));
-        let struct_tag_env = Symbols::new(Rc::clone(&strings));
+        let struct_union_tag_env = Symbols::new(Rc::clone(&strings));
         let var_attr_env = Symbols::new(Rc::clone(&strings));
         Parser {
             tokens,
@@ -97,7 +97,7 @@ impl<'a> Parser<'a> {
             unique_name_count: 0,
 
             var_env,
-            struct_tag_env,
+            struct_union_tag_env,
             var_attr_env,
 
             current_fn: None,
@@ -1057,12 +1057,14 @@ impl<'a> Parser<'a> {
             }
             _ => {
                 if let Some(struct_tag) = tag {
-                    let ty = self.struct_tag_env.look(self.symbols.symbol(&struct_tag));
+                    let ty = self
+                        .struct_union_tag_env
+                        .look(self.symbols.symbol(&struct_tag));
                     if let Some(_ty) = ty {
                         return Ok(_ty.clone());
                     } else {
                         let ty = Type::struct_type(tag_token, vec![], -1, 1);
-                        self.struct_tag_env
+                        self.struct_union_tag_env
                             .enter(self.symbols.symbol(&struct_tag), ty.clone());
                         return Ok(ty);
                     }
@@ -1090,7 +1092,7 @@ impl<'a> Parser<'a> {
             ty.set_size(sema::align_to(offset, ty.get_align()));
             ty.set_struct_members(members);
 
-            self.struct_tag_env
+            self.struct_union_tag_env
                 .enter(self.symbols.symbol(&tag), ty.clone());
         }
 
@@ -1475,7 +1477,7 @@ impl<'a> Parser<'a> {
         let mut stmts = vec![];
 
         self.var_env.begin_scope();
-        self.struct_tag_env.begin_scope();
+        self.struct_union_tag_env.begin_scope();
         self.var_attr_env.begin_scope();
         loop {
             match self.peek()?.token {
@@ -1535,7 +1537,7 @@ impl<'a> Parser<'a> {
             }
         }
         self.var_attr_env.end_scope();
-        self.struct_tag_env.end_scope();
+        self.struct_union_tag_env.end_scope();
         self.var_env.end_scope();
         Ok(WithPos::new(Stmt::Block { body: stmts }, self.peek()?.pos))
     }
@@ -2150,7 +2152,7 @@ impl<'a> Parser<'a> {
 
                 if name.is_some() {
                     let name = node.node.ty.get_ident().unwrap();
-                    let ty = self.struct_tag_env.look(self.symbols.symbol(&name));
+                    let ty = self.struct_union_tag_env.look(self.symbols.symbol(&name));
 
                     if let Some(ty) = ty {
                         match ty.clone().ty {
@@ -2457,7 +2459,7 @@ impl<'a> Parser<'a> {
                                 self.token()?;
                                 eat!(self, RightParen);
 
-                                let ty = self.struct_tag_env.look(self.symbols.symbol(&name));
+                                let ty = self.struct_union_tag_env.look(self.symbols.symbol(&name));
                                 if let Some(ty) = ty {
                                     return Ok(ExprWithPos::new_number(ty.get_size() as i64, pos));
                                 }
@@ -2607,7 +2609,7 @@ impl<'a> Parser<'a> {
         self.locals = Vec::new();
 
         self.var_env.begin_scope();
-        self.struct_tag_env.begin_scope();
+        self.struct_union_tag_env.begin_scope();
         self.var_attr_env.begin_scope();
 
         let ident;
@@ -2616,67 +2618,40 @@ impl<'a> Parser<'a> {
                 ident = ty.get_ident().unwrap();
                 let pos = self.peek()?.pos.clone();
                 // 为了处理fib这样的递归调用，需要先把函数声明记录下来。
-                self.functions.push(ast::Function {
-                    name: ident.clone(),
-                    params: vec![],
-                    body: WithPos::new(Stmt::NullStmt, pos),
-                    locals: vec![],
-                    stack_size: 0,
-                    is_definition: false,
-                    ty: ty.clone(),
-                    is_static,
-                    goto_labels: HashMap::new(),
-                });
+                let mut fndef =
+                    ast::FunctionDefinition::new(ident.clone(), is_static, ty.clone(), pos);
+                self.functions.push(fndef.clone());
 
-                self.current_fn = Some(ast::Function {
-                    name: ident.clone(),
-                    params: vec![],
-                    body: WithPos::new(Stmt::NullStmt, pos),
-                    locals: vec![],
-                    stack_size: 0,
-                    is_definition: false,
-                    ty: ty.clone(),
-                    is_static,
-                    goto_labels: HashMap::new(),
-                });
+                self.current_fn = Some(fndef.clone());
 
                 for p in params {
                     let param_name = p.get_ident().unwrap();
                     self.new_local_variable(param_name, p)?;
                 }
+
+                // 先将函数的参数拷贝一份，因为后面在解析函数体时会加入新的局部变量
+                let params = self.locals.clone();
+
+                if is_definition {
+                    eat!(self, LeftBrace);
+                    fndef.body = self.compound_stmt()?;
+                    fndef.params = params;
+                    fndef.is_definition = is_definition;
+                    fndef.locals = self.locals.clone();
+                    fndef.goto_labels = self.goto_labels.clone();
+                }
+
+                self.var_attr_env.end_scope();
+                self.struct_union_tag_env.end_scope();
+                self.var_env.end_scope();
+
+                self.functions.push(fndef);
+                self.goto_labels = HashMap::new();
+
+                Ok(())
             }
-            _ => panic!("ident must have a type."),
+            _ => panic!("ident must be function type."),
         }
-
-        // 先将函数的参数拷贝一份，因为后面在解析函数体时会加入新的局部变量
-        let params = self.locals.clone();
-
-        let body;
-        if is_definition {
-            eat!(self, LeftBrace);
-            body = self.compound_stmt()?;
-        } else {
-            body = WithPos::new(Stmt::NullStmt, self.peek()?.pos);
-        }
-
-        self.var_attr_env.end_scope();
-        self.struct_tag_env.end_scope();
-        self.var_env.end_scope();
-
-        self.functions.push(ast::Function {
-            name: ident,
-            params,
-            body,
-            locals: self.locals.clone(),
-            stack_size: 0,
-            is_definition: is_definition,
-            ty,
-            is_static,
-            goto_labels: self.goto_labels.clone(),
-        });
-        self.goto_labels = HashMap::new();
-
-        Ok(())
     }
 
     fn is_function(&mut self) -> Result<bool> {
@@ -2796,7 +2771,7 @@ impl<'a> Parser<'a> {
         }
 
         if tag.is_some() && self.peek()?.token != LeftBrace {
-            let ty = self.struct_tag_env.look(
+            let ty = self.struct_union_tag_env.look(
                 self.symbols
                     .symbol(&tag.clone().unwrap().token.get_ident_name().unwrap()),
             );
@@ -2844,7 +2819,7 @@ impl<'a> Parser<'a> {
         }
 
         if tag.is_some() {
-            self.struct_tag_env.enter(
+            self.struct_union_tag_env.enter(
                 self.symbols
                     .symbol(&tag.clone().unwrap().token.get_ident_name().unwrap()),
                 ty.clone(),

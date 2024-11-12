@@ -598,7 +598,7 @@ impl VarAttr {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Function {
+pub struct FunctionDefinition {
     pub name: String,
     pub params: Vec<Rc<RefCell<Obj>>>,
     pub body: StmtWithPos,
@@ -610,7 +610,21 @@ pub struct Function {
     pub goto_labels: HashMap<String, String>,
 }
 
-impl Function {
+impl FunctionDefinition {
+    pub fn new(name: String, is_static: bool, ty: Type, pos: Pos) -> Self {
+        Self {
+            name,
+            params: vec![],
+            body: WithPos::new(Stmt::NullStmt, pos),
+            locals: vec![],
+            stack_size: 0,
+            is_definition: false,
+            ty,
+            is_static,
+            goto_labels: HashMap::new(),
+        }
+    }
+
     pub fn get_return_ty(&self) -> Option<Type> {
         match &self.ty.ty {
             Ty::TyFunc { return_ty, .. } => Some(*return_ty.clone()),
@@ -674,6 +688,6 @@ impl InitDesg {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Program {
-    pub funcs: Vec<Function>,
+    pub funcs: Vec<FunctionDefinition>,
     pub globals: Vec<Rc<RefCell<Obj>>>,
 }
