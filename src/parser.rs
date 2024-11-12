@@ -2407,6 +2407,7 @@ impl<'a> Parser<'a> {
     ///         | "sizeof" "(" type-name ")"
     ///         | "sizeof" unary
     ///         | "_Alignof" "(" type-name ")"
+    ///         | "_Alignof" unary
     ///         | ident func-args?
     ///         | str
     ///         | num
@@ -2539,11 +2540,21 @@ impl<'a> Parser<'a> {
             }
             Tok::KeywordAlignof => {
                 eat!(self, KeywordAlignof);
-                eat!(self, LeftParen);
-                let pos = self.peek()?.pos;
-                let ty = self.typename()?;
-                eat!(self, RightParen);
-                return Ok(ExprWithPos::new_number(ty.get_align() as i64, pos));
+                let next_token = self.peek_next_one()?.token.clone();
+                if self.peek()?.token == LeftParen && self.is_typename(next_token)? {
+                    eat!(self, LeftParen);
+                    let pos = self.peek()?.pos;
+                    let ty = self.typename()?;
+                    eat!(self, RightParen);
+                    return Ok(ExprWithPos::new_number(ty.get_align() as i64, pos));
+                } else {
+                    let mut node = self.unary()?;
+                    add_type(&mut node);
+                    return Ok(ExprWithPos::new_number(
+                        node.node.ty.get_align() as i64,
+                        node.pos,
+                    ));
+                }
             }
             _ => Err(self.unexpected_token("expected `(` or number")?),
         }
