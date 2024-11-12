@@ -69,6 +69,19 @@ pub type ExprWithPos = WithPos<ExprWithType>;
 pub type ExprWithType = WithType<Expr>;
 
 impl ExprWithPos {
+    pub fn new_cast_expr(expr: ExprWithPos, ty: Type, pos: Pos) -> Self {
+        WithPos::new(
+            WithType::new(
+                Expr::CastExpr {
+                    expr: Box::new(expr),
+                    ty: ty.clone(),
+                },
+                ty,
+            ),
+            pos,
+        )
+    }
+
     pub fn new_member_expr(strct: ExprWithPos, member: Member, pos: Pos) -> Self {
         WithPos::new(
             WithType::new(

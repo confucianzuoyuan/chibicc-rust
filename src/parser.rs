@@ -692,16 +692,7 @@ impl<'a> Parser<'a> {
                 let mut expr = self.expr()?;
                 add_type(&mut expr);
                 let return_ty = self.current_fn.as_mut().unwrap().get_return_ty().unwrap();
-                expr = WithPos::new(
-                    WithType::new(
-                        Expr::CastExpr {
-                            expr: Box::new(expr),
-                            ty: return_ty.clone(),
-                        },
-                        return_ty.clone(),
-                    ),
-                    pos,
-                );
+                expr = ExprWithPos::new_cast_expr(expr, return_ty, pos);
                 let node = WithPos::new(Stmt::Return { expr }, pos);
                 eat!(self, Semicolon);
                 Ok(node)
@@ -2078,16 +2069,7 @@ impl<'a> Parser<'a> {
                     let pos = eat!(self, LeftParen);
                     let ty = self.typename()?;
                     eat!(self, RightParen);
-                    let node = WithPos::new(
-                        WithType::new(
-                            Expr::CastExpr {
-                                expr: Box::new(self.cast()?),
-                                ty: ty.clone(),
-                            },
-                            ty,
-                        ),
-                        pos,
-                    );
+                    let node = ExprWithPos::new_cast_expr(self.cast()?, ty, pos);
                     Ok(node)
                 } else {
                     self.unary()
@@ -2256,16 +2238,7 @@ impl<'a> Parser<'a> {
         let e = self.new_add(a, negative_one, pos)?;
 
         // cast
-        let c = WithPos::new(
-            WithType::new(
-                Expr::CastExpr {
-                    expr: Box::new(e),
-                    ty: node.node.ty.clone(),
-                },
-                node.node.ty.clone(),
-            ),
-            pos,
-        );
+        let c = ExprWithPos::new_cast_expr(e, node.node.ty, pos);
 
         Ok(c)
     }
@@ -2348,27 +2321,15 @@ impl<'a> Parser<'a> {
                 _ => {
                     let mut arg_exp = self.assign()?;
                     add_type(&mut arg_exp);
-                    args.push(match arg_exp.node.ty.clone().ty {
-                        Ty::TyStruct { .. } | Ty::TyUnion { .. } => {
-                            panic!("passing struct or union is not supported yet.")
-                        }
-                        _ => WithPos::new(
-                            WithType::new(
-                                Expr::CastExpr {
-                                    expr: Box::new(arg_exp.clone()),
-                                    ty: match params_ty.get(i).clone() {
-                                        Some(t) => t.clone(),
-                                        _ => arg_exp.node.ty.clone(),
-                                    },
-                                },
-                                match params_ty.get(i).clone() {
-                                    Some(t) => t.clone(),
-                                    _ => arg_exp.node.ty.clone(),
-                                },
-                            ),
-                            pos,
-                        ),
-                    });
+                    if arg_exp.node.ty.is_union() || arg_exp.node.ty.is_struct() {
+                        panic!("passing struct or union is not supported yet.");
+                    }
+                    let param_type = match params_ty.get(i).clone() {
+                        Some(t) => t.clone(),
+                        _ => arg_exp.node.ty.clone(),
+                    };
+                    let node = ExprWithPos::new_cast_expr(arg_exp, param_type, pos);
+                    args.push(node);
                     i += 1;
                 }
             }
