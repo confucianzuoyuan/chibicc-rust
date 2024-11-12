@@ -672,7 +672,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// stmt = "return" expr ";"
+    /// stmt = "return" expr? ";"
     ///      | "if" "(" expr ")" stmt ("else" stmt)?
     ///      | "switch" "(" expr ")" stmt
     ///      | "case" const-expr ":" stmt
@@ -689,11 +689,16 @@ impl<'a> Parser<'a> {
         match self.peek()?.token.clone() {
             Tok::KeywordReturn => {
                 let pos = eat!(self, KeywordReturn);
+                if self.peek()?.token == Semicolon {
+                    eat!(self, Semicolon);
+                    let node = WithPos::new(Stmt::Return { expr: None }, pos);
+                    return Ok(node);
+                }
                 let mut expr = self.expr()?;
                 add_type(&mut expr);
                 let return_ty = self.current_fn.as_mut().unwrap().get_return_ty().unwrap();
                 expr = ExprWithPos::new_cast_expr(expr, return_ty, pos);
-                let node = WithPos::new(Stmt::Return { expr }, pos);
+                let node = WithPos::new(Stmt::Return { expr: Some(expr) }, pos);
                 eat!(self, Semicolon);
                 Ok(node)
             }

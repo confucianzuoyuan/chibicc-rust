@@ -415,7 +415,7 @@ pub enum Stmt {
         expr: ExprWithPos,
     },
     Return {
-        expr: ExprWithPos,
+        expr: Option<ExprWithPos>,
     },
     Block {
         body: Vec<StmtWithPos>,
@@ -548,7 +548,7 @@ impl Display for StmtWithPos {
                     Stmt::ForStmt { .. } => return format!("{:?}", node),
                     Stmt::NullStmt => "null stmt.",
                     Stmt::IfStmt { .. } => return format!("{:?}", node),
-                    Stmt::Return { expr } => return format!("return {}", expr),
+                    Stmt::Return { expr } => return format!("return {:?}", expr),
                     Stmt::WhileStmt { .. } => return format!("{:?}", node),
                     Stmt::GotoStmt { .. } => return format!("{:?}", node),
                     Stmt::LabelStmt { .. } => return format!("{:?}", node),

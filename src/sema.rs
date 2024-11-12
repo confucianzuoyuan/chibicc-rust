@@ -564,7 +564,10 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
                 Ty::TyVoid => panic!("{:?} dereferencing a void pointer.", base.name),
                 _ => e.node.ty = *base,
             },
-            _ => panic!("invalid pointer dereference: {:?}\n{:?}", expr.node.ty, expr.node.node),
+            _ => panic!(
+                "invalid pointer dereference: {:?}\n{:?}",
+                expr.node.ty, expr.node.node
+            ),
         },
         ast::Expr::FunctionCall { .. } => (),
         ast::Expr::StmtExpr { body } => {
@@ -610,7 +613,7 @@ pub fn sema_stmt(node: &mut ast::StmtWithPos) {
             }
         }
         ast::Stmt::ExprStmt { expr } => add_type(expr),
-        ast::Stmt::Return { expr } => add_type(expr),
+        ast::Stmt::Return { expr: Some(_expr) } => add_type(_expr),
         ast::Stmt::NullStmt => (),
         ast::Stmt::IfStmt {
             condition,

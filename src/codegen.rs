@@ -205,7 +205,9 @@ impl CodeGenerator {
         match &ast.node {
             ast::Stmt::ExprStmt { expr } => self.gen_expr(expr),
             ast::Stmt::Return { expr } => {
-                self.gen_expr(expr);
+                if let Some(expr) = expr {
+                    self.gen_expr(expr);
+                }
                 self.output.push(format!(
                     "  jmp .L.return.{}",
                     self.current_fn.as_ref().unwrap().name
