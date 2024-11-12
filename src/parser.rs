@@ -111,6 +111,18 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn begin_scope(&mut self) {
+        self.var_env.begin_scope();
+        self.struct_union_tag_env.begin_scope();
+        self.var_attr_env.begin_scope();
+    }
+
+    fn end_scope(&mut self) {
+        self.var_attr_env.end_scope();
+        self.struct_union_tag_env.end_scope();
+        self.var_env.end_scope();
+    }
+
     fn new_unique_name(&mut self) -> String {
         let unique_name = format!(".L..{}", self.unique_name_count);
         self.unique_name_count += 1;
@@ -157,8 +169,8 @@ impl<'a> Parser<'a> {
 
         if ty.is_struct() {
             let mut i = 0;
-            let len = ty.get_struct_members().unwrap().len();
-            for mem in ty.get_struct_members().unwrap() {
+            let len = ty.get_members().unwrap().len();
+            for mem in ty.get_members().unwrap() {
                 i += 1;
                 if is_flexible && ty.is_flexible() && i == len {
                     let child = Initializer::new(mem.ty, true);
@@ -173,8 +185,8 @@ impl<'a> Parser<'a> {
 
         if ty.is_union() {
             let mut i = 0;
-            let len = ty.get_union_members().unwrap().len();
-            for mem in ty.get_union_members().unwrap() {
+            let len = ty.get_members().unwrap().len();
+            for mem in ty.get_members().unwrap() {
                 i += 1;
                 if is_flexible && ty.is_flexible() && i == len {
                     let child = Initializer::new(mem.ty, true);
@@ -321,7 +333,7 @@ impl<'a> Parser<'a> {
     /// struct-initializer2 = initializer ("," initializer)*
     fn struct_initializer2(&mut self, init: &mut Initializer) -> Result<()> {
         let mut i = 0;
-        while i < init.ty.get_struct_members().unwrap().len() && !self.is_end()? {
+        while i < init.ty.get_members().unwrap().len() && !self.is_end()? {
             if i > 0 {
                 eat!(self, Comma);
             }
@@ -416,7 +428,7 @@ impl<'a> Parser<'a> {
 
         if (ty.is_struct() || ty.is_union()) && ty.is_flexible() {
             let _ty = &mut ty.clone();
-            let len = _ty.get_struct_members().unwrap().len();
+            let len = _ty.get_members().unwrap().len();
             _ty.set_last_member_type(init.get_child(len as i32 - 1).ty.clone());
             _ty.set_size(_ty.get_size() + init.get_child(len as i32 - 1).ty.clone().get_size());
 
@@ -479,7 +491,7 @@ impl<'a> Parser<'a> {
         if ty.is_struct() && init.expr.is_none() {
             let mut node = ExprWithPos::new_null_expr(self.peek()?.pos);
             let mut i = 0;
-            for mem in ty.get_struct_members().unwrap() {
+            for mem in ty.get_members().unwrap() {
                 let mut desg2 = InitDesg {
                     next: Some(Box::new(desg.clone())),
                     idx: 0,
@@ -496,7 +508,7 @@ impl<'a> Parser<'a> {
         }
 
         if ty.is_union() {
-            let member = ty.get_union_members().unwrap().get(0).unwrap().clone();
+            let member = ty.get_members().unwrap().get(0).unwrap().clone();
             let mut desg2 = InitDesg {
                 next: Some(Box::new(desg.clone())),
                 idx: 0,
@@ -589,7 +601,7 @@ impl<'a> Parser<'a> {
         if ty.is_struct() {
             let mut i = 0;
             let mut rels = vec![];
-            for mem in &mut ty.get_struct_members().unwrap() {
+            for mem in &mut ty.get_members().unwrap() {
                 let mut rel = self.write_global_var_data(
                     init.get_child(i),
                     &mut mem.ty,
@@ -605,7 +617,7 @@ impl<'a> Parser<'a> {
         if ty.is_union() {
             return self.write_global_var_data(
                 init.get_child(0),
-                &mut ty.get_union_members().unwrap().get(0).unwrap().ty.clone(),
+                &mut ty.get_members().unwrap().get(0).unwrap().ty.clone(),
                 buf,
                 offset,
             );
@@ -729,7 +741,7 @@ impl<'a> Parser<'a> {
                 let pos = eat!(self, KeywordFor);
                 eat!(self, LeftParen);
 
-                self.var_env.begin_scope();
+                self.begin_scope();
 
                 let old_break_label = self.break_label.clone();
                 self.break_label = Some(self.new_unique_name());
@@ -761,7 +773,7 @@ impl<'a> Parser<'a> {
 
                 let body = self.stmt()?;
 
-                self.var_env.end_scope();
+                self.end_scope();
 
                 let node = WithPos::new(
                     Stmt::ForStmt {
@@ -1034,7 +1046,7 @@ impl<'a> Parser<'a> {
             ty.set_flexible(true);
         }
 
-        ty.set_struct_members(members);
+        ty.set_members(members);
         Ok(())
     }
 
@@ -1078,7 +1090,7 @@ impl<'a> Parser<'a> {
         if let Some(tag) = tag {
             // Assign offsets within the struct to members.
             let mut offset = 0;
-            let mut members = ty.get_struct_members().unwrap();
+            let mut members = ty.get_members().unwrap();
             for mem in &mut members {
                 offset = align_to(offset, mem.ty.get_align());
                 mem.offset = offset;
@@ -1090,7 +1102,7 @@ impl<'a> Parser<'a> {
             }
 
             ty.set_size(sema::align_to(offset, ty.get_align()));
-            ty.set_struct_members(members);
+            ty.set_members(members);
 
             self.struct_union_tag_env
                 .enter(self.symbols.symbol(&tag), ty.clone());
@@ -1109,7 +1121,7 @@ impl<'a> Parser<'a> {
 
         // Assign offsets within the struct to members.
         let mut offset = 0;
-        let mut members = ty.get_struct_members().unwrap();
+        let mut members = ty.get_members().unwrap();
         for mem in &mut members {
             offset = align_to(offset, mem.ty.get_align());
             mem.offset = offset;
@@ -1121,7 +1133,7 @@ impl<'a> Parser<'a> {
         }
 
         ty.set_size(sema::align_to(offset, ty.get_align()));
-        ty.set_struct_members(members);
+        ty.set_members(members);
 
         Ok(ty)
     }
@@ -1137,7 +1149,7 @@ impl<'a> Parser<'a> {
         // If union, we don't have to assign offsets because they
         // are already initialized to zero. We need to compute the
         // alignment and the size though.
-        let mut members = ty.get_struct_members().unwrap();
+        let mut members = ty.get_members().unwrap();
         for mem in &mut members {
             if ty.get_align() < mem.ty.get_align() {
                 ty.set_align(mem.ty.get_align());
@@ -1476,9 +1488,7 @@ impl<'a> Parser<'a> {
     fn compound_stmt(&mut self) -> Result<StmtWithPos> {
         let mut stmts = vec![];
 
-        self.var_env.begin_scope();
-        self.struct_union_tag_env.begin_scope();
-        self.var_attr_env.begin_scope();
+        self.begin_scope();
         loop {
             match self.peek()?.token {
                 Tok::RightBrace => {
@@ -1514,7 +1524,7 @@ impl<'a> Parser<'a> {
                             _ => (),
                         }
                         let pos = self.current_pos;
-                        if self.is_function()? {
+                        if self.is_function_definition()? {
                             self.current_pos = pos;
                             self.function(basety, &attr)?;
                             continue;
@@ -1536,9 +1546,7 @@ impl<'a> Parser<'a> {
                 }
             }
         }
-        self.var_attr_env.end_scope();
-        self.struct_union_tag_env.end_scope();
-        self.var_env.end_scope();
+        self.end_scope();
         Ok(WithPos::new(Stmt::Block { body: stmts }, self.peek()?.pos))
     }
 
@@ -2169,22 +2177,9 @@ impl<'a> Parser<'a> {
                                     }
                                 }
 
-                                return Ok(WithPos::new(
-                                    WithType::new(
-                                        Expr::MemberExpr {
-                                            strct: Box::new(node),
-                                            member: match mem_found.clone() {
-                                                Some(m) => m.clone(),
-                                                None => panic!(),
-                                            },
-                                        },
-                                        match mem_found.clone() {
-                                            Some(m) => m.ty.clone(),
-                                            None => panic!(),
-                                        },
-                                    ),
-                                    pos,
-                                ));
+                                let mem_expr =
+                                    ExprWithPos::new_member_expr(node, mem_found.unwrap(), pos);
+                                return Ok(mem_expr);
                             }
                             _ => (),
                         }
@@ -2203,22 +2198,9 @@ impl<'a> Parser<'a> {
                     }
                 }
 
-                Ok(WithPos::new(
-                    WithType::new(
-                        Expr::MemberExpr {
-                            strct: Box::new(node),
-                            member: match mem_found.clone() {
-                                Some(m) => m.clone(),
-                                None => panic!(),
-                            },
-                        },
-                        match mem_found.clone() {
-                            Some(m) => m.ty.clone(),
-                            None => panic!(),
-                        },
-                    ),
-                    pos,
-                ))
+                let mut mem_expr = ExprWithPos::new_member_expr(node, mem_found.unwrap(), pos);
+                add_type(&mut mem_expr);
+                return Ok(mem_expr);
             }
             _ => panic!("must be struct or union type."),
         }
@@ -2608,9 +2590,7 @@ impl<'a> Parser<'a> {
 
         self.locals = Vec::new();
 
-        self.var_env.begin_scope();
-        self.struct_union_tag_env.begin_scope();
-        self.var_attr_env.begin_scope();
+        self.begin_scope();
 
         let ident;
         match ty.clone().ty {
@@ -2641,9 +2621,7 @@ impl<'a> Parser<'a> {
                     fndef.goto_labels = self.goto_labels.clone();
                 }
 
-                self.var_attr_env.end_scope();
-                self.struct_union_tag_env.end_scope();
-                self.var_env.end_scope();
+                self.end_scope();
 
                 self.functions.push(fndef);
                 self.goto_labels = HashMap::new();
@@ -2654,7 +2632,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn is_function(&mut self) -> Result<bool> {
+    fn is_function_definition(&mut self) -> Result<bool> {
         match self.peek()?.token {
             Tok::Semicolon => {
                 eat!(self, Semicolon);
@@ -2663,10 +2641,7 @@ impl<'a> Parser<'a> {
             _ => {
                 let dummy = Type::new_placeholder();
                 let ty = self.declarator(dummy)?;
-                match ty.ty {
-                    Ty::TyFunc { .. } => Ok(true),
-                    _ => Ok(false),
-                }
+                Ok(ty.is_func())
             }
         }
     }
@@ -3018,7 +2993,7 @@ impl<'a> Parser<'a> {
                     }
                     // 保存当前的位置
                     let pos = self.current_pos;
-                    if self.is_function()? {
+                    if self.is_function_definition()? {
                         // 回溯
                         self.current_pos = pos;
                         self.function(basety, &attr)?;

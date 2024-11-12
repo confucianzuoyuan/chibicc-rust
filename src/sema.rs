@@ -338,25 +338,21 @@ impl Type {
         self.name = Some(tok.clone());
     }
 
-    pub fn set_struct_members(&mut self, new_members: Vec<Member>) {
+    pub fn set_members(&mut self, new_members: Vec<Member>) {
         match self.ty {
             Ty::TyStruct {
+                ref mut members, ..
+            }
+            | Ty::TyUnion {
                 ref mut members, ..
             } => *members = new_members,
             _ => (),
         }
     }
 
-    pub fn get_struct_members(&mut self) -> Option<Vec<Member>> {
+    pub fn get_members(&mut self) -> Option<Vec<Member>> {
         match &self.ty {
-            Ty::TyStruct { members, .. } => Some(members.clone()),
-            _ => None,
-        }
-    }
-
-    pub fn get_union_members(&mut self) -> Option<Vec<Member>> {
-        match &self.ty {
-            Ty::TyUnion { members, .. } => Some(members.clone()),
+            Ty::TyStruct { members, .. } | Ty::TyUnion { members, .. } => Some(members.clone()),
             _ => None,
         }
     }
