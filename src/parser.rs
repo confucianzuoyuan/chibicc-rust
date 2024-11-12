@@ -752,7 +752,7 @@ impl<'a> Parser<'a> {
                 let tok = self.peek()?.token.clone();
                 let init = if self.is_typename(tok)? {
                     let basety = self.declspec(&mut None)?;
-                    self.declaration(basety)?
+                    self.declaration(basety, &None)?
                 } else {
                     self.expr_stmt()?
                 };
@@ -953,7 +953,7 @@ impl<'a> Parser<'a> {
     }
 
     /// declaration = declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
-    fn declaration(&mut self, basety: Type) -> Result<StmtWithPos> {
+    fn declaration(&mut self, basety: Type, attr: &Option<VarAttr>) -> Result<StmtWithPos> {
         let mut decls = vec![];
 
         loop {
@@ -972,6 +972,11 @@ impl<'a> Parser<'a> {
                     }
                     let ident = ty.get_ident().unwrap();
                     let var = self.new_local_variable(ident.clone(), ty.clone())?;
+                    if let Some(attr) = attr {
+                        if attr.align > 0 {
+                            var.borrow_mut().align = attr.align;
+                        }
+                    }
 
                     if self.peek()?.token == Equal {
                         let pos = eat!(self, Equal);
@@ -1006,7 +1011,8 @@ impl<'a> Parser<'a> {
                     break;
                 }
                 _ => {
-                    let basety = self.declspec(&mut None)?;
+                    let mut attr = Some(VarAttr::new_placeholder());
+                    let basety = self.declspec(&mut attr)?;
                     loop {
                         match self.peek()?.token {
                             Tok::Semicolon => {
@@ -1019,10 +1025,20 @@ impl<'a> Parser<'a> {
                             _ => {
                                 let member_ty = self.declarator(basety.clone())?;
                                 let member_name = member_ty.get_token().unwrap();
+                                let member_align = if let Some(ref attr) = attr {
+                                    if attr.align > 0 {
+                                        attr.align
+                                    } else {
+                                        member_ty.get_align()
+                                    }
+                                } else {
+                                    member_ty.get_align()
+                                };
                                 let member = sema::Member {
                                     ty: member_ty,
                                     name: member_name,
                                     offset: 0,
+                                    align: member_align,
                                 };
                                 members.push(member);
                             }
@@ -1120,12 +1136,12 @@ impl<'a> Parser<'a> {
         let mut offset = 0;
         let mut members = ty.get_members().unwrap();
         for mem in &mut members {
-            offset = align_to(offset, mem.ty.get_align());
+            offset = align_to(offset, mem.align);
             mem.offset = offset;
             offset += mem.ty.get_size();
 
-            if ty.get_align() < mem.ty.get_align() {
-                ty.set_align(mem.ty.get_align());
+            if ty.get_align() < mem.align {
+                ty.set_align(mem.align);
             }
         }
 
@@ -1148,8 +1164,8 @@ impl<'a> Parser<'a> {
         // alignment and the size though.
         let mut members = ty.get_members().unwrap();
         for mem in &mut members {
-            if ty.get_align() < mem.ty.get_align() {
-                ty.set_align(mem.ty.get_align());
+            if ty.get_align() < mem.align {
+                ty.set_align(mem.align);
             }
 
             if ty.get_size() < mem.ty.get_size() {
@@ -1247,6 +1263,22 @@ impl<'a> Parser<'a> {
                         continue;
                     } else {
                         panic!("storage class specifier is not allowed in this context.");
+                    }
+                }
+                Tok::KeywordAlignas => {
+                    eat!(self, KeywordAlignas);
+                    if let Some(attr) = attr {
+                        eat!(self, LeftParen);
+                        let current_tok = self.peek()?.token.clone();
+                        if self.is_typename(current_tok)? {
+                            attr.align = self.typename()?.get_align();
+                        } else {
+                            attr.align = self.const_expr()? as i32;
+                        }
+                        eat!(self, RightParen);
+                        continue;
+                    } else {
+                        panic!("_Alignas is not allowed in this context");
                     }
                 }
                 Tok::KeywordStruct => {
@@ -1456,6 +1488,7 @@ impl<'a> Parser<'a> {
             | Tok::KeywordTypedef
             | Tok::KeywordStatic
             | Tok::KeywordExtern
+            | Tok::KeywordAlignas
             | Tok::KeywordVoid => Ok(true),
             Tok::Ident(name) => {
                 let symbol = self.symbols.symbol(&name);
@@ -1516,7 +1549,7 @@ impl<'a> Parser<'a> {
                             self.global_variable(basety, &attr)?;
                             continue;
                         }
-                        let mut declaration = self.declaration(basety)?;
+                        let mut declaration = self.declaration(basety, &attr)?;
                         sema_stmt(&mut declaration);
                         stmts.push(declaration);
                     } else {
@@ -2373,6 +2406,7 @@ impl<'a> Parser<'a> {
     ///         | "(" expr ")"
     ///         | "sizeof" "(" type-name ")"
     ///         | "sizeof" unary
+    ///         | "_Alignof" "(" type-name ")"
     ///         | ident func-args?
     ///         | str
     ///         | num
@@ -2503,6 +2537,14 @@ impl<'a> Parser<'a> {
                     pos,
                 ))
             }
+            Tok::KeywordAlignof => {
+                eat!(self, KeywordAlignof);
+                eat!(self, LeftParen);
+                let pos = self.peek()?.pos;
+                let ty = self.typename()?;
+                eat!(self, RightParen);
+                return Ok(ExprWithPos::new_number(ty.get_align() as i64, pos));
+            }
             _ => Err(self.unexpected_token("expected `(` or number")?),
         }
     }
@@ -2626,12 +2668,13 @@ impl<'a> Parser<'a> {
     fn new_var(&mut self, name: String, ty: Type) -> Result<Rc<RefCell<Obj>>> {
         let var = Rc::new(RefCell::new(Obj {
             name: name.clone(),
-            ty,
+            ty: ty.clone(),
             offset: 0,
             is_local: false,
             is_definition: false,
             init_data: None,
             rel: vec![],
+            align: ty.get_align(),
         }));
         self.var_env.enter(self.symbols.symbol(&name), var.clone());
         Ok(var)
@@ -2675,7 +2718,12 @@ impl<'a> Parser<'a> {
                         continue;
                     }
                     let var = self.new_global_variable(var_name, ty, None)?;
-                    var.borrow_mut().is_definition = !attr.clone().unwrap().is_extern();
+                    if let Some(attr) = attr {
+                        var.borrow_mut().is_definition = !attr.is_extern();
+                        if attr.align > 0 {
+                            var.borrow_mut().align = attr.align;
+                        }
+                    }
                     if self.peek()?.token == Equal {
                         eat!(self, Equal);
                         self.global_var_initializer(var)?;
@@ -2762,6 +2810,7 @@ impl<'a> Parser<'a> {
                 init_data: Some(InitData::IntInitData(val as i32)),
                 ty: ty.clone(),
                 rel: vec![],
+                align: 0,
             }));
             val += 1;
             self.var_env.enter(self.symbols.symbol(&name), enum_var);

@@ -546,7 +546,7 @@ impl CodeGenerator {
             let mut offset = 0;
             for local in &mut f.locals {
                 offset += local.borrow().ty.get_size();
-                offset = sema::align_to(offset, local.borrow().ty.get_align());
+                offset = sema::align_to(offset, local.borrow().align);
                 local.borrow_mut().offset = -offset;
             }
             f.stack_size = sema::align_to(offset, 16);
@@ -561,7 +561,7 @@ impl CodeGenerator {
             self.output
                 .push(format!("  .globl {}", global.borrow().name));
             self.output
-                .push(format!("  .align {}", global.borrow().ty.get_align()));
+                .push(format!("  .align {}", global.borrow().align));
             match &global.borrow().init_data {
                 Some(val) => {
                     self.output.push(format!("  .data"));

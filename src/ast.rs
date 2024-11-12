@@ -565,6 +565,8 @@ pub struct Obj {
     pub is_definition: bool,
     pub init_data: Option<InitData>,
     pub rel: Vec<Relocation>,
+    /// alignment
+    pub align: i32,
 }
 
 impl Display for Obj {
@@ -591,6 +593,7 @@ pub enum VarAttrKind {
 #[derive(Clone, Debug, PartialEq)]
 pub struct VarAttr {
     pub kind: VarAttrKind,
+    pub align: i32,
 }
 
 impl VarAttr {
@@ -618,24 +621,28 @@ impl VarAttr {
     pub fn new_placeholder() -> Self {
         Self {
             kind: VarAttrKind::Placeholder,
+            align: 0,
         }
     }
 
     pub fn new_typedef() -> Self {
         Self {
             kind: VarAttrKind::Typedef,
+            align: 0,
         }
     }
 
     pub fn new_static() -> Self {
         Self {
             kind: VarAttrKind::Static,
+            align: 0,
         }
     }
 
     pub fn new_extern() -> Self {
         Self {
             kind: VarAttrKind::Extern,
+            align: 0,
         }
     }
 }

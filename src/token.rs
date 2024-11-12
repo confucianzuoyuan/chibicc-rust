@@ -78,6 +78,8 @@ pub enum Tok {
     KeywordCase,
     KeywordDefault,
     KeywordExtern,
+    KeywordAlignof,
+    KeywordAlignas,
 
     EndOfFile,
 }
@@ -179,6 +181,8 @@ impl Display for Tok {
                 Tok::KeywordDefault => "default",
                 Tok::KeywordSwitch => "switch",
                 Tok::KeywordExtern => "extern",
+                Tok::KeywordAlignof => "_Alignof",
+                Tok::KeywordAlignas => "_Alignas",
                 Tok::EndOfFile => "<eof>",
                 Tok::Str(ref string) => return format!("{:?}", string),
             };

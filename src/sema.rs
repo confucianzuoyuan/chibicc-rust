@@ -363,6 +363,7 @@ pub struct Member {
     pub ty: Type,
     pub name: Token,
     pub offset: i32,
+    pub align: i32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
