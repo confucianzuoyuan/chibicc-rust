@@ -2706,6 +2706,7 @@ impl<'a> Parser<'a> {
             ty: ty.clone(),
             offset: 0,
             is_local: false,
+            is_static: false,
             is_definition: false,
             init_data: None,
             rel: vec![],
@@ -2723,6 +2724,7 @@ impl<'a> Parser<'a> {
     ) -> Result<Rc<RefCell<Obj>>> {
         let var = self.new_var(name, ty)?;
         var.borrow_mut().is_local = false;
+        var.borrow_mut().is_static = true;
         var.borrow_mut().is_definition = true;
         var.borrow_mut().init_data = init_value;
         self.globals.insert(0, var.clone());
@@ -2755,6 +2757,7 @@ impl<'a> Parser<'a> {
                     let var = self.new_global_variable(var_name, ty, None)?;
                     if let Some(attr) = attr {
                         var.borrow_mut().is_definition = !attr.is_extern();
+                        var.borrow_mut().is_static = attr.is_static();
                         if attr.align > 0 {
                             var.borrow_mut().align = attr.align;
                         }
@@ -2841,6 +2844,7 @@ impl<'a> Parser<'a> {
                 name: name.clone(),
                 offset: 0,
                 is_local: false,
+                is_static: false,
                 is_definition: false,
                 init_data: Some(InitData::IntInitData(val as i32)),
                 ty: ty.clone(),

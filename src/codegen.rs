@@ -560,8 +560,14 @@ impl CodeGenerator {
             if !global.borrow().is_definition {
                 continue;
             }
-            self.output
-                .push(format!("  .globl {}", global.borrow().name));
+            if global.borrow().is_static {
+                self.output
+                    .push(format!("  .local {}", global.borrow().name));
+            } else {
+                self.output
+                    .push(format!("  .globl {}", global.borrow().name));
+            }
+
             self.output
                 .push(format!("  .align {}", global.borrow().align));
             match &global.borrow().init_data {
