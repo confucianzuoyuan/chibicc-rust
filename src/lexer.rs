@@ -213,6 +213,24 @@ impl<R: Read> Lexer<R> {
         }
     }
 
+    /// "." | "..."
+    fn dot_or_other(&mut self) -> Result<Token> {
+        self.advance()?;
+        match self.current_char()? {
+            '.' => {
+                self.advance()?;
+                match self.current_char()? {
+                    '.' => {
+                        self.advance()?;
+                        self.make_token(Tok::DotDotDot, 3)
+                    }
+                    _ => panic!(),
+                }
+            }
+            _ => self.make_token(Tok::Dot, 1),
+        }
+    }
+
     fn bang_or_bang_equal(&mut self) -> Result<Token> {
         self.two_char_token(vec![('=', Tok::BangEqual)], Tok::Bang)
     }
@@ -526,7 +544,7 @@ impl<R: Read> Lexer<R> {
                 b'&' => self.amp_or_amp_equal_or_amp_amp(),
                 b'|' => self.bar_or_bar_equal_or_bar_bar(),
                 b'^' => self.hat_or_hat_equal(),
-                b'.' => self.simple_token(Tok::Dot),
+                b'.' => self.dot_or_other(),
                 b'~' => self.simple_token(Tok::Tilde),
                 b'%' => self.percent_or_percent_equal(),
                 b':' => self.simple_token(Tok::Colon),

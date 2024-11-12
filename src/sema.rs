@@ -22,6 +22,7 @@ pub enum Ty {
     TyFunc {
         params: Vec<Type>,
         return_ty: Box<Type>,
+        is_variadic: bool,
     },
     TyStruct {
         members: Vec<Member>,
@@ -101,11 +102,12 @@ impl Type {
         }
     }
 
-    pub fn new_func(params: Vec<Type>, return_ty: Type) -> Self {
+    pub fn new_func(params: Vec<Type>, return_ty: Type, is_variadic: bool) -> Self {
         Type {
             ty: Ty::TyFunc {
                 params,
                 return_ty: Box::new(return_ty),
+                is_variadic,
             },
             name: None,
         }

@@ -1419,14 +1419,15 @@ impl<'a> Parser<'a> {
         Ok(ty)
     }
 
-    /// func-params = ("void" | param ("," param)*?)? ")"
+    /// func-params = ("void" | param ("," param)* ("," "...")?)? ")"
     /// param       = declspec declarator
     fn func_params(&mut self, ty: Type) -> Result<Type> {
         let mut params = vec![];
+        let mut is_variadic = false;
         if self.peek()?.token == KeywordVoid && self.peek_next_one()?.token == RightParen {
             eat!(self, KeywordVoid);
             eat!(self, RightParen);
-            return Ok(Type::new_func(params, ty));
+            return Ok(Type::new_func(params, ty, false));
         }
         loop {
             match self.peek()?.token {
@@ -1438,6 +1439,12 @@ impl<'a> Parser<'a> {
                     break;
                 }
                 _ => {
+                    if self.peek()?.token == DotDotDot {
+                        is_variadic = true;
+                        eat!(self, DotDotDot);
+                        eat!(self, RightParen);
+                        break;
+                    }
                     let mut ty2 = self.declspec(&mut None)?;
                     ty2 = self.declarator(ty2)?;
 
@@ -1454,7 +1461,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        let node = Type::new_func(params, ty);
+        let node = Type::new_func(params, ty, is_variadic);
         Ok(node)
     }
 
