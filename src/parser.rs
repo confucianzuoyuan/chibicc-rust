@@ -69,7 +69,7 @@ pub struct Parser<'a> {
 
     var_env: Symbols<Rc<RefCell<Obj>>>,
     struct_union_tag_env: Symbols<Type>,
-    var_attr_env: Symbols<VarAttr>,
+    typedef_env: Symbols<Type>,
 
     // Points to the function object the parser is currently parsing.
     current_fn: Option<FunctionDefinition>,
@@ -86,7 +86,7 @@ impl<'a> Parser<'a> {
     pub fn new(tokens: Vec<Token>, symbols: &'a mut Symbols<()>, strings: Rc<Strings>) -> Self {
         let var_env = Symbols::new(Rc::clone(&strings));
         let struct_union_tag_env = Symbols::new(Rc::clone(&strings));
-        let var_attr_env = Symbols::new(Rc::clone(&strings));
+        let typedef_env = Symbols::new(Rc::clone(&strings));
         Parser {
             tokens,
             current_pos: 0,
@@ -98,7 +98,7 @@ impl<'a> Parser<'a> {
 
             var_env,
             struct_union_tag_env,
-            var_attr_env,
+            typedef_env,
 
             current_fn: None,
 
@@ -114,11 +114,11 @@ impl<'a> Parser<'a> {
     fn begin_scope(&mut self) {
         self.var_env.begin_scope();
         self.struct_union_tag_env.begin_scope();
-        self.var_attr_env.begin_scope();
+        self.typedef_env.begin_scope();
     }
 
     fn end_scope(&mut self) {
-        self.var_attr_env.end_scope();
+        self.typedef_env.end_scope();
         self.struct_union_tag_env.end_scope();
         self.var_env.end_scope();
     }
@@ -980,10 +980,7 @@ impl<'a> Parser<'a> {
                         decls.push(expr_stmt);
                     }
 
-                    if self
-                        .var_attr_env
-                        .look(self.symbols.symbol(&ident))
-                        .is_none()
+                    if self.typedef_env.look(self.symbols.symbol(&ident)).is_none()
                         && var.borrow().ty.get_size() < 0
                     {
                         panic!("variable {} has incomplete type", var.borrow());
@@ -1283,15 +1280,11 @@ impl<'a> Parser<'a> {
                     if counter > 0 {
                         break;
                     }
-                    match self.var_attr_env.look(self.symbols.symbol(&name)) {
-                        Some(VarAttr::Typedef {
-                            type_def: Some(_ty),
-                        }) => {
-                            ty = _ty.clone();
-                            counter += Counter::OTHER as i32;
-                            continue;
-                        }
-                        _ => panic!(),
+                    self.token()?;
+                    if let Some(_ty) = self.typedef_env.look(self.symbols.symbol(&name)) {
+                        ty = _ty.clone();
+                        counter += Counter::OTHER as i32;
+                        continue;
                     }
                 }
                 Tok::KeywordVoid => {
@@ -1474,11 +1467,7 @@ impl<'a> Parser<'a> {
             | Tok::KeywordVoid => Ok(true),
             Tok::Ident(name) => {
                 let symbol = self.symbols.symbol(&name);
-                let t = self.var_attr_env.look(symbol);
-                match t {
-                    Some(VarAttr::Typedef { .. }) => Ok(true),
-                    _ => Ok(false),
-                }
+                Ok(self.typedef_env.look(symbol).is_some())
             }
             _ => Ok(false),
         }
@@ -2433,25 +2422,21 @@ impl<'a> Parser<'a> {
                 match self.peek()?.token {
                     Tok::LeftParen => {
                         let tok = self.peek_next_one()?.token.clone();
-                        // sizeof(typedef)
-                        if let Some(name) = tok.get_ident_name().clone() {
-                            let attr = self.var_attr_env.look(self.symbols.symbol(&name));
-                            if let Some(VarAttr::Typedef { type_def: Some(..) }) = attr.cloned() {
-                                eat!(self, LeftParen);
-                                self.token()?;
-                                eat!(self, RightParen);
-
-                                let ty = self.struct_union_tag_env.look(self.symbols.symbol(&name));
-                                if let Some(ty) = ty {
-                                    return Ok(ExprWithPos::new_number(ty.get_size() as i64, pos));
-                                }
-                            }
-                        }
-                        // sizeof(int **)
-                        if self.is_typename(tok)? {
+                        if self.is_typename(tok.clone())? {
                             eat!(self, LeftParen);
                             let ty = self.typename()?;
                             eat!(self, RightParen);
+                            // 处理以下特殊情况
+                            // `typedef struct T T; struct T { int x; }; sizeof(T);`
+                            if let Some(type_name) = ty.get_ident() {
+                                if let Some(ty) = self
+                                    .struct_union_tag_env
+                                    .look(self.symbols.symbol(&type_name))
+                                {
+                                    return Ok(ExprWithPos::new_number(ty.get_size() as i64, pos));
+                                }
+                            }
+
                             Ok(ExprWithPos::new_number(ty.get_size() as i64, pos))
                         }
                         // sizeof(x)
@@ -2722,10 +2707,7 @@ impl<'a> Parser<'a> {
                 _ => {
                     let ty = self.declarator(basety.clone())?;
                     let ident = ty.get_ident().unwrap();
-                    self.var_attr_env.enter(
-                        self.symbols.symbol(&ident),
-                        VarAttr::Typedef { type_def: Some(ty) },
-                    );
+                    self.typedef_env.enter(self.symbols.symbol(&ident), ty);
                 }
             }
         }
