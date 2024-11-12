@@ -1217,7 +1217,7 @@ impl<'a> Parser<'a> {
                         if typedef_static_extern_count > 1 {
                             panic!("typedef may not be used together with static or extern.");
                         }
-                        *attr = Some(VarAttr::Typedef { type_def: None });
+                        *attr = Some(VarAttr::new_typedef());
                         continue;
                     } else {
                         panic!("storage class specifier is not allowed in this context.");
@@ -1230,7 +1230,7 @@ impl<'a> Parser<'a> {
                         if typedef_static_extern_count > 1 {
                             panic!("typedef may not be used together with static or extern.");
                         }
-                        *attr = Some(VarAttr::Static);
+                        *attr = Some(VarAttr::new_static());
                         continue;
                     } else {
                         panic!("storage class specifier is not allowed in this context.");
@@ -1243,7 +1243,7 @@ impl<'a> Parser<'a> {
                         if typedef_static_extern_count > 1 {
                             panic!("typedef may not be used together with static or extern.");
                         }
-                        *attr = Some(VarAttr::Extern);
+                        *attr = Some(VarAttr::new_extern());
                         continue;
                     } else {
                         panic!("storage class specifier is not allowed in this context.");
@@ -1366,18 +1366,10 @@ impl<'a> Parser<'a> {
 
                     // "array of T" is converted to "pointer to T" only in the parameter
                     // context. For example, *argv[] is converted to **argv by this.
-                    match ty2.ty.clone() {
-                        Ty::TyArray { base, array_len: _ } => {
-                            let mut _ty2 = pointer_to(*base);
-                            match _ty2.ty {
-                                Ty::TyPtr { .. } => {
-                                    _ty2.set_name(ty2.name.unwrap());
-                                    ty2 = _ty2;
-                                }
-                                _ => (),
-                            }
-                        }
-                        _ => (),
+                    if ty2.is_array() {
+                        let type_name = ty2.clone().name.unwrap();
+                        ty2 = pointer_to(ty2.base().unwrap());
+                        ty2.set_name(type_name);
                     }
 
                     params.push(ty2);
@@ -1503,15 +1495,15 @@ impl<'a> Parser<'a> {
                         _ => (),
                     }
                     if self.is_typename(tok)? && self.peek_next_one()?.token != Colon {
-                        let mut attr = Some(VarAttr::Placeholder);
+                        let mut attr = Some(VarAttr::new_placeholder());
                         let basety = self.declspec(&mut attr)?;
-                        match attr {
-                            Some(VarAttr::Typedef { .. }) => {
+                        if let Some(attr) = attr.clone() {
+                            if attr.is_typedef() {
                                 self.parse_typedef(basety)?;
                                 continue;
                             }
-                            _ => (),
                         }
+
                         let pos = self.current_pos;
                         if self.is_function_definition()? {
                             self.current_pos = pos;
@@ -2569,7 +2561,7 @@ impl<'a> Parser<'a> {
         };
 
         let is_static = match attr {
-            Some(VarAttr::Static) => true,
+            Some(_attr) => _attr.is_static(),
             _ => false,
         };
 
@@ -2964,14 +2956,13 @@ impl<'a> Parser<'a> {
                 }) => break,
                 _ => {
                     // int ...., 获取基本类型 int
-                    let mut attr = Some(VarAttr::Placeholder);
+                    let mut attr = Some(VarAttr::new_placeholder());
                     let basety = self.declspec(&mut attr)?;
-                    match attr {
-                        Some(VarAttr::Typedef { .. }) => {
+                    if let Some(attr) = attr.clone() {
+                        if attr.is_typedef() {
                             self.parse_typedef(basety)?;
                             continue;
                         }
-                        _ => (),
                     }
                     // 保存当前的位置
                     let pos = self.current_pos;

@@ -581,18 +581,61 @@ pub struct Relocation {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum VarAttr {
-    Typedef { type_def: Option<Type> },
+pub enum VarAttrKind {
+    Typedef,
     Static,
     Extern,
     Placeholder,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct VarAttr {
+    pub kind: VarAttrKind,
+}
+
 impl VarAttr {
     pub fn is_extern(&self) -> bool {
-        match self {
-            VarAttr::Extern => true,
+        match self.kind {
+            VarAttrKind::Extern => true,
             _ => false,
+        }
+    }
+
+    pub fn is_static(&self) -> bool {
+        match self.kind {
+            VarAttrKind::Static => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_typedef(&self) -> bool {
+        match self.kind {
+            VarAttrKind::Typedef => true,
+            _ => false,
+        }
+    }
+
+    pub fn new_placeholder() -> Self {
+        Self {
+            kind: VarAttrKind::Placeholder,
+        }
+    }
+
+    pub fn new_typedef() -> Self {
+        Self {
+            kind: VarAttrKind::Typedef,
+        }
+    }
+
+    pub fn new_static() -> Self {
+        Self {
+            kind: VarAttrKind::Static,
+        }
+    }
+
+    pub fn new_extern() -> Self {
+        Self {
+            kind: VarAttrKind::Extern,
         }
     }
 }
