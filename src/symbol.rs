@@ -37,6 +37,10 @@ impl<T> Symbols<T> {
         symbols
     }
 
+    pub fn is_parent_empty(&self) -> bool {
+        self.stack.len() <= 1
+    }
+
     pub fn begin_scope(&mut self) {
         self.stack.push(vec![]);
     }

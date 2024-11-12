@@ -30,6 +30,12 @@ pub enum Error {
         name: String,
         pos: Pos,
     },
+    InvalidInitializer {
+        pos: Pos,
+    },
+    InvalidPointerDeref {
+        pos: Pos,
+    },
     Eof,
 }
 
@@ -71,7 +77,21 @@ impl Error {
                 highlight_line(pos, symbols, terminal)?;
             }
             Error::ImplicitDeclarationOfFunction { ref name, pos } => {
-                eprintln!("Implicit Declaration of A Function \\{}{}", name, terminal.end_bold());
+                eprintln!(
+                    "Implicit Declaration of A Function \\{}{}",
+                    name,
+                    terminal.end_bold()
+                );
+                pos.show(symbols, terminal);
+                highlight_line(pos, symbols, terminal)?;
+            }
+            Error::InvalidInitializer { pos } => {
+                eprintln!("Invalid Initializer {}", terminal.end_bold());
+                pos.show(symbols, terminal);
+                highlight_line(pos, symbols, terminal)?;
+            }
+            Error::InvalidPointerDeref { pos } => {
+                eprintln!("Invalid Pointer Deref {}", terminal.end_bold());
                 pos.show(symbols, terminal);
                 highlight_line(pos, symbols, terminal)?;
             }

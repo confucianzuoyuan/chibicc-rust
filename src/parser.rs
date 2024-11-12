@@ -2064,11 +2064,20 @@ impl<'a> Parser<'a> {
     fn cast(&mut self) -> Result<ExprWithPos> {
         match self.peek()?.token {
             Tok::LeftParen => {
+                let old_pos = self.current_pos;
                 let next_one_tok = self.peek_next_one()?.token.clone();
                 if self.is_typename(next_one_tok)? {
                     let pos = eat!(self, LeftParen);
                     let ty = self.typename()?;
                     eat!(self, RightParen);
+
+                    // compound literal
+                    if self.peek()?.token == LeftBrace {
+                        self.current_pos = old_pos;
+                        return self.unary();
+                    }
+
+                    // type cast
                     let node = ExprWithPos::new_cast_expr(self.cast()?, ty, pos);
                     Ok(node)
                 } else {
@@ -2243,8 +2252,38 @@ impl<'a> Parser<'a> {
         Ok(c)
     }
 
-    /// postfix = primary ("[" expr "]" | "." ident | "->" ident | "++" | "--")*
+    /// postfix = "(" type-name ")" "{" initializer-list "}"
+    ///         | primary ("[" expr "]" | "." ident | "->" ident | "++" | "--")*
     fn postfix(&mut self) -> Result<ExprWithPos> {
+        let current_token = self.peek()?.token.clone();
+        let next_token = self.peek_next_one()?.token.clone();
+        if current_token == LeftParen && self.is_typename(next_token)? {
+            // Compound literal
+            let pos = eat!(self, LeftParen);
+            let ty = self.typename()?;
+            eat!(self, RightParen);
+
+            if self.var_env.is_parent_empty()
+                && self.typedef_env.is_parent_empty()
+                && self.struct_union_tag_env.is_parent_empty()
+            {
+                let unique_name = self.new_unique_name();
+                let var =
+                    self.new_global_variable(unique_name, ty, Some(InitData::IntInitData(0)))?;
+                self.global_var_initializer(var.clone())?;
+                let mut node = ExprWithPos::new_var(var, pos);
+                add_type(&mut node);
+                return Ok(node);
+            }
+
+            let var = self.new_local_variable("".to_string(), ty)?;
+            let mut lhs = self.local_var_initializer(var.clone())?;
+            add_type(&mut lhs);
+            let mut rhs = ExprWithPos::new_var(var, pos);
+            add_type(&mut rhs);
+            return Ok(ExprWithPos::new_comma(lhs, rhs, pos));
+        }
+
         let mut node = self.primary()?;
 
         loop {
@@ -2267,6 +2306,7 @@ impl<'a> Parser<'a> {
                     node = ExprWithPos::new_deref(node, pos);
                     add_type(&mut node);
                     node = self.struct_ref(node)?;
+                    add_type(&mut node);
                 }
                 Tok::PlusPlus => {
                     eat!(self, PlusPlus);
@@ -2980,7 +3020,7 @@ impl<'a> Parser<'a> {
             Expr::MemberExpr { mut strct, member } => {
                 return Ok(self.eval_rvalue(&mut strct, label)? + member.offset as i64);
             }
-            _ => panic!("{:?} invalid initializer", node.pos),
+            _ => return Err(Error::InvalidInitializer { pos: node.pos }),
         }
     }
 
