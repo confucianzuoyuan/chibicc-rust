@@ -291,6 +291,26 @@ impl CodeGenerator {
                     self.output.push(format!("{}:", brk_label));
                 }
             }
+            ast::Stmt::DoWhileStmt {
+                condition,
+                body,
+                break_label,
+                continue_label,
+            } => {
+                let c = self.label_count;
+                self.label_count += 1;
+                self.output.push(format!(".L.begin.{}:", c));
+                self.gen_stmt(body);
+                if let Some(cont_label) = continue_label {
+                    self.output.push(format!("{}:", cont_label));
+                }
+                self.gen_expr(condition);
+                self.output.push(format!("  cmp $0, %rax"));
+                self.output.push(format!(" jne .L.begin.{}", c));
+                if let Some(brk_label) = break_label {
+                    self.output.push(format!("{}:", brk_label));
+                }
+            }
             ast::Stmt::GotoStmt { label } => {
                 self.output
                     .push(format!("  jmp {}", self.goto_labels.get(label).unwrap()));

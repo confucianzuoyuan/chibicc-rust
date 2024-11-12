@@ -811,6 +811,37 @@ impl<'a> Parser<'a> {
                 self.continue_label = old_continue_label;
                 Ok(node)
             }
+            Tok::KeywordDo => {
+                let pos = eat!(self, KeywordDo);
+                let old_break_label = self.break_label.clone();
+                self.break_label = Some(self.new_unique_name());
+                let old_continue_label = self.continue_label.clone();
+                self.continue_label = Some(self.new_unique_name());
+
+                let final_brk_label = self.break_label.clone();
+                let final_cont_label = self.continue_label.clone();
+
+                let body = self.stmt()?;
+
+                self.break_label = old_break_label;
+                self.continue_label = old_continue_label;
+
+                eat!(self, KeywordWhile);
+                eat!(self, LeftParen);
+                let cond = self.expr()?;
+                eat!(self, RightParen);
+                eat!(self, Semicolon);
+                let node = WithPos::new(
+                    Stmt::DoWhileStmt {
+                        condition: cond,
+                        body: Box::new(body),
+                        break_label: final_brk_label,
+                        continue_label: final_cont_label,
+                    },
+                    pos,
+                );
+                Ok(node)
+            }
             Tok::KeywordGoto => {
                 let pos = eat!(self, KeywordGoto);
                 let label;

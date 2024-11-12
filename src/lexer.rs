@@ -257,6 +257,7 @@ impl<R: Read> Lexer<R> {
             "return" => Tok::KeywordReturn,
             "for" => Tok::KeywordFor,
             "while" => Tok::KeywordWhile,
+            "do" => Tok::KeywordDo,
             "int" => Tok::KeywordInt,
             "char" => Tok::KeywordChar,
             "long" => Tok::KeywordLong,

@@ -440,6 +440,12 @@ pub enum Stmt {
         break_label: Option<String>,
         continue_label: Option<String>,
     },
+    DoWhileStmt {
+        condition: ExprWithPos,
+        body: Box<StmtWithPos>,
+        break_label: Option<String>,
+        continue_label: Option<String>,
+    },
     GotoStmt {
         label: String,
     },
@@ -554,6 +560,7 @@ impl Display for StmtWithPos {
                     Stmt::LabelStmt { .. } => return format!("{:?}", node),
                     Stmt::SwitchStmt { .. } => return format!("{:?}", node),
                     Stmt::CaseStmt { .. } => return format!("{:?}", node),
+                    Stmt::DoWhileStmt { .. } => return format!("{:?}", node),
                 },
             };
             string.to_string()
