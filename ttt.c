@@ -1,5 +1,8 @@
-int _Alignas(512) g1;
+int counter() {
+  static int i = 0x12345678;
+  return i;
+}
 
 int main() {
-    return _Alignof(char);
+    return 0;
 }

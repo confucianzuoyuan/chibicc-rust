@@ -970,6 +970,24 @@ impl<'a> Parser<'a> {
                     if ty.is_void() {
                         panic!("{:#?} variable declared void.", ty);
                     }
+                    if let Some(attr) = attr {
+                        if attr.is_static() {
+                            let unique_name = self.new_unique_name();
+                            let var = self.new_global_variable(
+                                unique_name,
+                                ty.clone(),
+                                Some(InitData::IntInitData(0)),
+                            )?;
+                            if self.peek()?.token == Equal {
+                                eat!(self, Equal);
+                                self.global_var_initializer(var.clone())?;
+                            }
+
+                            self.var_env
+                                .enter(self.symbols.symbol(&ty.clone().get_ident().unwrap()), var);
+                            continue;
+                        }
+                    }
                     let ident = ty.get_ident().unwrap();
                     let var = self.new_local_variable(ident.clone(), ty.clone())?;
                     if let Some(attr) = attr {

@@ -588,7 +588,17 @@ impl CodeGenerator {
                                 InitData::BytesInitData(bytes) => self
                                     .output
                                     .push(format!("  .byte {}", bytes.get(pos as usize).unwrap())),
-                                _ => panic!(),
+                                InitData::IntInitData(i) => {
+                                    let mut bytes: [u8; 4] = [0, 0, 0, 0];
+                                    bytes[0] = *i as u8;
+                                    bytes[1] = (*i >> 8) as u8;
+                                    bytes[2] = (*i >> 16) as u8;
+                                    bytes[3] = (*i >> 24) as u8;
+                                    self.output.push(format!(
+                                        "  .byte {}",
+                                        bytes.get(pos as usize).unwrap()
+                                    ));
+                                }
                             }
                             pos += 1;
                         }
