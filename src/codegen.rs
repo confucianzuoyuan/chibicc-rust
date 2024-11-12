@@ -450,6 +450,13 @@ impl CodeGenerator {
                     self.output.push(format!("  call {}", name));
                     self.output.push(format!("  add $8, %rsp"));
                 }
+
+                match ast.node.ty.ty {
+                    Ty::TyBool => self.output.push(format!("  movzx %al, %eax")),
+                    Ty::TyChar => self.output.push(format!("  movsbl %al, %eax")),
+                    Ty::TyShort => self.output.push(format!("  movswl %ax, %eax")),
+                    _ => (),
+                }
             }
             ast::Expr::MemZero { var } => {
                 // `rep stosb` is equivalent to `memset(%rdi, %al, %rcx)`.

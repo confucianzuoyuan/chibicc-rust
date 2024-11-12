@@ -1419,7 +1419,7 @@ impl<'a> Parser<'a> {
         Ok(ty)
     }
 
-    /// func-params = ("void" | param ("," param)*)? ")"
+    /// func-params = ("void" | param ("," param)*?)? ")"
     /// param       = declspec declarator
     fn func_params(&mut self, ty: Type) -> Result<Type> {
         let mut params = vec![];
