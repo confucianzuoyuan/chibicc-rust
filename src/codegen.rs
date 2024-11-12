@@ -443,7 +443,13 @@ impl CodeGenerator {
                 }
 
                 self.output.push(format!("  mov $0, %rax"));
-                self.output.push(format!("  call {}", name));
+                if self.depth % 2 == 0 {
+                    self.output.push(format!("  call {}", name));
+                } else {
+                    self.output.push(format!("  sub $8, %rsp"));
+                    self.output.push(format!("  call {}", name));
+                    self.output.push(format!("  add $8, %rsp"));
+                }
             }
             ast::Expr::MemZero { var } => {
                 // `rep stosb` is equivalent to `memset(%rdi, %al, %rcx)`.
