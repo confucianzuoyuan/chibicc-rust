@@ -51,7 +51,10 @@ pub enum Tok {
     Colon,
     QuestionMark,
 
-    Number(i64),
+    ConstLong(i64),
+    ConstULong(u64),
+    ConstInt(i32),
+    ConstUInt(u32),
     Ident(String),
     Str(String),
 
@@ -160,7 +163,10 @@ impl Display for Tok {
                 Tok::PercentEqual => "%=",
                 Tok::Colon => ":",
                 Tok::QuestionMark => "?",
-                Tok::Number(i) => return i.to_string(),
+                Tok::ConstLong(l) => return l.to_string(),
+                Tok::ConstULong(ul) => return ul.to_string(),
+                Tok::ConstInt(i) => return i.to_string(),
+                Tok::ConstUInt(ui) => return ui.to_string(),
                 Tok::Ident(ref ident) => ident,
                 Tok::KeywordReturn => "return",
                 Tok::KeywordIf => "if",

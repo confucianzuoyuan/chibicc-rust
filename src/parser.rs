@@ -2580,10 +2580,17 @@ impl<'a> Parser<'a> {
                     }
                 }
             }
-            Number(_) => {
+            ConstLong(_) => {
                 let value;
-                let pos = eat!(self, Number, value);
+                let pos = eat!(self, ConstLong, value);
                 let mut node = ExprWithPos::new_number(value, pos);
+                add_type(&mut node);
+                Ok(node)
+            }
+            ConstInt(_) => {
+                let value;
+                let pos = eat!(self, ConstInt, value);
+                let mut node = ExprWithPos::new_number(value as i64, pos);
                 add_type(&mut node);
                 Ok(node)
             }

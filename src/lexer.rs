@@ -117,7 +117,56 @@ impl<R: Read> Lexer<R> {
             }
         }
 
-        self.make_token(Tok::Number(num), num_text_size(num))
+        // Read U, L or LL suffixes
+        let mut is_long = false;
+        let mut is_ulong = false;
+        match self.current_char()? {
+            'L' | 'l' | 'U' | 'u' => {
+                let t1 = self.current_char()?;
+                self.advance()?;
+                match self.current_char()? {
+                    'L' | 'l' | 'U' | 'u' => {
+                        let t2 = self.current_char()?;
+                        self.advance()?;
+                        match self.current_char()? {
+                            'L' | 'l' | 'U' | 'u' => {
+                                let t3 = self.current_char()?;
+                                self.advance()?;
+                                match (t1, t2, t3) {
+                                    ('L', 'L', 'U')
+                                    | ('L', 'L', 'u')
+                                    | ('l', 'l', 'U')
+                                    | ('l', 'l', 'u')
+                                    | ('U', 'L', 'L')
+                                    | ('U', 'l', 'l')
+                                    | ('u', 'L', 'L')
+                                    | ('u', 'l', 'l') => {
+                                        is_long = true;
+                                        is_ulong = true;
+                                    }
+                                    _ => (),
+                                }
+                            }
+                            _ => match (t1, t2) {
+                                ('L' | 'l', 'U' | 'u') | ('U' | 'u', 'L' | 'l') => {
+                                    is_long = true;
+                                    is_ulong = true;
+                                }
+                                _ => (),
+                            },
+                        }
+                    }
+                    _ => match t1 {
+                        'L' | 'l' => is_long = true,
+                        'U' | 'u' => is_ulong = true,
+                        _ => (),
+                    },
+                }
+            }
+            _ => (),
+        }
+
+        self.make_token(Tok::ConstLong(num), num_text_size(num))
     }
 
     fn simple_token(&mut self, token: Tok) -> Result<Token> {
@@ -515,7 +564,7 @@ impl<R: Read> Lexer<R> {
         }
 
         self.eat('\'')?;
-        self.make_token(Tok::Number(c as i8 as i64), 1)
+        self.make_token(Tok::ConstInt(c as i8 as i32), 1)
     }
 
     pub fn token(&mut self) -> Result<Token> {
