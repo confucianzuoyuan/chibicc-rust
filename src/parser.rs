@@ -1461,6 +1461,10 @@ impl<'a> Parser<'a> {
             }
         }
 
+        if params.len() == 0 {
+            is_variadic = true;
+        }
+
         let node = Type::new_func(params, ty, is_variadic);
         Ok(node)
     }
@@ -2404,6 +2408,9 @@ impl<'a> Parser<'a> {
                 _ => {
                     let mut arg_exp = self.assign()?;
                     add_type(&mut arg_exp);
+                    if params_ty.is_empty() && !func_found.clone().unwrap().ty.is_variadic() {
+                        panic!("too many arguments");
+                    }
                     if arg_exp.node.ty.is_union() || arg_exp.node.ty.is_struct() {
                         panic!("passing struct or union is not supported yet.");
                     }
@@ -2416,6 +2423,10 @@ impl<'a> Parser<'a> {
                     i += 1;
                 }
             }
+        }
+
+        if i < params_ty.len() {
+            panic!("too few arguments");
         }
 
         let node = WithPos::new(
