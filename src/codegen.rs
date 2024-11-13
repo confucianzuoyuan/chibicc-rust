@@ -676,6 +676,44 @@ impl CodeGenerator {
             self.output.push(format!("  mov %rsp, %rbp"));
             self.output.push(format!("  sub ${}, %rsp", f.stack_size));
 
+            // Save arg registers if function is variadic
+            if let Some(va_area) = &f.va_area {
+                let gp = f.params.len();
+                let off = va_area.borrow().offset;
+
+                // va_elem
+                self.output
+                    .push(format!("  movl ${}, {}(%rbp)", gp * 8, off));
+                self.output.push(format!("  movl $0, {}(%rbp)", off + 4));
+                self.output.push(format!("  movq %rbp, {}(%rbp)", off + 16));
+                self.output
+                    .push(format!("  addq ${}, {}(%rbp)", off + 24, off + 16));
+
+                // __reg_save_area__
+                self.output.push(format!("  movq %rdi, {}(%rbp)", off + 24));
+                self.output.push(format!("  movq %rsi, {}(%rbp)", off + 32));
+                self.output.push(format!("  movq %rdx, {}(%rbp)", off + 40));
+                self.output.push(format!("  movq %rcx, {}(%rbp)", off + 48));
+                self.output.push(format!("  movq %r8, {}(%rbp)", off + 56));
+                self.output.push(format!("  movq %r9, {}(%rbp)", off + 64));
+                self.output
+                    .push(format!("  movsd %xmm0, {}(%rbp)", off + 72));
+                self.output
+                    .push(format!("  movsd %xmm1, {}(%rbp)", off + 80));
+                self.output
+                    .push(format!("  movsd %xmm2, {}(%rbp)", off + 88));
+                self.output
+                    .push(format!("  movsd %xmm3, {}(%rbp)", off + 96));
+                self.output
+                    .push(format!("  movsd %xmm4, {}(%rbp)", off + 104));
+                self.output
+                    .push(format!("  movsd %xmm5, {}(%rbp)", off + 112));
+                self.output
+                    .push(format!("  movsd %xmm6, {}(%rbp)", off + 120));
+                self.output
+                    .push(format!("  movsd %xmm7, {}(%rbp)", off + 128));
+            }
+
             // Save passed-by-register arguments to the stack
             let mut i = 0;
             for p in &mut f.params.iter().rev() {

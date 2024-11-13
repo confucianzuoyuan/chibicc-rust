@@ -197,6 +197,13 @@ impl Type {
         }
     }
 
+    pub fn is_variadic(&self) -> bool {
+        match self.ty {
+            Ty::TyFunc { is_variadic, .. } => is_variadic,
+            _ => false,
+        }
+    }
+
     pub fn is_flexible(&self) -> bool {
         match self.ty {
             Ty::TyStruct { is_flexible, .. } | Ty::TyUnion { is_flexible, .. } => is_flexible,

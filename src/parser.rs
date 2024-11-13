@@ -2706,9 +2706,17 @@ impl<'a> Parser<'a> {
 
                 if is_definition {
                     eat!(self, LeftBrace);
+                    fndef.va_area = if ty.is_variadic() {
+                        Some(self.new_local_variable(
+                            "__va_area__".to_string(),
+                            Type::new_array(Type::new_char(), 136),
+                        )?)
+                    } else {
+                        None
+                    };
                     fndef.body = self.compound_stmt()?;
-                    fndef.params = params;
                     fndef.is_definition = is_definition;
+                    fndef.params = params;
                     fndef.locals = self.locals.clone();
                     fndef.goto_labels = self.goto_labels.clone();
                 }
