@@ -1259,6 +1259,7 @@ impl<'a> Parser<'a> {
             LONG = 1 << 10,
             OTHER = 1 << 12,
             SIGNED = 1 << 13,
+            UNSIGNED = 1 << 14,
         }
 
         let mut counter = 0;
@@ -1394,6 +1395,10 @@ impl<'a> Parser<'a> {
                     eat!(self, KeywordSigned);
                     counter |= Counter::SIGNED as i32;
                 }
+                Tok::KeywordUnsigned => {
+                    eat!(self, KeywordUnsigned);
+                    counter |= Counter::UNSIGNED as i32;
+                }
                 _ => unreachable!(),
             }
 
@@ -1405,6 +1410,8 @@ impl<'a> Parser<'a> {
                 ty = Type::new_char();
             } else if counter == Counter::SIGNED as i32 + Counter::CHAR as i32 {
                 ty = Type::new_char();
+            } else if counter == Counter::UNSIGNED as i32 + Counter::CHAR as i32 {
+                ty = Type::new_uchar();
             } else if counter == Counter::SHORT as i32 {
                 ty = Type::new_short();
             } else if counter == Counter::SHORT as i32 + Counter::INT as i32 {
@@ -1415,12 +1422,22 @@ impl<'a> Parser<'a> {
                 == Counter::SIGNED as i32 + Counter::SHORT as i32 + Counter::INT as i32
             {
                 ty = Type::new_short();
+            } else if counter == Counter::UNSIGNED as i32 + Counter::SHORT as i32 {
+                ty = Type::new_ushort();
+            } else if counter
+                == Counter::UNSIGNED as i32 + Counter::SHORT as i32 + Counter::INT as i32
+            {
+                ty = Type::new_ushort();
             } else if counter == Counter::INT as i32 {
                 ty = Type::new_int();
             } else if counter == Counter::SIGNED as i32 {
                 ty = Type::new_int();
             } else if counter == Counter::SIGNED as i32 + Counter::INT as i32 {
                 ty = Type::new_int();
+            } else if counter == Counter::UNSIGNED as i32 {
+                ty = Type::new_uint();
+            } else if counter == Counter::UNSIGNED as i32 + Counter::INT as i32 {
+                ty = Type::new_uint();
             } else if counter == Counter::LONG as i32 + Counter::LONG as i32 + Counter::INT as i32 {
                 ty = Type::new_long();
             } else if counter == Counter::LONG as i32 + Counter::INT as i32 {
@@ -1445,6 +1462,23 @@ impl<'a> Parser<'a> {
                     + Counter::INT as i32
             {
                 ty = Type::new_long();
+            } else if counter == Counter::UNSIGNED as i32 + Counter::LONG as i32 {
+                ty = Type::new_ulong();
+            } else if counter
+                == Counter::UNSIGNED as i32 + Counter::LONG as i32 + Counter::INT as i32
+            {
+                ty = Type::new_ulong();
+            } else if counter
+                == Counter::UNSIGNED as i32 + Counter::LONG as i32 + Counter::LONG as i32
+            {
+                ty = Type::new_ulong();
+            } else if counter
+                == Counter::UNSIGNED as i32
+                    + Counter::LONG as i32
+                    + Counter::LONG as i32
+                    + Counter::INT as i32
+            {
+                ty = Type::new_ulong();
             } else {
                 panic!("invalid type.");
             }
@@ -1580,6 +1614,7 @@ impl<'a> Parser<'a> {
             | Tok::KeywordExtern
             | Tok::KeywordAlignas
             | Tok::KeywordSigned
+            | Tok::KeywordUnsigned
             | Tok::KeywordVoid => Ok(true),
             Tok::Ident(name) => {
                 let symbol = self.symbols.symbol(&name);

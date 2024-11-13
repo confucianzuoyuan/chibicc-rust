@@ -298,6 +298,7 @@ impl<R: Read> Lexer<R> {
             "_Alignof" => Tok::KeywordAlignof,
             "_Alignas" => Tok::KeywordAlignas,
             "signed" => Tok::KeywordSigned,
+            "unsigned" => Tok::KeywordUnsigned,
             _ => Tok::Ident(ident),
         };
         self.make_token(token, len)

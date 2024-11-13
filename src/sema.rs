@@ -12,6 +12,10 @@ pub enum Ty {
     TyLong,
     TyInt,
     TyChar,
+    TyUShort,
+    TyULong,
+    TyUInt,
+    TyUChar,
     TyPtr {
         base: Box<Type>,
     },
@@ -74,6 +78,13 @@ impl Type {
         }
     }
 
+    pub fn new_uchar() -> Self {
+        Type {
+            ty: Ty::TyUChar,
+            name: None,
+        }
+    }
+
     pub fn new_short() -> Self {
         Type {
             ty: Ty::TyShort,
@@ -81,9 +92,23 @@ impl Type {
         }
     }
 
+    pub fn new_ushort() -> Self {
+        Type {
+            ty: Ty::TyUShort,
+            name: None,
+        }
+    }
+
     pub fn new_int() -> Self {
         Type {
             ty: Ty::TyInt,
+            name: None,
+        }
+    }
+
+    pub fn new_uint() -> Self {
+        Type {
+            ty: Ty::TyUInt,
             name: None,
         }
     }
@@ -98,6 +123,13 @@ impl Type {
     pub fn new_long() -> Self {
         Type {
             ty: Ty::TyLong,
+            name: None,
+        }
+    }
+
+    pub fn new_ulong() -> Self {
+        Type {
+            ty: Ty::TyULong,
             name: None,
         }
     }
@@ -295,12 +327,19 @@ impl Type {
         }
     }
 
+    pub fn is_unsigned(&self) -> bool {
+        match self.ty {
+            Ty::TyUChar | Ty::TyUShort | Ty::TyUInt | Ty::TyULong => true,
+            _ => false,
+        }
+    }
+
     pub fn get_size(&self) -> i32 {
         match &self.ty {
-            Ty::TyBool | Ty::TyChar | Ty::TyVoid => 1,
-            Ty::TyShort => 2,
-            Ty::TyInt | Ty::TyEnum => 4,
-            Ty::TyLong | Ty::TyPtr { .. } => 8,
+            Ty::TyBool | Ty::TyChar | Ty::TyVoid | Ty::TyUChar => 1,
+            Ty::TyShort | Ty::TyUShort => 2,
+            Ty::TyInt | Ty::TyUInt | Ty::TyEnum => 4,
+            Ty::TyLong | Ty::TyULong | Ty::TyPtr { .. } => 8,
             Ty::TyArray { base, array_len } => base.get_size() * *array_len,
             Ty::TyStruct { type_size, .. } => *type_size,
             Ty::TyUnion { type_size, .. } => *type_size,
@@ -319,10 +358,10 @@ impl Type {
 
     pub fn get_align(&self) -> i32 {
         match &self.ty {
-            Ty::TyChar | Ty::TyBool | Ty::TyVoid => 1,
-            Ty::TyShort => 2,
-            Ty::TyInt | Ty::TyEnum => 4,
-            Ty::TyLong | Ty::TyPtr { .. } => 8,
+            Ty::TyChar | Ty::TyUChar | Ty::TyBool | Ty::TyVoid => 1,
+            Ty::TyShort | Ty::TyUShort => 2,
+            Ty::TyInt | Ty::TyUInt | Ty::TyEnum => 4,
+            Ty::TyLong | Ty::TyULong | Ty::TyPtr { .. } => 8,
             Ty::TyStruct { align, .. } | Ty::TyUnion { align, .. } => *align,
             Ty::TyArray { base, .. } => base.get_align(),
             _ => panic!("type {:?} has no align infomation.", self),
@@ -399,14 +438,29 @@ pub fn pointer_to(base: Type) -> Type {
 pub fn get_common_type(ty1: Type, ty2: Type) -> Type {
     match (ty1.clone().ty, ty2.clone().ty) {
         (Ty::TyArray { base, .. } | Ty::TyPtr { base, .. }, _) => pointer_to(*base),
-        _ if ty1.get_size() == 8 || ty2.get_size() == 8 => Type {
-            ty: Ty::TyLong,
-            name: None,
-        },
-        _ => Type {
-            ty: Ty::TyInt,
-            name: None,
-        },
+        _ => {
+            let ty1 = if ty1.get_size() < 4 {
+                Type::new_int()
+            } else {
+                ty1.clone()
+            };
+            let ty2 = if ty2.get_size() < 4 {
+                Type::new_int()
+            } else {
+                ty2.clone()
+            };
+            if ty1.get_size() > ty2.get_size() {
+                return ty1;
+            } else if ty1.get_size() < ty2.get_size() {
+                return ty2;
+            } else {
+                if ty2.is_unsigned() {
+                    return ty2;
+                } else {
+                    return ty1;
+                }
+            }
+        }
     }
 }
 

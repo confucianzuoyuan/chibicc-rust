@@ -83,6 +83,7 @@ pub enum Tok {
     KeywordAlignof,
     KeywordAlignas,
     KeywordSigned,
+    KeywordUnsigned,
 
     EndOfFile,
 }
@@ -189,6 +190,7 @@ impl Display for Tok {
                 Tok::KeywordAlignof => "_Alignof",
                 Tok::KeywordAlignas => "_Alignas",
                 Tok::KeywordSigned => "signed",
+                Tok::KeywordUnsigned => "unsigned",
                 Tok::EndOfFile => "<eof>",
                 Tok::Str(ref string) => return format!("{:?}", string),
             };

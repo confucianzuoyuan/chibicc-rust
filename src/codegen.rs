@@ -12,14 +12,93 @@ static ARGREG_8: [&str; 6] = ["%dil", "%sil", "%dl", "%cl", "%r8b", "%r9b"];
 
 /// The table for type casts
 static I32_TO_I8: &str = "movsbl %al, %eax";
+static I32_TO_U8: &str = "movzbl %al, %eax";
 static I32_TO_I16: &str = "movswl %ax, %eax";
+static I32_TO_U16: &str = "movzwl %ax, %eax";
 static I32_TO_I64: &str = "movsxd %eax, %rax";
+static U32_TO_I64: &str = "mov %eax, %eax";
 
-static CAST_TABLE: [[Option<&str>; 4]; 4] = [
-    [None, None, None, Some(I32_TO_I64)],            // i8
-    [Some(I32_TO_I8), None, None, Some(I32_TO_I64)], // i16
-    [Some(I32_TO_I8), Some(I32_TO_I16), None, Some(I32_TO_I64)], // i32
-    [Some(I32_TO_I8), Some(I32_TO_I16), None, None], // i64
+static CAST_TABLE: [[Option<&str>; 8]; 8] = [
+    [
+        None,
+        None,
+        None,
+        Some(I32_TO_I64),
+        Some(I32_TO_U8),
+        Some(I32_TO_U16),
+        None,
+        Some(I32_TO_I64),
+    ], // i8
+    [
+        Some(I32_TO_I8),
+        None,
+        None,
+        Some(I32_TO_I64),
+        Some(I32_TO_U8),
+        Some(I32_TO_U16),
+        None,
+        Some(I32_TO_I64),
+    ], // i16
+    [
+        Some(I32_TO_I8),
+        Some(I32_TO_I16),
+        None,
+        Some(I32_TO_I64),
+        Some(I32_TO_U8),
+        Some(I32_TO_U16),
+        None,
+        Some(I32_TO_I64),
+    ], // i32
+    [
+        Some(I32_TO_I8),
+        Some(I32_TO_I16),
+        None,
+        None,
+        Some(I32_TO_U8),
+        Some(I32_TO_U16),
+        None,
+        None,
+    ], // i64
+    [
+        Some(I32_TO_I8),
+        None,
+        None,
+        Some(I32_TO_I64),
+        None,
+        None,
+        None,
+        Some(I32_TO_I64),
+    ], // u8
+    [
+        Some(I32_TO_I8),
+        Some(I32_TO_I16),
+        None,
+        Some(I32_TO_I64),
+        Some(I32_TO_U8),
+        None,
+        None,
+        Some(I32_TO_I64),
+    ], // u16
+    [
+        Some(I32_TO_I8),
+        Some(I32_TO_I16),
+        None,
+        Some(U32_TO_I64),
+        Some(I32_TO_U8),
+        Some(I32_TO_U16),
+        None,
+        Some(U32_TO_I64),
+    ], // u32
+    [
+        Some(I32_TO_I8),
+        Some(I32_TO_I16),
+        None,
+        None,
+        Some(I32_TO_U8),
+        Some(I32_TO_U16),
+        None,
+        None,
+    ], // u64
 ];
 
 #[derive(Debug)]
@@ -28,6 +107,10 @@ pub enum TypeId {
     I16,
     I32,
     I64,
+    U8,
+    U16,
+    U32,
+    U64,
 }
 
 pub fn typeid_to_usize(t: TypeId) -> usize {
@@ -36,6 +119,10 @@ pub fn typeid_to_usize(t: TypeId) -> usize {
         TypeId::I16 => 1,
         TypeId::I32 => 2,
         TypeId::I64 => 3,
+        TypeId::U8 => 4,
+        TypeId::U16 => 5,
+        TypeId::U32 => 6,
+        TypeId::U64 => 7,
     }
 }
 
@@ -44,7 +131,12 @@ pub fn get_type_id(ty: Type) -> TypeId {
         Ty::TyChar => TypeId::I8,
         Ty::TyShort => TypeId::I16,
         Ty::TyInt => TypeId::I32,
-        _ => TypeId::I64,
+        Ty::TyLong => TypeId::I64,
+        Ty::TyUChar => TypeId::U8,
+        Ty::TyUShort => TypeId::U16,
+        Ty::TyUInt => TypeId::U32,
+        Ty::TyULong => TypeId::U64,
+        _ => TypeId::U64,
     }
 }
 
@@ -102,6 +194,12 @@ impl CodeGenerator {
             // a register always contains a valid value. The upper half of a
             // register for char, short and int may contain garbage. When we load
             // a long value to a register, it simply occupies the entire register.
+            _ if ty.is_unsigned() => match ty.get_size() {
+                1 => self.output.push(format!("  movzbl (%rax), %eax")),
+                2 => self.output.push(format!("  movzwl (%rax), %eax")),
+                4 => self.output.push(format!("  movsxd (%rax), %rax")),
+                _ => self.output.push(format!("  mov (%rax), %rax")),
+            },
             _ => match ty.get_size() {
                 1 => self.output.push(format!("  movsbl (%rax), %eax")),
                 2 => self.output.push(format!("  movswl (%rax), %eax")),
@@ -157,8 +255,8 @@ impl CodeGenerator {
                 self.output.push(format!("  movzx %al, %eax"));
             }
             _ => {
-                let t1 = get_type_id(from);
-                let t2 = get_type_id(to);
+                let t1 = get_type_id(from.clone());
+                let t2 = get_type_id(to.clone());
                 let t1 = typeid_to_usize(t1);
                 let t2 = typeid_to_usize(t2);
                 if let Some(_cast) = CAST_TABLE[t1][t2] {
@@ -454,7 +552,9 @@ impl CodeGenerator {
                 match ast.node.ty.ty {
                     Ty::TyBool => self.output.push(format!("  movzx %al, %eax")),
                     Ty::TyChar => self.output.push(format!("  movsbl %al, %eax")),
+                    Ty::TyUChar => self.output.push(format!("  movzbl %al, %eax")),
                     Ty::TyShort => self.output.push(format!("  movswl %ax, %eax")),
+                    Ty::TyUShort => self.output.push(format!("  movzwl %ax, %eax")),
                     _ => (),
                 }
             }
@@ -476,22 +576,46 @@ impl CodeGenerator {
                 self.push();
                 self.gen_expr(left);
                 self.pop("%rdi".to_string());
-                let (ax, di) = match (left.node.ty.clone().ty, right.node.ty.clone().ty) {
-                    (Ty::TyLong | Ty::TyArray { .. } | Ty::TyPtr { .. }, _) => ("%rax", "%rdi"),
-                    (_, Ty::TyLong | Ty::TyArray { .. } | Ty::TyPtr { .. }) => ("%rax", "%rdi"),
-                    _ => ("%eax", "%edi"),
+                let (ax, di, dx) = match (left.node.ty.clone().ty, right.node.ty.clone().ty) {
+                    (Ty::TyLong | Ty::TyULong | Ty::TyArray { .. } | Ty::TyPtr { .. }, _) => {
+                        ("%rax", "%rdi", "%rdx")
+                    }
+                    (_, Ty::TyLong | Ty::TyULong | Ty::TyArray { .. } | Ty::TyPtr { .. }) => {
+                        ("%rax", "%rdi", "%rdx")
+                    }
+                    _ => ("%eax", "%edi", "%edx"),
                 };
                 match op.node {
                     ast::BinaryOperator::Add => self.output.push(format!("  add {}, {}", di, ax)),
                     ast::BinaryOperator::Sub => self.output.push(format!("  sub {}, {}", di, ax)),
                     ast::BinaryOperator::Mul => self.output.push(format!("  imul {}, {}", di, ax)),
                     ast::BinaryOperator::Div => {
-                        if left.node.ty.get_size() == 8 {
-                            self.output.push(format!("  cqo"));
+                        if ast.node.ty.is_unsigned() {
+                            self.output.push(format!("  mov $0, {}", dx));
+                            self.output.push(format!("  div {}", di));
                         } else {
-                            self.output.push(format!("  cdq"));
+                            if left.node.ty.get_size() == 8 {
+                                self.output.push(format!("  cqo"));
+                            } else {
+                                self.output.push(format!("  cdq"));
+                            }
+                            self.output.push(format!("  idiv {}", di));
                         }
-                        self.output.push(format!("  idiv {}", di));
+                    }
+                    ast::BinaryOperator::Mod => {
+                        if ast.node.ty.is_unsigned() {
+                            self.output.push(format!("  mov $0, {}", dx));
+                            self.output.push(format!("  div {}", di));
+                        } else {
+                            if left.node.ty.get_size() == 8 {
+                                self.output.push(format!("  cqo"));
+                            } else {
+                                self.output.push(format!("  cdq"));
+                            }
+                            self.output.push(format!("  idiv {}", di));
+                        }
+
+                        self.output.push(format!("  mov %rdx, %rax"));
                     }
                     ast::BinaryOperator::Eq => {
                         self.output.push(format!("  cmp {}, {}", di, ax));
@@ -505,33 +629,39 @@ impl CodeGenerator {
                     }
                     ast::BinaryOperator::Lt => {
                         self.output.push(format!("  cmp {}, {}", di, ax));
-                        self.output.push(format!("  setl %al"));
+                        if left.node.ty.is_unsigned() {
+                            self.output.push(format!("  setb %al"));
+                        } else {
+                            self.output.push(format!("  setl %al"));
+                        }
                         self.output.push(format!("  movzb %al, %rax"));
                     }
                     ast::BinaryOperator::Le => {
                         self.output.push(format!("  cmp {}, {}", di, ax));
-                        self.output.push(format!("  setle %al"));
+                        if left.node.ty.is_unsigned() {
+                            self.output.push(format!("  setbe %al"));
+                        } else {
+                            self.output.push(format!("  setle %al"));
+                        }
                         self.output.push(format!("  movzb %al, %rax"));
                     }
                     ast::BinaryOperator::Gt => {
                         self.output.push(format!("  cmp {}, {}", di, ax));
-                        self.output.push(format!("  setg %al"));
+                        if left.node.ty.is_unsigned() {
+                            self.output.push(format!("  setb %al"));
+                        } else {
+                            self.output.push(format!("  setg %al"));
+                        }
                         self.output.push(format!("  movzb %al, %rax"));
                     }
                     ast::BinaryOperator::Ge => {
                         self.output.push(format!("  cmp {}, {}", di, ax));
-                        self.output.push(format!("  setge %al"));
-                        self.output.push(format!("  movzb %al, %rax"));
-                    }
-                    ast::BinaryOperator::Mod => {
-                        if left.node.ty.get_size() == 8 {
-                            self.output.push(format!("  cqo"));
+                        if left.node.ty.is_unsigned() {
+                            self.output.push(format!("  setbe %al"));
                         } else {
-                            self.output.push(format!("  cdq"));
+                            self.output.push(format!("  setge %al"));
                         }
-                        self.output.push(format!("  idiv {}", di));
-
-                        self.output.push(format!("  mov %rdx, %rax"));
+                        self.output.push(format!("  movzb %al, %rax"));
                     }
                     ast::BinaryOperator::BitAnd => self.output.push(format!("  and %rdi, %rax")),
                     ast::BinaryOperator::BitOr => self.output.push(format!("  or %rdi, %rax")),
@@ -569,7 +699,11 @@ impl CodeGenerator {
                     }
                     ast::BinaryOperator::SHR => {
                         self.output.push(format!("  mov %rdi, %rcx"));
-                        self.output.push(format!("  sar %cl, {}", ax));
+                        if left.node.ty.is_unsigned() {
+                            self.output.push(format!("  shr %cl, {}", ax));
+                        } else {
+                            self.output.push(format!("  sar %cl, {}", ax));
+                        }
                     }
                 }
             }
