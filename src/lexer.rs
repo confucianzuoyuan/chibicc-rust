@@ -297,6 +297,7 @@ impl<R: Read> Lexer<R> {
             "extern" => Tok::KeywordExtern,
             "_Alignof" => Tok::KeywordAlignof,
             "_Alignas" => Tok::KeywordAlignas,
+            "signed" => Tok::KeywordSigned,
             _ => Tok::Ident(ident),
         };
         self.make_token(token, len)

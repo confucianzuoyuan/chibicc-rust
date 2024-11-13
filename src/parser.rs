@@ -1230,6 +1230,7 @@ impl<'a> Parser<'a> {
 
     /// declspec = ("void" | "_Bool" | "char" | "short" | "int" | "long"
     ///          | "typedef" | "static" | "extern"
+    ///          | "signed"
     ///          | struct-decl | union-decl | typedef-name
     ///          | enum-specifier)+
     ///
@@ -1257,6 +1258,7 @@ impl<'a> Parser<'a> {
             INT = 1 << 8,
             LONG = 1 << 10,
             OTHER = 1 << 12,
+            SIGNED = 1 << 13,
         }
 
         let mut counter = 0;
@@ -1388,6 +1390,10 @@ impl<'a> Parser<'a> {
                     eat!(self, KeywordLong);
                     counter += Counter::LONG as i32;
                 }
+                Tok::KeywordSigned => {
+                    eat!(self, KeywordSigned);
+                    counter |= Counter::SIGNED as i32;
+                }
                 _ => unreachable!(),
             }
 
@@ -1397,11 +1403,23 @@ impl<'a> Parser<'a> {
                 ty = Type::new_bool();
             } else if counter == Counter::CHAR as i32 {
                 ty = Type::new_char();
+            } else if counter == Counter::SIGNED as i32 + Counter::CHAR as i32 {
+                ty = Type::new_char();
             } else if counter == Counter::SHORT as i32 {
                 ty = Type::new_short();
             } else if counter == Counter::SHORT as i32 + Counter::INT as i32 {
                 ty = Type::new_short();
+            } else if counter == Counter::SIGNED as i32 + Counter::SHORT as i32 {
+                ty = Type::new_short();
+            } else if counter
+                == Counter::SIGNED as i32 + Counter::SHORT as i32 + Counter::INT as i32
+            {
+                ty = Type::new_short();
             } else if counter == Counter::INT as i32 {
+                ty = Type::new_int();
+            } else if counter == Counter::SIGNED as i32 {
+                ty = Type::new_int();
+            } else if counter == Counter::SIGNED as i32 + Counter::INT as i32 {
                 ty = Type::new_int();
             } else if counter == Counter::LONG as i32 + Counter::LONG as i32 + Counter::INT as i32 {
                 ty = Type::new_long();
@@ -1410,6 +1428,22 @@ impl<'a> Parser<'a> {
             } else if counter == Counter::LONG as i32 + Counter::LONG as i32 {
                 ty = Type::new_long();
             } else if counter == Counter::LONG as i32 {
+                ty = Type::new_long();
+            } else if counter == Counter::SIGNED as i32 + Counter::LONG as i32 {
+                ty = Type::new_long();
+            } else if counter == Counter::SIGNED as i32 + Counter::LONG as i32 + Counter::INT as i32
+            {
+                ty = Type::new_long();
+            } else if counter
+                == Counter::SIGNED as i32 + Counter::LONG as i32 + Counter::LONG as i32
+            {
+                ty = Type::new_long();
+            } else if counter
+                == Counter::SIGNED as i32
+                    + Counter::LONG as i32
+                    + Counter::LONG as i32
+                    + Counter::INT as i32
+            {
                 ty = Type::new_long();
             } else {
                 panic!("invalid type.");
@@ -1545,6 +1579,7 @@ impl<'a> Parser<'a> {
             | Tok::KeywordStatic
             | Tok::KeywordExtern
             | Tok::KeywordAlignas
+            | Tok::KeywordSigned
             | Tok::KeywordVoid => Ok(true),
             Tok::Ident(name) => {
                 let symbol = self.symbols.symbol(&name);
