@@ -1232,7 +1232,9 @@ impl<'a> Parser<'a> {
     ///          | "typedef" | "static" | "extern"
     ///          | "signed"
     ///          | struct-decl | union-decl | typedef-name
-    ///          | enum-specifier)+
+    ///          | enum-specifier
+    ///          | "const" | "volatile" | "auto" | "register" | "restrict"
+    ///          | "__restrict" | "__restrict__" | "_Noreturn")+
     ///
     /// The order of typenames in a type-specifier doesn't matter. For
     /// example, `int long static` means the same as `static long int`.
@@ -1274,6 +1276,17 @@ impl<'a> Parser<'a> {
                 break;
             }
             match self.peek()?.token.clone() {
+                Tok::KeywordConst
+                | Tok::KeywordVolatile
+                | Tok::KeywordAuto
+                | Tok::KeywordRegister
+                | Tok::KeywordRestrict
+                | Tok::KeywordRestrict1
+                | Tok::KeywordRestrict2
+                | Tok::KeywordNoreturn => {
+                    self.token()?;
+                    continue;
+                }
                 Tok::KeywordTypedef => {
                     eat!(self, KeywordTypedef);
                     if attr.is_some() {
@@ -1554,14 +1567,32 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// declarator = "*"* ("(" ident ")" | "(" declarator ")" | ident) type-suffix
-    fn declarator(&mut self, ty: Type) -> Result<Type> {
+    /// pointers = ("*" ("const" | "volatile" | "restrict")*)*
+    fn pointers(&mut self, ty: Type) -> Result<Type> {
         let mut ty = ty.clone();
-
         while self.peek()?.token == Star {
             eat!(self, Star);
-            ty = sema::pointer_to(ty);
+            ty = pointer_to(ty);
+            loop {
+                match self.peek()?.token {
+                    Tok::KeywordConst
+                    | Tok::KeywordVolatile
+                    | Tok::KeywordRestrict
+                    | Tok::KeywordRestrict1
+                    | Tok::KeywordRestrict2 => {
+                        self.token()?;
+                    }
+                    _ => break,
+                }
+            }
         }
+
+        Ok(ty)
+    }
+
+    /// declarator = pointers ("(" ident ")" | "(" declarator ")" | ident) type-suffix
+    fn declarator(&mut self, ty: Type) -> Result<Type> {
+        let mut ty = self.pointers(ty)?;
 
         if self.peek()?.token == LeftParen
             && self.peek_next_one()?.token.is_ident()
@@ -1615,6 +1646,14 @@ impl<'a> Parser<'a> {
             | Tok::KeywordAlignas
             | Tok::KeywordSigned
             | Tok::KeywordUnsigned
+            | Tok::KeywordConst
+            | Tok::KeywordVolatile
+            | Tok::KeywordAuto
+            | Tok::KeywordRegister
+            | Tok::KeywordRestrict
+            | Tok::KeywordRestrict1
+            | Tok::KeywordRestrict2
+            | Tok::KeywordNoreturn
             | Tok::KeywordVoid => Ok(true),
             Tok::Ident(name) => {
                 let symbol = self.symbols.symbol(&name);
@@ -2512,17 +2551,9 @@ impl<'a> Parser<'a> {
         Ok(node)
     }
 
-    /// abstract-declarator = "*"* ("(" abstract-declarator ")")? type-suffix
+    /// abstract-declarator = pointers ("(" abstract-declarator ")")? type-suffix
     fn abstract_declarator(&mut self, mut ty: Type) -> Result<Type> {
-        loop {
-            match self.peek()?.token {
-                Tok::Star => {
-                    eat!(self, Star);
-                    ty = sema::pointer_to(ty);
-                }
-                _ => break,
-            }
-        }
+        ty = self.pointers(ty)?;
 
         match self.peek()?.token {
             Tok::LeftParen => {

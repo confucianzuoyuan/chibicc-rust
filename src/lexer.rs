@@ -405,6 +405,14 @@ impl<R: Read> Lexer<R> {
             "_Alignas" => Tok::KeywordAlignas,
             "signed" => Tok::KeywordSigned,
             "unsigned" => Tok::KeywordUnsigned,
+            "const" => Tok::KeywordConst,
+            "volatile" => Tok::KeywordVolatile,
+            "auto" => Tok::KeywordAuto,
+            "register" => Tok::KeywordRegister,
+            "restrict" => Tok::KeywordRestrict,
+            "__restrict" => Tok::KeywordRestrict1,
+            "__restrict__" => Tok::KeywordRestrict2,
+            "_Noreturn" => Tok::KeywordNoreturn,
             _ => Tok::Ident(ident),
         };
         self.make_token(token, len)
