@@ -659,7 +659,7 @@ impl CodeGenerator {
                     ast::BinaryOperator::Gt => {
                         self.output.push(format!("  cmp {}, {}", di, ax));
                         if left.node.ty.is_unsigned() {
-                            self.output.push(format!("  setb %al"));
+                            self.output.push(format!("  seta %al"));
                         } else {
                             self.output.push(format!("  setg %al"));
                         }

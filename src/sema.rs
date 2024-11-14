@@ -329,7 +329,7 @@ impl Type {
 
     pub fn is_unsigned(&self) -> bool {
         match self.ty {
-            Ty::TyUChar | Ty::TyUShort | Ty::TyUInt | Ty::TyULong => true,
+            Ty::TyUChar | Ty::TyUShort | Ty::TyUInt | Ty::TyULong | Ty::TyPtr { .. } => true,
             _ => false,
         }
     }

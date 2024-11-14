@@ -1,3 +1,3 @@
 int main() {
-    return _Alignof(char) << 31 >> 31;
+    return (void *)0xffffffffffffffff > (void *)0;
 }
