@@ -1,8 +1,3 @@
-use std::{
-    io::{Bytes, Read},
-    iter::Peekable,
-};
-
 use crate::{
     error::{num_text_size, Error},
     position::Pos,
@@ -12,8 +7,8 @@ use crate::{
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub struct Lexer<R: Read> {
-    bytes_iter: Peekable<Bytes<R>>,
+pub struct Lexer<'a> {
+    bytes_iter: &'a [u8],
     pos: Pos,
     saved_pos: Pos,
 }
@@ -39,23 +34,22 @@ fn is_ascii_octaldigit(c: char) -> bool {
     }
 }
 
-impl<R: Read> Lexer<R> {
-    pub fn new(reader: R, filename: Symbol) -> Self {
+impl<'a> Lexer<'a> {
+    pub fn new(reader: &'a [u8], filename: Symbol) -> Self {
         Lexer {
-            bytes_iter: reader.bytes().peekable(),
+            bytes_iter: reader,
             pos: Pos::new(1, 1, 0, filename, 0),
             saved_pos: Pos::new(1, 1, 0, filename, 0),
         }
     }
 
     fn advance(&mut self) -> Result<()> {
-        match self.bytes_iter.next() {
-            Some(Ok(b'\n')) => {
+        match self.bytes_iter.get(self.pos.byte as usize) {
+            Some(b'\n') => {
                 self.pos.line += 1;
                 self.pos.column = 1;
                 self.pos.byte += 1;
             }
-            Some(Err(error)) => return Err(error.into()),
             None => return Err(Error::Eof),
             _ => {
                 self.pos.column += 1;
@@ -74,13 +68,13 @@ impl<R: Read> Lexer<R> {
     }
 
     fn current_char(&mut self) -> Result<char> {
-        if let Some(&Ok(byte)) = self.bytes_iter.peek() {
+        if let Some(&byte) = self.bytes_iter.get(self.pos.byte as usize) {
             return Ok(byte as char);
         }
 
-        match self.bytes_iter.next() {
-            Some(Ok(_)) => unreachable!(),
-            Some(Err(error)) => Err(error.into()),
+        self.pos.byte += 1;
+        match self.bytes_iter.get(self.pos.byte as usize) {
+            Some(_) => unreachable!(),
             None => Err(Error::Eof),
         }
     }
@@ -633,7 +627,7 @@ impl<R: Read> Lexer<R> {
     }
 
     pub fn token(&mut self) -> Result<Token> {
-        if let Some(&Ok(ch)) = self.bytes_iter.peek() {
+        if let Some(&ch) = self.bytes_iter.get(self.pos.byte as usize) {
             return match ch {
                 b' ' | b'\n' | b'\t' => {
                     self.advance()?;
@@ -678,9 +672,10 @@ impl<R: Read> Lexer<R> {
                 }
             };
         }
-        match self.bytes_iter.next() {
-            Some(Ok(_)) => unreachable!(),
-            Some(Err(error)) => Err(error.into()),
+
+        self.pos.byte += 1;
+        match self.bytes_iter.get(self.pos.byte as usize) {
+            Some(_) => unreachable!(),
             None => {
                 let mut pos = self.pos;
                 pos.length = 1;
@@ -695,8 +690,8 @@ impl<R: Read> Lexer<R> {
     fn two_char_token(&mut self, tokens: Vec<(char, Tok)>, default: Tok) -> Result<Token> {
         self.save_start();
         self.advance()?;
-        let token = match self.bytes_iter.peek() {
-            Some(&Ok(byte)) => {
+        let token = match self.bytes_iter.get(self.pos.byte as usize) {
+            Some(&byte) => {
                 let mut token = None;
                 let next_char = byte as char;
                 for (ch, tok) in tokens {

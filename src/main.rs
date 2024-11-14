@@ -1,6 +1,6 @@
 use std::{
     fs::{self, File},
-    io::{self, BufRead, BufReader, Write},
+    io::{self, BufRead, Write},
     path::Path,
     rc::Rc,
 };
@@ -77,7 +77,7 @@ fn drive(strings: Rc<Strings>, symbols: &mut Symbols<()>) -> Result<(), Error> {
             source_code.push('\n');
             source_code.push('\0');
         }
-        let file = BufReader::new(source_code.as_bytes());
+        let file = source_code.as_bytes();
         let file_symbol = symbols.symbol(filename);
         let mut lexer = Lexer::new(file, file_symbol);
         let tokens = lexer.lex()?;
