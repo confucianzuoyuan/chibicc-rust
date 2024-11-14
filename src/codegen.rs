@@ -463,7 +463,18 @@ impl CodeGenerator {
         self.output.push(format!("  .loc 1 {}", ast.pos.line));
         match &ast.node.node {
             ast::Expr::Null => (),
-            ast::Expr::Number { value, .. } => self.output.push(format!("  mov ${}, %rax", value)),
+            ast::Expr::ConstInt { value, .. } => {
+                self.output.push(format!("  mov ${}, %rax", value))
+            }
+            ast::Expr::ConstUInt { value, .. } => {
+                self.output.push(format!("  mov ${}, %rax", value))
+            }
+            ast::Expr::ConstLong { value, .. } => {
+                self.output.push(format!("  mov ${}, %rax", value))
+            }
+            ast::Expr::ConstULong { value, .. } => {
+                self.output.push(format!("  mov ${}, %rax", value))
+            }
             ast::Expr::Unary { expr, op } => match op.node {
                 ast::UnaryOperator::Neg => {
                     self.gen_expr(expr);

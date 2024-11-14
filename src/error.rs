@@ -137,7 +137,7 @@ fn highlight_line(pos: Pos, symbols: &Symbols<()>, terminal: &Terminal) -> io::R
         .map(|pos| pos + current_pos)
         .unwrap_or_else(|| buffer.len());
     let line = &buffer[start_of_line..end_of_line];
-    let num_spaces = num_text_size(pos.line as i64);
+    let num_spaces = num_text_size(pos.line as u64);
     let spaces = " ".repeat(num_spaces);
     eprintln!("{}{}{} |", terminal.bold(), terminal.blue(), spaces);
     eprintln!(
@@ -163,7 +163,7 @@ fn highlight_line(pos: Pos, symbols: &Symbols<()>, terminal: &Terminal) -> io::R
     Ok(())
 }
 
-pub fn num_text_size(num: i64) -> usize {
+pub fn num_text_size(num: u64) -> usize {
     if num == 0 {
         return 1;
     }

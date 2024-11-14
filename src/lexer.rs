@@ -88,26 +88,30 @@ impl<R: Read> Lexer<R> {
     fn number(&mut self) -> Result<Token> {
         let buffer;
         let num;
+        let mut base = 10;
         match self.current_char()? {
             '0' => {
                 self.advance()?;
                 match self.current_char()? {
                     'x' | 'X' => {
+                        base = 16;
                         self.advance()?;
                         buffer = self.take_while(is_ascii_hexdigit)?;
-                        num = i64::from_str_radix(&buffer, 16).unwrap();
+                        num = u64::from_str_radix(&buffer, 16).unwrap();
                     }
                     'b' | 'B' => {
+                        base = 2;
                         self.advance()?;
                         buffer = self.take_while(is_ascii_binarydigit)?;
-                        num = i64::from_str_radix(&buffer, 2).unwrap();
+                        num = u64::from_str_radix(&buffer, 2).unwrap();
                     }
                     '0'..='7' => {
+                        base = 8;
                         buffer = self.take_while(is_ascii_octaldigit)?;
-                        num = i64::from_str_radix(&buffer, 8).unwrap();
+                        num = u64::from_str_radix(&buffer, 8).unwrap();
                     }
                     _ => {
-                        num = 0 as i64;
+                        num = 0 as u64;
                     }
                 }
             }
@@ -152,6 +156,7 @@ impl<R: Read> Lexer<R> {
                                     is_long = true;
                                     is_ulong = true;
                                 }
+                                ('L', 'L') | ('l', 'l') => is_long = true,
                                 _ => (),
                             },
                         }
@@ -166,7 +171,59 @@ impl<R: Read> Lexer<R> {
             _ => (),
         }
 
-        self.make_token(Tok::ConstLong(num), num_text_size(num))
+        // Infer a type
+        match base {
+            10 => match (is_long, is_ulong) {
+                (true, true) => return self.make_token(Tok::ConstULong(num), num_text_size(num)),
+                (true, false) => {
+                    return self.make_token(Tok::ConstLong(num as i64), num_text_size(num))
+                }
+                (false, true) => {
+                    if (num >> 32) > 0 {
+                        return self.make_token(Tok::ConstULong(num as u64), num_text_size(num));
+                    } else {
+                        return self.make_token(Tok::ConstUInt(num as u32), num_text_size(num));
+                    }
+                }
+                _ => {
+                    if (num >> 31) > 0 {
+                        return self.make_token(Tok::ConstLong(num as i64), num_text_size(num));
+                    } else {
+                        return self.make_token(Tok::ConstInt(num as i32), num_text_size(num));
+                    }
+                }
+            },
+            _ => match (is_long, is_ulong) {
+                (true, true) => {
+                    return self.make_token(Tok::ConstULong(num as u64), num_text_size(num))
+                }
+                (true, _) => {
+                    if num >> 63 > 0 {
+                        return self.make_token(Tok::ConstULong(num as u64), num_text_size(num));
+                    } else {
+                        return self.make_token(Tok::ConstLong(num as i64), num_text_size(num));
+                    }
+                }
+                (_, true) => {
+                    if (num >> 32) > 0 {
+                        return self.make_token(Tok::ConstULong(num as u64), num_text_size(num));
+                    } else {
+                        return self.make_token(Tok::ConstUInt(num as u32), num_text_size(num));
+                    }
+                }
+                _ => {
+                    if (num >> 63) > 0 {
+                        return self.make_token(Tok::ConstULong(num as u64), num_text_size(num));
+                    } else if num >> 32 > 0 {
+                        return self.make_token(Tok::ConstLong(num as i64), num_text_size(num));
+                    } else if num >> 31 > 0 {
+                        return self.make_token(Tok::ConstUInt(num as u32), num_text_size(num));
+                    } else {
+                        return self.make_token(Tok::ConstInt(num as i32), num_text_size(num));
+                    }
+                }
+            },
+        }
     }
 
     fn simple_token(&mut self, token: Tok) -> Result<Token> {

@@ -234,7 +234,7 @@ impl<'a> Parser<'a> {
 
         for i in 0..len {
             let num = s.as_bytes().get(i).unwrap();
-            init.get_child(i as i32).expr = Some(ExprWithPos::new_number(*num as i64, pos));
+            init.get_child(i as i32).expr = Some(ExprWithPos::new_long(*num as i64, pos));
         }
 
         Ok(())
@@ -452,7 +452,7 @@ impl<'a> Parser<'a> {
             return Ok(node);
         } else {
             let lhs = self.init_desg_expr(desg.next(), tok.clone())?;
-            let rhs = ExprWithPos::new_number(desg.idx, tok.pos);
+            let rhs = ExprWithPos::new_long(desg.idx, tok.pos);
             return Ok(ExprWithPos::new_deref(
                 self.new_add(lhs, rhs, tok.clone().pos)?,
                 tok.clone().pos,
@@ -1931,6 +1931,7 @@ impl<'a> Parser<'a> {
     /// shift = add ("<<" add | ">>" add)*
     fn shift(&mut self) -> Result<ExprWithPos> {
         let mut node = self.add()?;
+        add_type(&mut node);
 
         loop {
             match self.peek()?.token {
@@ -2155,10 +2156,7 @@ impl<'a> Parser<'a> {
             PlusPlus => {
                 let pos = eat!(self, PlusPlus);
                 let i = self.unary()?;
-                let one = WithPos::new(
-                    WithType::new(Expr::Number { value: 1 }, i.node.ty.clone()),
-                    pos,
-                );
+                let one = ExprWithPos::new_long(1, pos);
                 let binary = self.new_add(i, one, pos)?;
                 self.to_assign(binary)
             }
@@ -2166,10 +2164,7 @@ impl<'a> Parser<'a> {
             MinusMinus => {
                 let pos = eat!(self, MinusMinus);
                 let i = self.unary()?;
-                let one = WithPos::new(
-                    WithType::new(Expr::Number { value: 1 }, i.node.ty.clone()),
-                    pos,
-                );
+                let one = ExprWithPos::new_long(1, pos);
                 let binary = self.new_sub(i, one, pos)?;
                 self.to_assign(binary)
             }
@@ -2222,14 +2217,14 @@ impl<'a> Parser<'a> {
             // ptr - num
             (Ty::TyPtr { base, .. } | Ty::TyArray { base, .. }, Ty::TyInt | Ty::TyLong) => {
                 // num * 8
-                let num = ExprWithPos::new_number(base.get_size() as i64, pos);
+                let num = ExprWithPos::new_long(base.get_size() as i64, pos);
                 rhs = ExprWithPos::new_binary(BinaryOperator::Mul, rhs, num, pos);
                 add_type(&mut rhs);
                 lhs = ExprWithPos::new_binary(BinaryOperator::Sub, lhs, rhs, pos);
             }
             // ptr - ptr, which returns how many elements are between the two.
             (Ty::TyPtr { base, .. }, Ty::TyPtr { .. }) => {
-                let num = ExprWithPos::new_number(base.get_size() as i64, pos);
+                let num = ExprWithPos::new_long(base.get_size() as i64, pos);
                 lhs = ExprWithPos::new_binary(BinaryOperator::Sub, lhs, rhs, pos);
                 lhs = ExprWithPos::new_binary(BinaryOperator::Div, lhs, num, pos);
             }
@@ -2256,7 +2251,7 @@ impl<'a> Parser<'a> {
             // ptr + num
             (Ty::TyPtr { base, .. } | Ty::TyArray { base, .. }, Ty::TyInt | Ty::TyLong) => {
                 // num * 8
-                let num = ExprWithPos::new_number(base.get_size() as i64, pos);
+                let num = ExprWithPos::new_long(base.get_size() as i64, pos);
                 rhs = ExprWithPos::new_binary(ast::BinaryOperator::Mul, rhs, num, pos);
                 lhs = ExprWithPos::new_binary_with_type(
                     ast::BinaryOperator::Add,
@@ -2269,7 +2264,7 @@ impl<'a> Parser<'a> {
             // num + ptr
             (Ty::TyInt | Ty::TyLong, Ty::TyPtr { base, .. } | Ty::TyArray { base, .. }) => {
                 // num * 8
-                let num = ExprWithPos::new_number(base.get_size() as i64, pos);
+                let num = ExprWithPos::new_long(base.get_size() as i64, pos);
                 lhs = ExprWithPos::new_binary(ast::BinaryOperator::Mul, lhs, num, pos);
                 lhs = ExprWithPos::new_binary_with_type(
                     ast::BinaryOperator::Add,
@@ -2353,8 +2348,8 @@ impl<'a> Parser<'a> {
 
         let pos = self.peek()?.pos;
 
-        let positive_one = ExprWithPos::new_number(addend as i64, pos);
-        let negative_one = ExprWithPos::new_number(-addend as i64, pos);
+        let positive_one = ExprWithPos::new_long(addend as i64, pos);
+        let negative_one = ExprWithPos::new_long(-addend as i64, pos);
 
         // A += 1
         // A + 1
@@ -2583,15 +2578,25 @@ impl<'a> Parser<'a> {
             ConstLong(_) => {
                 let value;
                 let pos = eat!(self, ConstLong, value);
-                let mut node = ExprWithPos::new_number(value, pos);
-                add_type(&mut node);
+                let node = ExprWithPos::new_long(value, pos);
                 Ok(node)
             }
             ConstInt(_) => {
                 let value;
                 let pos = eat!(self, ConstInt, value);
-                let mut node = ExprWithPos::new_number(value as i64, pos);
-                add_type(&mut node);
+                let node = ExprWithPos::new_int(value, pos);
+                Ok(node)
+            }
+            ConstULong(_) => {
+                let value;
+                let pos = eat!(self, ConstULong, value);
+                let node = ExprWithPos::new_ulong(value, pos);
+                Ok(node)
+            }
+            ConstUInt(_) => {
+                let value;
+                let pos = eat!(self, ConstUInt, value);
+                let node = ExprWithPos::new_uint(value, pos);
                 Ok(node)
             }
             Tok::KeywordSizeof => {
@@ -2610,17 +2615,17 @@ impl<'a> Parser<'a> {
                                     .struct_union_tag_env
                                     .look(self.symbols.symbol(&type_name))
                                 {
-                                    return Ok(ExprWithPos::new_number(ty.get_size() as i64, pos));
+                                    return Ok(ExprWithPos::new_long(ty.get_size() as i64, pos));
                                 }
                             }
 
-                            Ok(ExprWithPos::new_number(ty.get_size() as i64, pos))
+                            Ok(ExprWithPos::new_long(ty.get_size() as i64, pos))
                         }
                         // sizeof(x)
                         else {
                             let mut node = self.unary()?;
                             add_type(&mut node);
-                            node = ExprWithPos::new_number(node.node.ty.get_size() as i64, pos);
+                            node = ExprWithPos::new_long(node.node.ty.get_size() as i64, pos);
                             Ok(node)
                         }
                     }
@@ -2628,7 +2633,7 @@ impl<'a> Parser<'a> {
                     _ => {
                         let mut node = self.unary()?;
                         add_type(&mut node);
-                        node = ExprWithPos::new_number(node.node.ty.get_size() as i64, pos);
+                        node = ExprWithPos::new_long(node.node.ty.get_size() as i64, pos);
                         Ok(node)
                     }
                 }
@@ -2646,10 +2651,7 @@ impl<'a> Parser<'a> {
                     match _ty.ty {
                         Ty::TyEnum => {
                             if let Some(InitData::IntInitData(i)) = var.borrow_mut().init_data {
-                                return Ok(WithPos::new(
-                                    WithType::new(Expr::Number { value: i as i64 }, _ty),
-                                    pos,
-                                ));
+                                return Ok(ExprWithPos::new_long(i as i64, pos));
                             } else {
                                 return Ok(WithPos::new(
                                     WithType::new(Expr::Variable { obj: var.clone() }, _ty),
@@ -2696,11 +2698,11 @@ impl<'a> Parser<'a> {
                     let pos = self.peek()?.pos;
                     let ty = self.typename()?;
                     eat!(self, RightParen);
-                    return Ok(ExprWithPos::new_number(ty.get_align() as i64, pos));
+                    return Ok(ExprWithPos::new_long(ty.get_align() as i64, pos));
                 } else {
                     let mut node = self.unary()?;
                     add_type(&mut node);
-                    return Ok(ExprWithPos::new_number(
+                    return Ok(ExprWithPos::new_long(
                         node.node.ty.get_align() as i64,
                         node.pos,
                     ));
@@ -3145,7 +3147,10 @@ impl<'a> Parser<'a> {
                 *label = Some(obj.borrow().name.clone());
                 return Ok(0);
             }
-            Expr::Number { value } => Ok(value),
+            Expr::ConstInt { value } => Ok(value as i64),
+            Expr::ConstUInt { value } => Ok(value as i64),
+            Expr::ConstLong { value } => Ok(value as i64),
+            Expr::ConstULong { value } => Ok(value as i64),
             _ => panic!("not a compile-time constant. {:?}", node.node.clone()),
         }
     }

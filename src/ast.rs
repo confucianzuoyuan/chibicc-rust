@@ -17,8 +17,17 @@ pub enum Expr {
         op: UnaryOperatorWithPos,
         expr: Box<ExprWithPos>,
     },
-    Number {
+    ConstInt {
+        value: i32,
+    },
+    ConstUInt {
+        value: u32,
+    },
+    ConstLong {
         value: i64,
+    },
+    ConstULong {
+        value: u64,
     },
     Assign {
         l_value: Box<ExprWithPos>,
@@ -124,12 +133,51 @@ impl ExprWithPos {
         )
     }
 
-    pub fn new_number(i: i64, pos: Pos) -> Self {
+    pub fn new_int(i: i32, pos: Pos) -> Self {
         WithPos::new(
             WithType::new(
-                Expr::Number { value: i },
+                Expr::ConstInt { value: i },
+                Type {
+                    ty: Ty::TyInt,
+                    name: None,
+                },
+            ),
+            pos,
+        )
+    }
+
+    pub fn new_uint(i: u32, pos: Pos) -> Self {
+        WithPos::new(
+            WithType::new(
+                Expr::ConstUInt { value: i },
+                Type {
+                    ty: Ty::TyUInt,
+                    name: None,
+                },
+            ),
+            pos,
+        )
+    }
+
+    pub fn new_long(i: i64, pos: Pos) -> Self {
+        WithPos::new(
+            WithType::new(
+                Expr::ConstLong { value: i },
                 Type {
                     ty: Ty::TyLong,
+                    name: None,
+                },
+            ),
+            pos,
+        )
+    }
+
+    pub fn new_ulong(i: u64, pos: Pos) -> Self {
+        WithPos::new(
+            WithType::new(
+                Expr::ConstULong { value: i },
+                Type {
+                    ty: Ty::TyULong,
                     name: None,
                 },
             ),
@@ -280,7 +328,10 @@ impl Display for ExprWithPos {
                     node: WithType { node, .. },
                     ..
                 } => match node {
-                    Expr::Number { value } => value.to_string(),
+                    Expr::ConstInt { value } => value.to_string(),
+                    Expr::ConstUInt { value } => value.to_string(),
+                    Expr::ConstLong { value } => value.to_string(),
+                    Expr::ConstULong { value } => value.to_string(),
                     Expr::Binary { left, op, right } => {
                         return format!("{} {} {}", left, op, right)
                     }

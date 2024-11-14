@@ -537,19 +537,10 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
                 name: None,
             }
         }
-        ast::Expr::Number { value } => {
-            if *value == *value as i32 as i64 {
-                e.node.ty = Type {
-                    ty: Ty::TyInt,
-                    name: None,
-                };
-            } else {
-                e.node.ty = Type {
-                    ty: Ty::TyLong,
-                    name: None,
-                };
-            }
-        }
+        ast::Expr::ConstInt { .. } => e.node.ty = Type::new_int(),
+        ast::Expr::ConstUInt { .. } => e.node.ty = Type::new_uint(),
+        ast::Expr::ConstLong { .. } => e.node.ty = Type::new_long(),
+        ast::Expr::ConstULong { .. } => e.node.ty = Type::new_ulong(),
         ast::Expr::Variable { obj } => e.node.ty = obj.borrow().ty.clone(),
         ast::Expr::Assign {
             l_value,
