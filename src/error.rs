@@ -33,9 +33,6 @@ pub enum Error {
     InvalidInitializer {
         pos: Pos,
     },
-    InvalidPointerDeref {
-        pos: Pos,
-    },
     Eof,
 }
 
@@ -87,11 +84,6 @@ impl Error {
             }
             Error::InvalidInitializer { pos } => {
                 eprintln!("Invalid Initializer {}", terminal.end_bold());
-                pos.show(symbols, terminal);
-                highlight_line(pos, symbols, terminal)?;
-            }
-            Error::InvalidPointerDeref { pos } => {
-                eprintln!("Invalid Pointer Deref {}", terminal.end_bold());
                 pos.show(symbols, terminal);
                 highlight_line(pos, symbols, terminal)?;
             }

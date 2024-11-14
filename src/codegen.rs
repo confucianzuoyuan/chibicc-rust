@@ -281,8 +281,10 @@ impl CodeGenerator {
                     self.output
                         .push(format!("  lea {}(%rbp), %rax", obj.borrow().offset));
                 } else {
-                    self.output
-                        .push(format!("  lea {}(%rip), %rax", obj.borrow().name));
+                    self.output.push(format!(
+                        "  lea {}(%rip), %rax",
+                        obj.borrow().name.clone().unwrap()
+                    ));
                 }
             }
             ast::Expr::Deref { expr, .. } => self.gen_expr(expr),
@@ -308,7 +310,7 @@ impl CodeGenerator {
                 }
                 self.output.push(format!(
                     "  jmp .L.return.{}",
-                    self.current_fn.as_ref().unwrap().name
+                    self.current_fn.as_ref().unwrap().name.clone().unwrap()
                 ));
             }
             ast::Stmt::Block { body } => {
@@ -739,11 +741,15 @@ impl CodeGenerator {
                 continue;
             }
             if global.borrow().is_static {
-                self.output
-                    .push(format!("  .local {}", global.borrow().name));
+                self.output.push(format!(
+                    "  .local {}",
+                    global.borrow().name.clone().unwrap()
+                ));
             } else {
-                self.output
-                    .push(format!("  .globl {}", global.borrow().name));
+                self.output.push(format!(
+                    "  .globl {}",
+                    global.borrow().name.clone().unwrap()
+                ));
             }
 
             self.output
@@ -751,7 +757,8 @@ impl CodeGenerator {
             match &global.borrow().init_data {
                 Some(val) => {
                     self.output.push(format!("  .data"));
-                    self.output.push(format!("{}:", global.borrow().name));
+                    self.output
+                        .push(format!("{}:", global.borrow().name.clone().unwrap()));
                     let rels = &global.borrow().rel;
                     let mut pos = 0;
                     let mut i = 0;
@@ -793,7 +800,8 @@ impl CodeGenerator {
                 }
                 _ => {
                     self.output.push(format!("  .bss"));
-                    self.output.push(format!("{}:", global.borrow().name));
+                    self.output
+                        .push(format!("{}:", global.borrow().name.clone().unwrap()));
                     self.output
                         .push(format!("  .zero {}", global.borrow().ty.get_size()));
                 }
@@ -808,12 +816,14 @@ impl CodeGenerator {
                 continue;
             }
             if f.is_static {
-                self.output.push(format!("  .local {}", f.name));
+                self.output
+                    .push(format!("  .local {}", f.name.clone().unwrap()));
             } else {
-                self.output.push(format!("  .globl {}", f.name));
+                self.output
+                    .push(format!("  .globl {}", f.name.clone().unwrap()));
             }
             self.output.push(format!("  .text"));
-            self.output.push(format!("{}:", f.name));
+            self.output.push(format!("{}:", f.name.clone().unwrap()));
             self.current_fn = Some(f.clone());
 
             // Prologue
@@ -872,7 +882,8 @@ impl CodeGenerator {
             assert!(self.depth == 0);
 
             // Epilogue
-            self.output.push(format!(".L.return.{}:", f.name));
+            self.output
+                .push(format!(".L.return.{}:", f.name.clone().unwrap()));
             self.output.push(format!("  mov %rbp, %rsp"));
             self.output.push(format!("  pop %rbp"));
             self.output.push(format!("  ret"));

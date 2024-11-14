@@ -629,7 +629,7 @@ pub enum InitData {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Obj {
-    pub name: String,
+    pub name: Option<String>,
     pub offset: i32,
     pub ty: Type,
     pub is_local: bool,
@@ -643,7 +643,11 @@ pub struct Obj {
 
 impl Display for Obj {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.name)
+        if let Some(name) = &self.name {
+            write!(f, "{}", name)
+        } else {
+            write!(f, "no name")
+        }
     }
 }
 
@@ -721,7 +725,7 @@ impl VarAttr {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct FunctionDefinition {
-    pub name: String,
+    pub name: Option<String>,
     pub params: Vec<Rc<RefCell<Obj>>>,
     pub body: StmtWithPos,
     pub locals: Vec<Rc<RefCell<Obj>>>,
@@ -736,7 +740,7 @@ pub struct FunctionDefinition {
 impl FunctionDefinition {
     pub fn new(name: String, is_static: bool, ty: Type, pos: Pos) -> Self {
         Self {
-            name,
+            name: Some(name),
             params: vec![],
             body: WithPos::new(Stmt::NullStmt, pos),
             locals: vec![],

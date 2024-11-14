@@ -997,6 +997,9 @@ impl<'a> Parser<'a> {
                     if ty.is_void() {
                         panic!("{:#?} variable declared void.", ty);
                     }
+                    if ty.name.is_none() {
+                        panic!("{:#?} variable name omitted.", ty);
+                    }
                     if let Some(attr) = attr {
                         if attr.is_static() {
                             let unique_name = self.new_unique_name();
@@ -1625,9 +1628,11 @@ impl<'a> Parser<'a> {
             ty = self.type_suffix(ty)?;
             ty.set_name(tok);
             return Ok(ty);
+        } else {
+            ty = self.type_suffix(ty)?;
+            ty.name = None;
+            return Ok(ty);
         }
-
-        panic!("expected a variable name, but got {:?}", self.peek()?)
     }
 
     fn is_typename(&mut self, tok: Tok) -> Result<bool> {
@@ -1750,16 +1755,8 @@ impl<'a> Parser<'a> {
         match self.peek()?.token {
             Tok::Comma => {
                 let pos = eat!(self, Comma);
-                Ok(WithPos::new(
-                    WithType::new(
-                        Expr::CommaExpr {
-                            left: Box::new(node),
-                            right: Box::new(self.expr()?),
-                        },
-                        Type::new_placeholder(),
-                    ),
-                    pos,
-                ))
+                let node = ExprWithPos::new_comma(node, self.expr()?, pos);
+                Ok(node)
             }
             _ => Ok(node),
         }
@@ -2480,7 +2477,7 @@ impl<'a> Parser<'a> {
     fn funcall(&mut self, funname: String) -> Result<ExprWithPos> {
         let mut func_found = None;
         for f in &self.functions {
-            if f.name == funname {
+            if f.name.clone().unwrap() == funname {
                 func_found = Some(f.clone());
                 break;
             }
@@ -2789,6 +2786,9 @@ impl<'a> Parser<'a> {
 
     fn function(&mut self, basety: Type, attr: &Option<VarAttr>) -> Result<()> {
         let ty = self.declarator(basety)?;
+        if ty.name.is_none() {
+            panic!("function name omitted.");
+        }
 
         let is_definition = match self.peek()?.token {
             Tok::Semicolon => {
@@ -2820,6 +2820,9 @@ impl<'a> Parser<'a> {
                 self.current_fn = Some(fndef.clone());
 
                 for p in params {
+                    if p.name.is_none() {
+                        panic!("parameter name omitted.");
+                    }
                     let param_name = p.get_ident().unwrap();
                     self.new_local_variable(param_name, p)?;
                 }
@@ -2871,7 +2874,7 @@ impl<'a> Parser<'a> {
 
     fn new_var(&mut self, name: String, ty: Type) -> Result<Rc<RefCell<Obj>>> {
         let var = Rc::new(RefCell::new(Obj {
-            name: name.clone(),
+            name: Some(name.clone()),
             ty: ty.clone(),
             offset: 0,
             is_local: false,
@@ -2919,6 +2922,9 @@ impl<'a> Parser<'a> {
                 }
                 _ => {
                     let ty = self.declarator(basety.clone())?;
+                    if ty.name.is_none() {
+                        panic!("variable name omitted.");
+                    }
                     let var_name = ty.get_ident().unwrap();
                     if self.peek()?.token.is_ident() {
                         continue;
@@ -2953,6 +2959,9 @@ impl<'a> Parser<'a> {
                 }
                 _ => {
                     let ty = self.declarator(basety.clone())?;
+                    if ty.name.is_none() {
+                        panic!("typedef name omitted.");
+                    }
                     let ident = ty.get_ident().unwrap();
                     self.typedef_env.enter(self.symbols.symbol(&ident), ty);
                 }
@@ -3010,7 +3019,7 @@ impl<'a> Parser<'a> {
             }
 
             let enum_var = Rc::new(RefCell::new(Obj {
-                name: name.clone(),
+                name: Some(name.clone()),
                 offset: 0,
                 is_local: false,
                 is_static: false,
@@ -3203,7 +3212,7 @@ impl<'a> Parser<'a> {
                 if !obj.borrow().ty.is_array() && !obj.borrow().ty.is_func() {
                     panic!()
                 }
-                *label = Some(obj.borrow().name.clone());
+                *label = Some(obj.borrow().name.clone().unwrap());
                 return Ok(0);
             }
             Expr::ConstInt { value } => Ok(value as i64),
@@ -3220,7 +3229,7 @@ impl<'a> Parser<'a> {
                 if obj.borrow().is_local {
                     panic!("{} not a compile-time constant", obj.borrow());
                 }
-                *label = Some(obj.borrow().name.clone());
+                *label = Some(obj.borrow().name.clone().unwrap());
                 return Ok(0);
             }
             Expr::Deref { mut expr } => return self.eval_constexpr_with_label(&mut expr, label),
