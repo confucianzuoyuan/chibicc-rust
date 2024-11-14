@@ -3034,8 +3034,16 @@ impl<'a> Parser<'a> {
         Ok(ty)
     }
 
-    /// array-dimensions = const-expr? "]" type-suffix
+    /// array-dimensions = ("static" | "restrict")* const-expr? "]" type-suffix
     fn array_dimensions(&mut self, mut ty: Type) -> Result<Type> {
+        loop {
+            match self.peek()?.token {
+                Tok::KeywordRestrict | Tok::KeywordStatic => {
+                    self.token()?;
+                }
+                _ => break,
+            }
+        }
         match self.peek()?.token {
             Tok::RightBracket => {
                 eat!(self, RightBracket);
