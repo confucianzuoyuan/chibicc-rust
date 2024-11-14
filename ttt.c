@@ -1,3 +1,3 @@
 int main() {
-    return -1U>>30;
+    return _Alignof(char) << 31 >> 31;
 }

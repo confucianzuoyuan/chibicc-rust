@@ -377,7 +377,15 @@ impl Type {
 
     pub fn is_integer(&self) -> bool {
         match self.ty {
-            Ty::TyBool | Ty::TyChar | Ty::TyEnum | Ty::TyInt | Ty::TyShort | Ty::TyLong => true,
+            Ty::TyBool
+            | Ty::TyChar
+            | Ty::TyEnum
+            | Ty::TyInt
+            | Ty::TyShort
+            | Ty::TyLong
+            | Ty::TyUInt
+            | Ty::TyUShort
+            | Ty::TyULong => true,
             _ => false,
         }
     }

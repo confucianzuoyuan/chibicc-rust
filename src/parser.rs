@@ -1939,11 +1939,13 @@ impl<'a> Parser<'a> {
                     let pos = eat!(self, LesserLesser);
                     let rhs = self.add()?;
                     node = ExprWithPos::new_binary(BinaryOperator::SHL, node, rhs, pos);
+                    add_type(&mut node);
                 }
                 Tok::GreaterGreater => {
                     let pos = eat!(self, GreaterGreater);
                     let rhs = self.add()?;
                     node = ExprWithPos::new_binary(BinaryOperator::SHR, node, rhs, pos);
+                    add_type(&mut node);
                 }
                 _ => break,
             }
@@ -2249,7 +2251,7 @@ impl<'a> Parser<'a> {
 
         match (lhs.node.ty.clone().ty, rhs.node.ty.clone().ty) {
             // ptr + num
-            (Ty::TyPtr { base, .. } | Ty::TyArray { base, .. }, Ty::TyInt | Ty::TyLong) => {
+            (Ty::TyPtr { base, .. } | Ty::TyArray { base, .. }, _) if rhs.node.ty.is_integer() => {
                 // num * 8
                 let num = ExprWithPos::new_long(base.get_size() as i64, pos);
                 rhs = ExprWithPos::new_binary(ast::BinaryOperator::Mul, rhs, num, pos);
@@ -2262,7 +2264,7 @@ impl<'a> Parser<'a> {
                 );
             }
             // num + ptr
-            (Ty::TyInt | Ty::TyLong, Ty::TyPtr { base, .. } | Ty::TyArray { base, .. }) => {
+            (_, Ty::TyPtr { base, .. } | Ty::TyArray { base, .. }) if lhs.node.ty.is_integer() => {
                 // num * 8
                 let num = ExprWithPos::new_long(base.get_size() as i64, pos);
                 lhs = ExprWithPos::new_binary(ast::BinaryOperator::Mul, lhs, num, pos);
@@ -2615,17 +2617,17 @@ impl<'a> Parser<'a> {
                                     .struct_union_tag_env
                                     .look(self.symbols.symbol(&type_name))
                                 {
-                                    return Ok(ExprWithPos::new_long(ty.get_size() as i64, pos));
+                                    return Ok(ExprWithPos::new_ulong(ty.get_size() as u64, pos));
                                 }
                             }
 
-                            Ok(ExprWithPos::new_long(ty.get_size() as i64, pos))
+                            Ok(ExprWithPos::new_ulong(ty.get_size() as u64, pos))
                         }
                         // sizeof(x)
                         else {
                             let mut node = self.unary()?;
                             add_type(&mut node);
-                            node = ExprWithPos::new_long(node.node.ty.get_size() as i64, pos);
+                            node = ExprWithPos::new_ulong(node.node.ty.get_size() as u64, pos);
                             Ok(node)
                         }
                     }
@@ -2633,7 +2635,7 @@ impl<'a> Parser<'a> {
                     _ => {
                         let mut node = self.unary()?;
                         add_type(&mut node);
-                        node = ExprWithPos::new_long(node.node.ty.get_size() as i64, pos);
+                        node = ExprWithPos::new_ulong(node.node.ty.get_size() as u64, pos);
                         Ok(node)
                     }
                 }
@@ -2698,12 +2700,12 @@ impl<'a> Parser<'a> {
                     let pos = self.peek()?.pos;
                     let ty = self.typename()?;
                     eat!(self, RightParen);
-                    return Ok(ExprWithPos::new_long(ty.get_align() as i64, pos));
+                    return Ok(ExprWithPos::new_ulong(ty.get_align() as u64, pos));
                 } else {
                     let mut node = self.unary()?;
                     add_type(&mut node);
-                    return Ok(ExprWithPos::new_long(
-                        node.node.ty.get_align() as i64,
+                    return Ok(ExprWithPos::new_ulong(
+                        node.node.ty.get_align() as u64,
                         node.pos,
                     ));
                 }
