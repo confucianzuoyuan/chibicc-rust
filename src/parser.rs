@@ -3056,9 +3056,19 @@ impl<'a> Parser<'a> {
                     Ok(self.eval_constexpr(&mut left)? * self.eval_constexpr(&mut right)?)
                 }
                 ast::BinaryOperator::Div => {
+                    if node.node.ty.is_unsigned() && node.node.ty.get_size() == 8 {
+                        return Ok(((self.eval_constexpr(&mut left)? as u64)
+                            / (self.eval_constexpr(&mut right)? as u64))
+                            as i64);
+                    }
                     Ok(self.eval_constexpr(&mut left)? / self.eval_constexpr(&mut right)?)
                 }
                 ast::BinaryOperator::Mod => {
+                    if node.node.ty.is_unsigned() && node.node.ty.get_size() == 8 {
+                        return Ok(((self.eval_constexpr(&mut left)? as u64)
+                            % (self.eval_constexpr(&mut right)? as u64))
+                            as i64);
+                    }
                     Ok(self.eval_constexpr(&mut left)? % self.eval_constexpr(&mut right)?)
                 }
                 ast::BinaryOperator::BitAnd => {
@@ -3074,6 +3084,11 @@ impl<'a> Parser<'a> {
                     Ok(self.eval_constexpr(&mut left)? << self.eval_constexpr(&mut right)?)
                 }
                 ast::BinaryOperator::SHR => {
+                    if node.node.ty.is_unsigned() && node.node.ty.get_size() == 8 {
+                        return Ok(((self.eval_constexpr(&mut left)? as u64)
+                            >> (self.eval_constexpr(&mut right)? as u64))
+                            as i64);
+                    }
                     Ok(self.eval_constexpr(&mut left)? >> self.eval_constexpr(&mut right)?)
                 }
                 ast::BinaryOperator::Eq => Ok((self.eval_constexpr(&mut left)?
@@ -3119,9 +3134,12 @@ impl<'a> Parser<'a> {
                 let val = self.eval_constexpr_with_label(&mut expr, label)?;
                 match ty.is_integer() {
                     true => match ty.get_size() {
-                        1 => Ok(val as u8 as i64),
-                        2 => Ok(val as u16 as i64),
-                        4 => Ok(val as u32 as i64),
+                        1 if ty.is_unsigned() => Ok(val as u8 as i64),
+                        1 => Ok(val as i8 as i64),
+                        2 if ty.is_unsigned() => Ok(val as u16 as i64),
+                        2 => Ok(val as i16 as i64),
+                        4 if ty.is_unsigned() => Ok(val as u32 as i64),
+                        4 => Ok(val as i32 as i64),
                         _ => Ok(val),
                     },
                     false => Ok(val),

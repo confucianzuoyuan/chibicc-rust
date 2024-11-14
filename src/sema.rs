@@ -383,6 +383,7 @@ impl Type {
             | Ty::TyInt
             | Ty::TyShort
             | Ty::TyLong
+            | Ty::TyUChar
             | Ty::TyUInt
             | Ty::TyUShort
             | Ty::TyULong => true,

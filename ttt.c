@@ -1,3 +1,3 @@
 int main() {
-    return (void *)0xffffffffffffffff > (void *)0;
+    return ({ char x[(unsigned char)0xffffffff]; sizeof(x); });
 }
