@@ -95,13 +95,43 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    fn read_float(&mut self) -> Result<Token> {
+        let mut buffer = String::new();
+        let start_pos = self.pos.byte;
+        loop {
+            if let Some(b) = self.peek() {
+                match b {
+                    b'0'..=b'9' | b'.' => {
+                        self.advance()?;
+                        buffer.push(b as char)
+                    }
+                    _ => break,
+                }
+            } else {
+                panic!()
+            }
+        }
+
+        let num: f32 = buffer.parse().unwrap();
+
+        self.make_token(Tok::ConstFloat(num), (self.pos.byte - start_pos) as usize)
+    }
+
     fn read_number(&mut self) -> Result<Token> {
         // Try to parse as an integer constant.
+        // 保存位置，准备回溯
+        let old_pos = self.pos.byte;
         let tok = self.read_int_literal()?;
         match self.current_char()? {
-            '.' | 'e' | 'E' | 'f' | 'F' => panic!(),
-            _ => Ok(tok),
+            '.' | 'e' | 'E' | 'f' | 'F' => (),
+            _ => return Ok(tok),
         }
+
+        if self.current_char()? == '.' {
+            self.pos.byte = old_pos;
+            return self.read_float();
+        }
+        panic!()
     }
 
     fn read_int_literal(&mut self) -> Result<Token> {
