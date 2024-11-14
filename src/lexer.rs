@@ -79,7 +79,32 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn number(&mut self) -> Result<Token> {
+    fn peek(&mut self) -> Option<u8> {
+        if let Some(&b) = self.bytes_iter.get(self.pos.byte as usize) {
+            Some(b)
+        } else {
+            None
+        }
+    }
+
+    fn peek_next_one(&mut self) -> Option<u8> {
+        if let Some(&b) = self.bytes_iter.get((self.pos.byte + 1) as usize) {
+            Some(b)
+        } else {
+            None
+        }
+    }
+
+    fn read_number(&mut self) -> Result<Token> {
+        // Try to parse as an integer constant.
+        let tok = self.read_int_literal()?;
+        match self.current_char()? {
+            '.' | 'e' | 'E' | 'f' | 'F' => panic!(),
+            _ => Ok(tok),
+        }
+    }
+
+    fn read_int_literal(&mut self) -> Result<Token> {
         let buffer;
         let num;
         let mut base = 10;
@@ -627,14 +652,24 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn token(&mut self) -> Result<Token> {
-        if let Some(&ch) = self.bytes_iter.get(self.pos.byte as usize) {
+        if let Some(ch) = self.peek() {
             return match ch {
                 b' ' | b'\n' | b'\t' => {
                     self.advance()?;
                     self.token()
                 }
                 b'a'..=b'z' | b'A'..=b'Z' | b'_' => self.identifier(),
-                b'0'..=b'9' => self.number(),
+                b'0'..=b'9' => self.read_number(),
+                b'.' => {
+                    if let Some(b) = self.peek_next_one() {
+                        match b {
+                            b'0'..=b'9' => self.read_number(),
+                            _ => self.dot_or_other(),
+                        }
+                    } else {
+                        panic!()
+                    }
+                }
                 b'+' => self.plus_or_plus_equal_or_plus_plus(),
                 b'-' => self.minus_or_minus_greater_or_minus_equal_or_minus_minus(),
                 b'*' => self.star_or_star_equal(),
@@ -654,7 +689,6 @@ impl<'a> Lexer<'a> {
                 b'&' => self.amp_or_amp_equal_or_amp_amp(),
                 b'|' => self.bar_or_bar_equal_or_bar_bar(),
                 b'^' => self.hat_or_hat_equal(),
-                b'.' => self.dot_or_other(),
                 b'~' => self.simple_token(Tok::Tilde),
                 b'%' => self.percent_or_percent_equal(),
                 b':' => self.simple_token(Tok::Colon),
@@ -671,27 +705,16 @@ impl<'a> Lexer<'a> {
                     })
                 }
             };
-        }
-
-        self.pos.byte += 1;
-        match self.bytes_iter.get(self.pos.byte as usize) {
-            Some(_) => unreachable!(),
-            None => {
-                let mut pos = self.pos;
-                pos.length = 1;
-                Ok(Token {
-                    pos,
-                    token: Tok::EndOfFile,
-                })
-            }
+        } else {
+            panic!()
         }
     }
 
     fn two_char_token(&mut self, tokens: Vec<(char, Tok)>, default: Tok) -> Result<Token> {
         self.save_start();
         self.advance()?;
-        let token = match self.bytes_iter.get(self.pos.byte as usize) {
-            Some(&byte) => {
+        let token = match self.peek() {
+            Some(byte) => {
                 let mut token = None;
                 let next_char = byte as char;
                 for (ch, tok) in tokens {
