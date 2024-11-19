@@ -16,6 +16,8 @@ pub enum Ty {
     TyULong,
     TyUInt,
     TyUChar,
+    TyFloat,
+    TyDouble,
     TyPtr {
         base: Box<Type>,
     },
@@ -53,6 +55,20 @@ impl Type {
     pub fn new_placeholder() -> Self {
         Type {
             ty: Ty::TyPlaceholder,
+            name: None,
+        }
+    }
+
+    pub fn new_float() -> Self {
+        Type {
+            ty: Ty::TyFloat,
+            name: None,
+        }
+    }
+
+    pub fn new_double() -> Self {
+        Type {
+            ty: Ty::TyDouble,
             name: None,
         }
     }
@@ -338,8 +354,8 @@ impl Type {
         match &self.ty {
             Ty::TyBool | Ty::TyChar | Ty::TyVoid | Ty::TyUChar => 1,
             Ty::TyShort | Ty::TyUShort => 2,
-            Ty::TyInt | Ty::TyUInt | Ty::TyEnum => 4,
-            Ty::TyLong | Ty::TyULong | Ty::TyPtr { .. } => 8,
+            Ty::TyInt | Ty::TyUInt | Ty::TyEnum | Ty::TyFloat => 4,
+            Ty::TyLong | Ty::TyULong | Ty::TyDouble | Ty::TyPtr { .. } => 8,
             Ty::TyArray { base, array_len } => base.get_size() * *array_len,
             Ty::TyStruct { type_size, .. } => *type_size,
             Ty::TyUnion { type_size, .. } => *type_size,
@@ -360,8 +376,8 @@ impl Type {
         match &self.ty {
             Ty::TyChar | Ty::TyUChar | Ty::TyBool | Ty::TyVoid => 1,
             Ty::TyShort | Ty::TyUShort => 2,
-            Ty::TyInt | Ty::TyUInt | Ty::TyEnum => 4,
-            Ty::TyLong | Ty::TyULong | Ty::TyPtr { .. } => 8,
+            Ty::TyInt | Ty::TyUInt | Ty::TyEnum | Ty::TyFloat => 4,
+            Ty::TyLong | Ty::TyULong | Ty::TyDouble | Ty::TyPtr { .. } => 8,
             Ty::TyStruct { align, .. } | Ty::TyUnion { align, .. } => *align,
             Ty::TyArray { base, .. } => base.get_align(),
             _ => panic!("type {:?} has no align infomation.", self),
@@ -550,6 +566,8 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
         ast::Expr::ConstUInt { .. } => e.node.ty = Type::new_uint(),
         ast::Expr::ConstLong { .. } => e.node.ty = Type::new_long(),
         ast::Expr::ConstULong { .. } => e.node.ty = Type::new_ulong(),
+        ast::Expr::ConstFloat { .. } => e.node.ty = Type::new_float(),
+        ast::Expr::ConstDouble { .. } => e.node.ty = Type::new_double(),
         ast::Expr::Variable { obj } => e.node.ty = obj.borrow().ty.clone(),
         ast::Expr::Assign {
             l_value,

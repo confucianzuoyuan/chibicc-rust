@@ -56,6 +56,7 @@ pub enum Tok {
     ConstInt(i32),
     ConstUInt(u32),
     ConstFloat(f32),
+    ConstDouble(f64),
     Ident(String),
     Str(String),
 
@@ -177,6 +178,7 @@ impl Display for Tok {
                 Tok::ConstInt(i) => return i.to_string(),
                 Tok::ConstUInt(ui) => return ui.to_string(),
                 Tok::ConstFloat(f) => return f.to_string(),
+                Tok::ConstDouble(d) => return d.to_string(),
                 Tok::Ident(ref ident) => ident,
                 Tok::KeywordReturn => "return",
                 Tok::KeywordIf => "if",

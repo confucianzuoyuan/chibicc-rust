@@ -747,8 +747,8 @@ impl<'a> Parser<'a> {
 
                 let tok = self.peek()?.token.clone();
                 let init = if self.is_typename(tok)? {
-                    let basety = self.declspec(&mut None)?;
-                    self.declaration(basety, &None)?
+                    let mut basety = self.declspec(&mut None)?;
+                    self.declaration(&mut basety, &None)?
                 } else {
                     self.expr_stmt()?
                 };
@@ -980,7 +980,7 @@ impl<'a> Parser<'a> {
     }
 
     /// declaration = declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
-    fn declaration(&mut self, basety: Type, attr: &Option<VarAttr>) -> Result<StmtWithPos> {
+    fn declaration(&mut self, basety: &mut Type, attr: &Option<VarAttr>) -> Result<StmtWithPos> {
         let mut decls = vec![];
 
         loop {
@@ -993,7 +993,7 @@ impl<'a> Parser<'a> {
                     break;
                 }
                 _ => {
-                    let ty = self.declarator(basety.clone())?;
+                    let mut ty = self.declarator(basety)?;
                     if ty.is_void() {
                         panic!("{:#?} variable declared void.", ty);
                     }
@@ -1005,7 +1005,7 @@ impl<'a> Parser<'a> {
                             let unique_name = self.new_unique_name();
                             let var = self.new_global_variable(
                                 unique_name,
-                                ty.clone(),
+                                &mut ty,
                                 Some(InitData::IntInitData(0)),
                             )?;
                             if self.peek()?.token == Equal {
@@ -1019,7 +1019,7 @@ impl<'a> Parser<'a> {
                         }
                     }
                     let ident = ty.get_ident().unwrap();
-                    let var = self.new_local_variable(ident.clone(), ty.clone())?;
+                    let var = self.new_local_variable(ident.clone(), &mut ty)?;
                     if let Some(attr) = attr {
                         if attr.align > 0 {
                             var.borrow_mut().align = attr.align;
@@ -1060,7 +1060,7 @@ impl<'a> Parser<'a> {
                 }
                 _ => {
                     let mut attr = Some(VarAttr::new_placeholder());
-                    let basety = self.declspec(&mut attr)?;
+                    let mut basety = self.declspec(&mut attr)?;
                     loop {
                         match self.peek()?.token {
                             Tok::Semicolon => {
@@ -1071,7 +1071,7 @@ impl<'a> Parser<'a> {
                                 eat!(self, Comma);
                             }
                             _ => {
-                                let member_ty = self.declarator(basety.clone())?;
+                                let member_ty = self.declarator(&mut basety)?;
                                 let member_name = member_ty.get_token().unwrap();
                                 let member_align = if let Some(ref attr) = attr {
                                     if attr.align > 0 {
@@ -1505,13 +1505,13 @@ impl<'a> Parser<'a> {
 
     /// func-params = ("void" | param ("," param)* ("," "...")?)? ")"
     /// param       = declspec declarator
-    fn func_params(&mut self, ty: Type) -> Result<Type> {
+    fn func_params(&mut self, ty: &mut Type) -> Result<Type> {
         let mut params = vec![];
         let mut is_variadic = false;
         if self.peek()?.token == KeywordVoid && self.peek_next_one()?.token == RightParen {
             eat!(self, KeywordVoid);
             eat!(self, RightParen);
-            return Ok(Type::new_func(params, ty, false));
+            return Ok(Type::new_func(params, ty.clone(), false));
         }
         loop {
             match self.peek()?.token {
@@ -1530,7 +1530,7 @@ impl<'a> Parser<'a> {
                         break;
                     }
                     let mut ty2 = self.declspec(&mut None)?;
-                    ty2 = self.declarator(ty2)?;
+                    ty2 = self.declarator(&mut ty2)?;
 
                     // "array of T" is converted to "pointer to T" only in the parameter
                     // context. For example, *argv[] is converted to **argv by this.
@@ -1549,14 +1549,14 @@ impl<'a> Parser<'a> {
             is_variadic = true;
         }
 
-        let node = Type::new_func(params, ty, is_variadic);
+        let node = Type::new_func(params, ty.clone(), is_variadic);
         Ok(node)
     }
 
     /// type-suffix = "(" func-params
     ///             | "[" array-dimensions
     ///             | ε
-    fn type_suffix(&mut self, ty: Type) -> Result<Type> {
+    fn type_suffix(&mut self, ty: &mut Type) -> Result<Type> {
         match self.peek()?.token {
             Tok::LeftParen => {
                 eat!(self, LeftParen);
@@ -1566,12 +1566,12 @@ impl<'a> Parser<'a> {
                 eat!(self, LeftBracket);
                 return self.array_dimensions(ty);
             }
-            _ => Ok(ty),
+            _ => Ok(ty.clone()),
         }
     }
 
     /// pointers = ("*" ("const" | "volatile" | "restrict")*)*
-    fn pointers(&mut self, ty: Type) -> Result<Type> {
+    fn pointers(&mut self, ty: &mut Type) -> Result<Type> {
         let mut ty = ty.clone();
         while self.peek()?.token == Star {
             eat!(self, Star);
@@ -1594,7 +1594,7 @@ impl<'a> Parser<'a> {
     }
 
     /// declarator = pointers ("(" ident ")" | "(" declarator ")" | ident) type-suffix
-    fn declarator(&mut self, ty: Type) -> Result<Type> {
+    fn declarator(&mut self, ty: &mut Type) -> Result<Type> {
         let mut ty = self.pointers(ty)?;
 
         if self.peek()?.token == LeftParen
@@ -1604,16 +1604,16 @@ impl<'a> Parser<'a> {
             eat!(self, LeftParen);
             let tok = self.token()?;
             eat!(self, RightParen);
-            let mut ty = self.type_suffix(ty)?;
+            let mut ty = self.type_suffix(&mut ty)?;
             ty.set_name(tok);
             return Ok(ty);
         }
 
         if self.peek()?.token == LeftParen {
             eat!(self, LeftParen);
-            let mut _ty = self.declarator(ty.clone())?;
+            let mut _ty = self.declarator(&mut ty)?;
             eat!(self, RightParen);
-            let ty = self.type_suffix(ty)?;
+            let ty = self.type_suffix(&mut ty)?;
             match _ty.ty {
                 Ty::TyPtr { ref mut base, .. } | Ty::TyArray { ref mut base, .. } => {
                     *base = Box::new(ty);
@@ -1625,11 +1625,11 @@ impl<'a> Parser<'a> {
 
         if self.peek()?.token.is_ident() {
             let tok = self.token()?;
-            ty = self.type_suffix(ty)?;
+            ty = self.type_suffix(&mut ty)?;
             ty.set_name(tok);
             return Ok(ty);
         } else {
-            ty = self.type_suffix(ty)?;
+            ty = self.type_suffix(&mut ty)?;
             ty.name = None;
             return Ok(ty);
         }
@@ -1699,10 +1699,10 @@ impl<'a> Parser<'a> {
                     }
                     if self.is_typename(tok)? && self.peek_next_one()?.token != Colon {
                         let mut attr = Some(VarAttr::new_placeholder());
-                        let basety = self.declspec(&mut attr)?;
+                        let mut basety = self.declspec(&mut attr)?;
                         if let Some(attr) = attr.clone() {
                             if attr.is_typedef() {
-                                self.parse_typedef(basety)?;
+                                self.parse_typedef(&mut basety)?;
                                 continue;
                             }
                         }
@@ -1710,16 +1710,16 @@ impl<'a> Parser<'a> {
                         let pos = self.current_pos;
                         if self.is_function_definition()? {
                             self.current_pos = pos;
-                            self.function(basety, &attr)?;
+                            self.function(&mut basety, &attr)?;
                             continue;
                         } else {
                             self.current_pos = pos;
                         }
                         if attr.clone().unwrap().is_extern() {
-                            self.global_variable(basety, &attr)?;
+                            self.global_variable(&mut basety, &attr)?;
                             continue;
                         }
-                        let mut declaration = self.declaration(basety, &attr)?;
+                        let mut declaration = self.declaration(&mut basety, &attr)?;
                         sema_stmt(&mut declaration);
                         stmts.push(declaration);
                     } else {
@@ -1775,7 +1775,7 @@ impl<'a> Parser<'a> {
                 add_type(&mut right);
 
                 let var =
-                    self.new_local_variable("".to_string(), pointer_to(left.node.ty.clone()))?;
+                    self.new_local_variable("".to_string(), &mut pointer_to(left.node.ty.clone()))?;
 
                 // tmp = &A
                 // tmp
@@ -2410,7 +2410,7 @@ impl<'a> Parser<'a> {
         if current_token == LeftParen && self.is_typename(next_token)? {
             // Compound literal
             let pos = eat!(self, LeftParen);
-            let ty = self.typename()?;
+            let mut ty = self.typename()?;
             eat!(self, RightParen);
 
             if self.var_env.is_parent_empty()
@@ -2419,14 +2419,14 @@ impl<'a> Parser<'a> {
             {
                 let unique_name = self.new_unique_name();
                 let var =
-                    self.new_global_variable(unique_name, ty, Some(InitData::IntInitData(0)))?;
+                    self.new_global_variable(unique_name, &mut ty, Some(InitData::IntInitData(0)))?;
                 self.global_var_initializer(var.clone())?;
                 let mut node = ExprWithPos::new_var(var, pos);
                 add_type(&mut node);
                 return Ok(node);
             }
 
-            let var = self.new_local_variable("".to_string(), ty)?;
+            let var = self.new_local_variable("".to_string(), &mut ty)?;
             let mut lhs = self.local_var_initializer(var.clone())?;
             add_type(&mut lhs);
             let mut rhs = ExprWithPos::new_var(var, pos);
@@ -2549,16 +2549,16 @@ impl<'a> Parser<'a> {
     }
 
     /// abstract-declarator = pointers ("(" abstract-declarator ")")? type-suffix
-    fn abstract_declarator(&mut self, mut ty: Type) -> Result<Type> {
-        ty = self.pointers(ty)?;
+    fn abstract_declarator(&mut self, ty: &mut Type) -> Result<Type> {
+        *ty = self.pointers(ty)?;
 
         match self.peek()?.token {
             Tok::LeftParen => {
                 eat!(self, LeftParen);
-                self.abstract_declarator(Type::new_placeholder())?;
+                self.abstract_declarator(&mut Type::new_placeholder())?;
                 eat!(self, RightParen);
-                ty = self.type_suffix(ty)?;
-                Ok(Type::new_ptr(ty))
+                *ty = self.type_suffix(ty)?;
+                Ok(Type::new_ptr(ty.clone()))
             }
             _ => self.type_suffix(ty),
         }
@@ -2566,8 +2566,8 @@ impl<'a> Parser<'a> {
 
     /// type-name = declspec abstract-declarator
     fn typename(&mut self) -> Result<Type> {
-        let ty = self.declspec(&mut None)?;
-        self.abstract_declarator(ty)
+        let mut ty = self.declspec(&mut None)?;
+        self.abstract_declarator(&mut ty)
     }
 
     /// primary = "(" "{" stmt+ "}" ")"
@@ -2627,6 +2627,18 @@ impl<'a> Parser<'a> {
                 let value;
                 let pos = eat!(self, ConstUInt, value);
                 let node = ExprWithPos::new_uint(value, pos);
+                Ok(node)
+            }
+            ConstFloat(_) => {
+                let value;
+                let pos = eat!(self, ConstFloat, value);
+                let node = ExprWithPos::new_float(value, pos);
+                Ok(node)
+            }
+            ConstDouble(_) => {
+                let value;
+                let pos = eat!(self, ConstDouble, value);
+                let node = ExprWithPos::new_double(value, pos);
                 Ok(node)
             }
             Tok::KeywordSizeof => {
@@ -2709,10 +2721,10 @@ impl<'a> Parser<'a> {
                 let pos = eat!(self, Str, string);
                 let unique_name = self.new_unique_name();
                 string.push_str("\0");
-                let var_type = Type::new_array(Type::new_char(), string.len() as i32);
+                let mut var_type = Type::new_array(Type::new_char(), string.len() as i32);
                 let var = self.new_global_variable(
                     unique_name,
-                    var_type.clone(),
+                    &mut var_type,
                     Some(InitData::StringInitData(string)),
                 )?;
                 Ok(WithPos::new(
@@ -2784,7 +2796,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn function(&mut self, basety: Type, attr: &Option<VarAttr>) -> Result<()> {
+    fn function(&mut self, basety: &mut Type, attr: &Option<VarAttr>) -> Result<()> {
         let ty = self.declarator(basety)?;
         if ty.name.is_none() {
             panic!("function name omitted.");
@@ -2809,7 +2821,7 @@ impl<'a> Parser<'a> {
 
         let ident;
         match ty.clone().ty {
-            Ty::TyFunc { params, .. } => {
+            Ty::TyFunc { ref mut params, .. } => {
                 ident = ty.get_ident().unwrap();
                 let pos = self.peek()?.pos.clone();
                 // 为了处理fib这样的递归调用，需要先把函数声明记录下来。
@@ -2835,7 +2847,7 @@ impl<'a> Parser<'a> {
                     fndef.va_area = if ty.is_variadic() {
                         Some(self.new_local_variable(
                             "__va_area__".to_string(),
-                            Type::new_array(Type::new_char(), 136),
+                            &mut Type::new_array(Type::new_char(), 136),
                         )?)
                     } else {
                         None
@@ -2865,14 +2877,14 @@ impl<'a> Parser<'a> {
                 Ok(false)
             }
             _ => {
-                let dummy = Type::new_placeholder();
-                let ty = self.declarator(dummy)?;
+                let mut dummy = Type::new_placeholder();
+                let ty = self.declarator(&mut dummy)?;
                 Ok(ty.is_func())
             }
         }
     }
 
-    fn new_var(&mut self, name: String, ty: Type) -> Result<Rc<RefCell<Obj>>> {
+    fn new_var(&mut self, name: String, ty: &mut Type) -> Result<Rc<RefCell<Obj>>> {
         let var = Rc::new(RefCell::new(Obj {
             name: Some(name.clone()),
             ty: ty.clone(),
@@ -2891,7 +2903,7 @@ impl<'a> Parser<'a> {
     fn new_global_variable(
         &mut self,
         name: String,
-        ty: Type,
+        ty: &mut Type,
         init_value: Option<InitData>,
     ) -> Result<Rc<RefCell<Obj>>> {
         let var = self.new_var(name, ty)?;
@@ -2903,14 +2915,14 @@ impl<'a> Parser<'a> {
         Ok(var)
     }
 
-    fn new_local_variable(&mut self, name: String, ty: Type) -> Result<Rc<RefCell<Obj>>> {
+    fn new_local_variable(&mut self, name: String, ty: &mut Type) -> Result<Rc<RefCell<Obj>>> {
         let var = self.new_var(name, ty)?;
         var.borrow_mut().is_local = true;
         self.locals.insert(0, var.clone());
         Ok(var)
     }
 
-    fn global_variable(&mut self, basety: Type, attr: &Option<VarAttr>) -> Result<()> {
+    fn global_variable(&mut self, basety: &mut Type, attr: &Option<VarAttr>) -> Result<()> {
         loop {
             match self.peek()?.token {
                 Tok::Semicolon => {
@@ -2921,7 +2933,7 @@ impl<'a> Parser<'a> {
                     eat!(self, Comma);
                 }
                 _ => {
-                    let ty = self.declarator(basety.clone())?;
+                    let mut ty = self.declarator(basety)?;
                     if ty.name.is_none() {
                         panic!("variable name omitted.");
                     }
@@ -2929,7 +2941,7 @@ impl<'a> Parser<'a> {
                     if self.peek()?.token.is_ident() {
                         continue;
                     }
-                    let var = self.new_global_variable(var_name, ty, None)?;
+                    let var = self.new_global_variable(var_name, &mut ty, None)?;
                     if let Some(attr) = attr {
                         var.borrow_mut().is_definition = !attr.is_extern();
                         var.borrow_mut().is_static = attr.is_static();
@@ -2947,7 +2959,7 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn parse_typedef(&mut self, basety: Type) -> Result<()> {
+    fn parse_typedef(&mut self, basety: &mut Type) -> Result<()> {
         loop {
             match self.peek()?.token {
                 Tok::Semicolon => {
@@ -2958,7 +2970,7 @@ impl<'a> Parser<'a> {
                     eat!(self, Comma);
                 }
                 _ => {
-                    let ty = self.declarator(basety.clone())?;
+                    let ty = self.declarator(basety)?;
                     if ty.name.is_none() {
                         panic!("typedef name omitted.");
                     }
@@ -3044,7 +3056,7 @@ impl<'a> Parser<'a> {
     }
 
     /// array-dimensions = ("static" | "restrict")* const-expr? "]" type-suffix
-    fn array_dimensions(&mut self, mut ty: Type) -> Result<Type> {
+    fn array_dimensions(&mut self, ty: &mut Type) -> Result<Type> {
         loop {
             match self.peek()?.token {
                 Tok::KeywordRestrict | Tok::KeywordStatic => {
@@ -3056,14 +3068,14 @@ impl<'a> Parser<'a> {
         match self.peek()?.token {
             Tok::RightBracket => {
                 eat!(self, RightBracket);
-                ty = self.type_suffix(ty)?;
-                Ok(Type::new_array(ty, -1))
+                *ty = self.type_suffix(ty)?;
+                Ok(Type::new_array(ty.clone(), -1))
             }
             _ => {
                 let sz = self.const_expr()?;
                 eat!(self, RightBracket);
-                ty = self.type_suffix(ty)?;
-                Ok(Type::new_array(ty, sz as i32))
+                *ty = self.type_suffix(ty)?;
+                Ok(Type::new_array(ty.clone(), sz as i32))
             }
         }
     }
@@ -3252,10 +3264,10 @@ impl<'a> Parser<'a> {
                 _ => {
                     // int ...., 获取基本类型 int
                     let mut attr = Some(VarAttr::new_placeholder());
-                    let basety = self.declspec(&mut attr)?;
+                    let mut basety = self.declspec(&mut attr)?;
                     if let Some(attr) = attr.clone() {
                         if attr.is_typedef() {
-                            self.parse_typedef(basety)?;
+                            self.parse_typedef(&mut basety)?;
                             continue;
                         }
                     }
@@ -3264,11 +3276,11 @@ impl<'a> Parser<'a> {
                     if self.is_function_definition()? {
                         // 回溯
                         self.current_pos = pos;
-                        self.function(basety, &attr)?;
+                        self.function(&mut basety, &attr)?;
                     } else {
                         // 回溯
                         self.current_pos = pos;
-                        self.global_variable(basety, &attr)?;
+                        self.global_variable(&mut basety, &attr)?;
                     }
                 }
             }

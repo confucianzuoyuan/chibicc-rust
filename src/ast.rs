@@ -29,6 +29,12 @@ pub enum Expr {
     ConstULong {
         value: u64,
     },
+    ConstFloat {
+        value: f32,
+    },
+    ConstDouble {
+        value: f64,
+    },
     Assign {
         l_value: Box<ExprWithPos>,
         r_value: Box<ExprWithPos>,
@@ -129,6 +135,20 @@ impl ExprWithPos {
                     name: None,
                 },
             ),
+            pos,
+        )
+    }
+
+    pub fn new_float(i: f32, pos: Pos) -> Self {
+        WithPos::new(
+            WithType::new(Expr::ConstFloat { value: i }, Type::new_float()),
+            pos,
+        )
+    }
+
+    pub fn new_double(i: f64, pos: Pos) -> Self {
+        WithPos::new(
+            WithType::new(Expr::ConstDouble { value: i }, Type::new_float()),
             pos,
         )
     }
@@ -332,6 +352,8 @@ impl Display for ExprWithPos {
                     Expr::ConstUInt { value } => value.to_string(),
                     Expr::ConstLong { value } => value.to_string(),
                     Expr::ConstULong { value } => value.to_string(),
+                    Expr::ConstFloat { value } => value.to_string(),
+                    Expr::ConstDouble { value } => value.to_string(),
                     Expr::Binary { left, op, right } => {
                         return format!("{} {} {}", left, op, right)
                     }

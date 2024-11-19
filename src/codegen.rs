@@ -477,6 +477,16 @@ impl CodeGenerator {
             ast::Expr::ConstULong { value, .. } => {
                 self.output.push(format!("  mov ${}, %rax", value))
             }
+            ast::Expr::ConstFloat { value } => {
+                self.output
+                    .push(format!("  mov ${}, %rax # float {}", *value as u32, value));
+                self.output.push(format!("  movq %rax, %xmm0"));
+            }
+            ast::Expr::ConstDouble { value } => {
+                self.output
+                    .push(format!("  mov ${}, %rax # double {}", *value as u64, value));
+                self.output.push(format!("  movq %rax, %xmm0"));
+            }
             ast::Expr::Unary { expr, op } => match op.node {
                 ast::UnaryOperator::Neg => {
                     self.gen_expr(expr);
