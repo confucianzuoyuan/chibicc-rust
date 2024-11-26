@@ -327,6 +327,27 @@ impl Type {
         }
     }
 
+    pub fn is_flonum(&self) -> bool {
+        match self.ty {
+            Ty::TyFloat | Ty::TyDouble => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_float(&self) -> bool {
+        match self.ty {
+            Ty::TyFloat => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_double(&self) -> bool {
+        match self.ty {
+            Ty::TyDouble => true,
+            _ => false,
+        }
+    }
+
     pub fn get_array_len(&self) -> i32 {
         match &self.ty {
             Ty::TyArray { array_len, .. } => *array_len,
@@ -463,6 +484,8 @@ pub fn pointer_to(base: Type) -> Type {
 pub fn get_common_type(ty1: Type, ty2: Type) -> Type {
     match (ty1.clone().ty, ty2.clone().ty) {
         (Ty::TyArray { base, .. } | Ty::TyPtr { base, .. }, _) => pointer_to(*base),
+        (Ty::TyDouble, _) | (_, Ty::TyDouble) => Type::new_double(),
+        (Ty::TyFloat, _) | (_, Ty::TyFloat) => Type::new_float(),
         _ => {
             let ty1 = if ty1.get_size() < 4 {
                 Type::new_int()

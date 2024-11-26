@@ -256,6 +256,18 @@ impl CodeGenerator {
         self.depth -= 1;
     }
 
+    fn pushf(&mut self) {
+        self.output.push(format!("  sub $8, %rsp"));
+        self.output.push(format!("  movsd %xmm0, (%rsp)"));
+        self.depth += 1;
+    }
+
+    fn popf(&mut self, arg: String) {
+        self.output.push(format!("  movsd (%rsp), {}", arg));
+        self.output.push(format!("  add $8, %rsp"));
+        self.depth -= 1;
+    }
+
     // Load a value from where %rax is pointing to.
     fn load(&mut self, ty: &Type) {
         match ty.ty {
@@ -569,13 +581,19 @@ impl CodeGenerator {
                 self.output.push(format!("  mov ${}, %rax", value))
             }
             ast::Expr::ConstFloat { value } => {
-                self.output
-                    .push(format!("  mov ${}, %rax # float {}", (*value).to_bits(), value));
+                self.output.push(format!(
+                    "  mov ${}, %rax # float {}",
+                    (*value).to_bits(),
+                    value
+                ));
                 self.output.push(format!("  movq %rax, %xmm0"));
             }
             ast::Expr::ConstDouble { value } => {
-                self.output
-                    .push(format!("  mov ${}, %rax # double {}", (*value).to_bits(), value));
+                self.output.push(format!(
+                    "  mov ${}, %rax # double {}",
+                    (*value).to_bits(),
+                    value
+                ));
                 self.output.push(format!("  movq %rax, %xmm0"));
             }
             ast::Expr::Unary { expr, op } => match op.node {
@@ -684,6 +702,45 @@ impl CodeGenerator {
             ast::Expr::Binary {
                 left, op, right, ..
             } => {
+                if left.node.ty.is_flonum() {
+                    self.gen_expr(&right);
+                    self.pushf();
+                    self.gen_expr(&left);
+                    self.popf("%xmm1".to_string());
+
+                    let sz = if left.node.ty.is_float() { "ss" } else { "sd" };
+                    self.output.push(format!("  ucomi{} %xmm0, %xmm1", sz));
+
+                    match op.node {
+                        ast::BinaryOperator::Eq => {
+                            self.output.push(format!("  sete %al"));
+                            self.output.push(format!("  setnp %dl"));
+                            self.output.push(format!("  and %dl, %al"));
+                        }
+                        ast::BinaryOperator::Ne => {
+                            self.output.push(format!("  setne %al"));
+                            self.output.push(format!("  setp %dl"));
+                            self.output.push(format!("  or %dl, %al"));
+                        }
+                        ast::BinaryOperator::Lt => {
+                            self.output.push(format!("  seta %al"));
+                        }
+                        ast::BinaryOperator::Le => {
+                            self.output.push(format!("  setae %al"));
+                        }
+                        ast::BinaryOperator::Gt => {
+                            self.output.push(format!("  seta %al"));
+                        }
+                        ast::BinaryOperator::Ge => {
+                            self.output.push(format!("  seta %al"));
+                        }
+                        _ => panic!("invalid expression"),
+                    }
+
+                    self.output.push(format!("  and $1, %al"));
+                    self.output.push(format!("  movzb %al, %rax"));
+                    return ();
+                }
                 // 后序遍历
                 // 先遍历右子树，再遍历左子树，最后遍历根节点
                 self.gen_expr(right);

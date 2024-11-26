@@ -1,3 +1,3 @@
 int main() {
-    return (char)3.0;
+    return 2e3==2e3;
 }
