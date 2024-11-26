@@ -2265,7 +2265,7 @@ impl<'a> Parser<'a> {
 
         match (lhs.node.ty.clone().ty, rhs.node.ty.clone().ty) {
             // num - num
-            _ if lhs.node.ty.is_integer() && rhs.node.ty.is_integer() => {
+            _ if lhs.node.ty.is_number() && rhs.node.ty.is_number() => {
                 lhs = ExprWithPos::new_binary(BinaryOperator::Sub, lhs, rhs, pos);
             }
             // ptr - num
@@ -2329,7 +2329,7 @@ impl<'a> Parser<'a> {
                 );
             }
             // num + num
-            _ if lhs.node.ty.is_integer() && rhs.node.ty.is_integer() => {
+            _ if lhs.node.ty.is_number() && rhs.node.ty.is_number() => {
                 lhs = ExprWithPos::new_binary(ast::BinaryOperator::Add, lhs, rhs, pos);
             }
             // other

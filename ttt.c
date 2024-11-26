@@ -1,3 +1,3 @@
 int main() {
-    return 2e3==2e3;
+    return 2.3f+3.8;
 }

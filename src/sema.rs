@@ -348,6 +348,10 @@ impl Type {
         }
     }
 
+    pub fn is_number(&self) -> bool {
+        self.is_integer() || self.is_flonum()
+    }
+
     pub fn get_array_len(&self) -> i32 {
         match &self.ty {
             Ty::TyArray { array_len, .. } => *array_len,

@@ -106,14 +106,19 @@ impl<'a> Lexer<'a> {
                     | b'l'
                     | b'L'
                     | b'0'..=b'9'
-                    | b'a'..=b'f'
-                    | b'A'..=b'F'
+                    | b'a'..=b'e'
+                    | b'A'..=b'E'
                     | b'.'
-                    | b'+'
-                    | b'-'
                     | b'p' => {
                         self.advance()?;
-                        buffer.push(b as char)
+                        buffer.push(b as char);
+                        if b == b'e' || b == b'E' {
+                            if self.current_char()? == '+' || self.current_char()? == '-' {
+                                let c = self.current_char()?;
+                                self.advance()?;
+                                buffer.push(c);
+                            }
+                        }
                     }
                     _ => break,
                 }
@@ -123,8 +128,8 @@ impl<'a> Lexer<'a> {
         }
 
         let buflen = buffer.len();
-        if buffer.ends_with("f") || buffer.ends_with("F") {
-            buffer.remove(buflen - 1);
+        if self.current_char()? == 'f' || self.current_char()? == 'F' {
+            self.advance()?;
             let num: f32 = buffer.parse().unwrap();
             return self.make_token(Tok::ConstFloat(num), (self.pos.byte - start_pos) as usize);
         } else if buffer.ends_with("l") || buffer.ends_with("L") {

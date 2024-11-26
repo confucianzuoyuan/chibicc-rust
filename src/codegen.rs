@@ -599,6 +599,20 @@ impl CodeGenerator {
             ast::Expr::Unary { expr, op } => match op.node {
                 ast::UnaryOperator::Neg => {
                     self.gen_expr(expr);
+                    if ast.node.ty.is_float() {
+                        self.output.push(format!("  mov $1, %rax"));
+                        self.output.push(format!("  shl $31, %rax"));
+                        self.output.push(format!("  movq %rax, %xmm1"));
+                        self.output.push(format!("  xorps %xmm1, %xmm0"));
+                        return ();
+                    }
+                    if ast.node.ty.is_double() {
+                        self.output.push(format!("  mov $1, %rax"));
+                        self.output.push(format!("  shl $63, %rax"));
+                        self.output.push(format!("  movq %rax, %xmm1"));
+                        self.output.push(format!("  xorpd %xmm1, %xmm0"));
+                        return ();
+                    }
                     self.output.push(format!("  neg %rax"));
                 }
                 ast::UnaryOperator::Not => {
@@ -709,36 +723,63 @@ impl CodeGenerator {
                     self.popf("%xmm1".to_string());
 
                     let sz = if left.node.ty.is_float() { "ss" } else { "sd" };
-                    self.output.push(format!("  ucomi{} %xmm0, %xmm1", sz));
 
                     match op.node {
+                        ast::BinaryOperator::Add => {
+                            self.output.push(format!("  add{} %xmm1, %xmm0", sz));
+                        }
+                        ast::BinaryOperator::Sub => {
+                            self.output.push(format!("  sub{} %xmm1, %xmm0", sz));
+                        }
+                        ast::BinaryOperator::Mul => {
+                            self.output.push(format!("  mul{} %xmm1, %xmm0", sz));
+                        }
+                        ast::BinaryOperator::Div => {
+                            self.output.push(format!("  div{} %xmm1, %xmm0", sz));
+                        }
                         ast::BinaryOperator::Eq => {
+                            self.output.push(format!("  ucomi{} %xmm0, %xmm1", sz));
                             self.output.push(format!("  sete %al"));
                             self.output.push(format!("  setnp %dl"));
                             self.output.push(format!("  and %dl, %al"));
+                            self.output.push(format!("  and $1, %al"));
+                            self.output.push(format!("  movzb %al, %rax"));
                         }
                         ast::BinaryOperator::Ne => {
+                            self.output.push(format!("  ucomi{} %xmm0, %xmm1", sz));
                             self.output.push(format!("  setne %al"));
                             self.output.push(format!("  setp %dl"));
                             self.output.push(format!("  or %dl, %al"));
+                            self.output.push(format!("  and $1, %al"));
+                            self.output.push(format!("  movzb %al, %rax"));
                         }
                         ast::BinaryOperator::Lt => {
+                            self.output.push(format!("  ucomi{} %xmm0, %xmm1", sz));
                             self.output.push(format!("  seta %al"));
+                            self.output.push(format!("  and $1, %al"));
+                            self.output.push(format!("  movzb %al, %rax"));
                         }
                         ast::BinaryOperator::Le => {
+                            self.output.push(format!("  ucomi{} %xmm0, %xmm1", sz));
                             self.output.push(format!("  setae %al"));
+                            self.output.push(format!("  and $1, %al"));
+                            self.output.push(format!("  movzb %al, %rax"));
                         }
                         ast::BinaryOperator::Gt => {
+                            self.output.push(format!("  ucomi{} %xmm0, %xmm1", sz));
                             self.output.push(format!("  seta %al"));
+                            self.output.push(format!("  and $1, %al"));
+                            self.output.push(format!("  movzb %al, %rax"));
                         }
                         ast::BinaryOperator::Ge => {
-                            self.output.push(format!("  seta %al"));
+                            self.output.push(format!("  ucomi{} %xmm0, %xmm1", sz));
+                            self.output.push(format!("  setae %al"));
+                            self.output.push(format!("  and $1, %al"));
+                            self.output.push(format!("  movzb %al, %rax"));
                         }
                         _ => panic!("invalid expression"),
                     }
 
-                    self.output.push(format!("  and $1, %al"));
-                    self.output.push(format!("  movzb %al, %rax"));
                     return ();
                 }
                 // 后序遍历
@@ -834,9 +875,13 @@ impl CodeGenerator {
                         }
                         self.output.push(format!("  movzb %al, %rax"));
                     }
-                    ast::BinaryOperator::BitAnd => self.output.push(format!("  and %rdi, %rax")),
-                    ast::BinaryOperator::BitOr => self.output.push(format!("  or %rdi, %rax")),
-                    ast::BinaryOperator::BitXor => self.output.push(format!("  xor %rdi, %rax")),
+                    ast::BinaryOperator::BitAnd => {
+                        self.output.push(format!("  and {}, {}", di, ax))
+                    }
+                    ast::BinaryOperator::BitOr => self.output.push(format!("  or {}, {}", di, ax)),
+                    ast::BinaryOperator::BitXor => {
+                        self.output.push(format!("  xor {}, {}", di, ax))
+                    }
                     ast::BinaryOperator::LogAnd => {
                         let c = self.label_count;
                         self.label_count += 1;
