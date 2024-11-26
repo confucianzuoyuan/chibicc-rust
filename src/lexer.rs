@@ -101,7 +101,17 @@ impl<'a> Lexer<'a> {
         loop {
             if let Some(b) = self.peek() {
                 match b {
-                    b'0'..=b'9' | b'.' => {
+                    b'x'
+                    | b'X'
+                    | b'l'
+                    | b'L'
+                    | b'0'..=b'9'
+                    | b'a'..=b'f'
+                    | b'A'..=b'F'
+                    | b'.'
+                    | b'+'
+                    | b'-'
+                    | b'p' => {
                         self.advance()?;
                         buffer.push(b as char)
                     }
@@ -112,9 +122,59 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        let num: f32 = buffer.parse().unwrap();
+        let buflen = buffer.len();
+        if buffer.ends_with("f") || buffer.ends_with("F") {
+            buffer.remove(buflen - 1);
+            let num: f32 = buffer.parse().unwrap();
+            return self.make_token(Tok::ConstFloat(num), (self.pos.byte - start_pos) as usize);
+        } else if buffer.ends_with("l") || buffer.ends_with("L") {
+            buffer.remove(buflen - 1);
+            let num: f64 = buffer.parse().unwrap();
+            return self.make_token(Tok::ConstDouble(num), (self.pos.byte - start_pos) as usize);
+        } else if buffer.starts_with("0x") || buffer.starts_with("0X") {
+            buffer.remove(0);
+            buffer.remove(0);
+            let first_part = buffer.split(".").next().unwrap().as_bytes();
+            let second_part = buffer
+                .split(".")
+                .last()
+                .unwrap()
+                .split("p")
+                .next()
+                .unwrap()
+                .as_bytes();
+            let third_part = buffer
+                .split(".")
+                .last()
+                .unwrap()
+                .split("p")
+                .last()
+                .unwrap()
+                .as_bytes();
+            let mut first_num = 0;
+            for b in first_part {
+                first_num = first_num * 16 + self.from_hex(*b as char);
+            }
+            let mut second_num: f64 = 0.0;
+            let mut i = 1;
+            for b in second_part {
+                second_num =
+                    second_num + (self.from_hex(*b as char) as f64) / (16_i32.pow(i) as f64);
+                i += 1;
+            }
 
-        self.make_token(Tok::ConstFloat(num), (self.pos.byte - start_pos) as usize)
+            let mut third_num = 0;
+            for b in third_part {
+                third_num = third_num * 16 + self.from_hex(*b as char);
+            }
+
+            let num = (first_num as f64 + second_num) * 2_i32.pow(third_num as u32) as f64;
+
+            return self.make_token(Tok::ConstDouble(num), (self.pos.byte - start_pos) as usize);
+        } else {
+            let num: f64 = buffer.parse().unwrap();
+            return self.make_token(Tok::ConstDouble(num), (self.pos.byte - start_pos) as usize);
+        }
     }
 
     fn read_number(&mut self) -> Result<Token> {
@@ -127,11 +187,8 @@ impl<'a> Lexer<'a> {
             _ => return Ok(tok),
         }
 
-        if self.current_char()? == '.' {
-            self.pos.byte = old_pos;
-            return self.read_float();
-        }
-        panic!()
+        self.pos.byte = old_pos;
+        self.read_float()
     }
 
     fn read_int_literal(&mut self) -> Result<Token> {
@@ -693,7 +750,7 @@ impl<'a> Lexer<'a> {
                 b'.' => {
                     if let Some(b) = self.peek_next_one() {
                         match b {
-                            b'0'..=b'9' => self.read_number(),
+                            b'0'..=b'9' => self.read_float(),
                             _ => self.dot_or_other(),
                         }
                     } else {
