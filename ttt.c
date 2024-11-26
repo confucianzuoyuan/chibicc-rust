@@ -1,3 +1,3 @@
 int main() {
-    return 0.0;
+    return (char)3.0;
 }

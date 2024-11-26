@@ -15,10 +15,43 @@ static I32_TO_I8: &str = "movsbl %al, %eax";
 static I32_TO_U8: &str = "movzbl %al, %eax";
 static I32_TO_I16: &str = "movswl %ax, %eax";
 static I32_TO_U16: &str = "movzwl %ax, %eax";
+static I32_TO_F32: &str = "cvtsi2ssl %eax, %xmm0";
 static I32_TO_I64: &str = "movsxd %eax, %rax";
-static U32_TO_I64: &str = "mov %eax, %eax";
+static I32_TO_F64: &str = "cvtsi2sdl %eax, %xmm0";
 
-static CAST_TABLE: [[Option<&str>; 8]; 8] = [
+static U32_TO_F32: &str = "mov %eax, %eax; cvtsi2ssq %rax, %xmm0";
+static U32_TO_I64: &str = "mov %eax, %eax";
+static U32_TO_F64: &str = "mov %eax, %eax; cvtsi2sdq %rax, %xmm0";
+
+static I64_TO_F32: &str = "cvtsi2ssq %rax, %xmm0";
+static I64_TO_F64: &str = "cvtsi2sdq %rax, %xmm0";
+
+static U64_TO_F32: &str = "cvtsi2ssq %rax, %xmm0";
+static U64_TO_F64: &str = "test %rax,%rax; js 1f; pxor %xmm0,%xmm0; cvtsi2sd %rax,%xmm0; jmp 2f; 
+  1: mov %rax,%rdi; and $1,%eax; pxor %xmm0,%xmm0; shr %rdi; 
+  or %rax,%rdi; cvtsi2sd %rdi,%xmm0; addsd %xmm0,%xmm0; 2:";
+
+static F32_TO_I8: &str = "cvttss2sil %xmm0, %eax; movsbl %al, %eax";
+static F32_TO_U8: &str = "cvttss2sil %xmm0, %eax; movzbl %al, %eax";
+static F32_TO_I16: &str = "cvttss2sil %xmm0, %eax; movswl %ax, %eax";
+static F32_TO_U16: &str = "cvttss2sil %xmm0, %eax; movzwl %ax, %eax";
+static F32_TO_I32: &str = "cvttss2sil %xmm0, %eax";
+static F32_TO_U32: &str = "cvttss2siq %xmm0, %rax";
+static F32_TO_I64: &str = "cvttss2siq %xmm0, %rax";
+static F32_TO_U64: &str = "cvttss2siq %xmm0, %rax";
+static F32_TO_F64: &str = "cvtss2sd %xmm0, %xmm0";
+
+static F64_TO_I8: &str = "cvttsd2sil %xmm0, %eax; movsbl %al, %eax";
+static F64_TO_U8: &str = "cvttsd2sil %xmm0, %eax; movzbl %al, %eax";
+static F64_TO_I16: &str = "cvttsd2sil %xmm0, %eax; movswl %ax, %eax";
+static F64_TO_U16: &str = "cvttsd2sil %xmm0, %eax; movzwl %ax, %eax";
+static F64_TO_I32: &str = "cvttsd2sil %xmm0, %eax";
+static F64_TO_U32: &str = "cvttsd2siq %xmm0, %rax";
+static F64_TO_F32: &str = "cvtsd2ss %xmm0, %xmm0";
+static F64_TO_I64: &str = "cvttsd2siq %xmm0, %rax";
+static F64_TO_U64: &str = "cvttsd2siq %xmm0, %rax";
+
+static CAST_TABLE: [[Option<&str>; 10]; 10] = [
     [
         None,
         None,
@@ -28,6 +61,8 @@ static CAST_TABLE: [[Option<&str>; 8]; 8] = [
         Some(I32_TO_U16),
         None,
         Some(I32_TO_I64),
+        Some(I32_TO_F32),
+        Some(I32_TO_F64),
     ], // i8
     [
         Some(I32_TO_I8),
@@ -38,6 +73,8 @@ static CAST_TABLE: [[Option<&str>; 8]; 8] = [
         Some(I32_TO_U16),
         None,
         Some(I32_TO_I64),
+        Some(I32_TO_F32),
+        Some(I32_TO_F64),
     ], // i16
     [
         Some(I32_TO_I8),
@@ -48,6 +85,8 @@ static CAST_TABLE: [[Option<&str>; 8]; 8] = [
         Some(I32_TO_U16),
         None,
         Some(I32_TO_I64),
+        Some(I32_TO_F32),
+        Some(I32_TO_F64),
     ], // i32
     [
         Some(I32_TO_I8),
@@ -58,6 +97,8 @@ static CAST_TABLE: [[Option<&str>; 8]; 8] = [
         Some(I32_TO_U16),
         None,
         None,
+        Some(I64_TO_F32),
+        Some(I64_TO_F64),
     ], // i64
     [
         Some(I32_TO_I8),
@@ -68,6 +109,8 @@ static CAST_TABLE: [[Option<&str>; 8]; 8] = [
         None,
         None,
         Some(I32_TO_I64),
+        Some(I32_TO_F32),
+        Some(I32_TO_F64),
     ], // u8
     [
         Some(I32_TO_I8),
@@ -78,6 +121,8 @@ static CAST_TABLE: [[Option<&str>; 8]; 8] = [
         None,
         None,
         Some(I32_TO_I64),
+        Some(I32_TO_F32),
+        Some(I64_TO_F64),
     ], // u16
     [
         Some(I32_TO_I8),
@@ -88,6 +133,8 @@ static CAST_TABLE: [[Option<&str>; 8]; 8] = [
         Some(I32_TO_U16),
         None,
         Some(U32_TO_I64),
+        Some(U32_TO_F32),
+        Some(U32_TO_F64),
     ], // u32
     [
         Some(I32_TO_I8),
@@ -98,7 +145,33 @@ static CAST_TABLE: [[Option<&str>; 8]; 8] = [
         Some(I32_TO_U16),
         None,
         None,
+        Some(U64_TO_F32),
+        Some(U64_TO_F64),
     ], // u64
+    [
+        Some(F32_TO_I8),
+        Some(F32_TO_I16),
+        Some(F32_TO_I32),
+        Some(F32_TO_I64),
+        Some(F32_TO_U8),
+        Some(F32_TO_U16),
+        Some(F32_TO_U32),
+        Some(F32_TO_U64),
+        None,
+        Some(F32_TO_F64),
+    ], // f32
+    [
+        Some(F64_TO_I8),
+        Some(F64_TO_I16),
+        Some(F64_TO_I32),
+        Some(F64_TO_I64),
+        Some(F64_TO_U8),
+        Some(F64_TO_U16),
+        Some(F64_TO_U32),
+        Some(F64_TO_U64),
+        Some(F64_TO_F32),
+        None,
+    ], // f64
 ];
 
 #[derive(Debug)]
@@ -111,6 +184,8 @@ pub enum TypeId {
     U16,
     U32,
     U64,
+    F32,
+    F64,
 }
 
 pub fn typeid_to_usize(t: TypeId) -> usize {
@@ -123,6 +198,8 @@ pub fn typeid_to_usize(t: TypeId) -> usize {
         TypeId::U16 => 5,
         TypeId::U32 => 6,
         TypeId::U64 => 7,
+        TypeId::F32 => 8,
+        TypeId::F64 => 9,
     }
 }
 
@@ -136,6 +213,8 @@ pub fn get_type_id(ty: Type) -> TypeId {
         Ty::TyUShort => TypeId::U16,
         Ty::TyUInt => TypeId::U32,
         Ty::TyULong => TypeId::U64,
+        Ty::TyFloat => TypeId::F32,
+        Ty::TyDouble => TypeId::F64,
         _ => TypeId::U64,
     }
 }
@@ -189,6 +268,12 @@ impl CodeGenerator {
             Ty::TyArray { .. } => (),
             Ty::TyStruct { .. } => (),
             Ty::TyUnion { .. } => (),
+            Ty::TyFloat => {
+                self.output.push(format!("  movss (%rax), %xmm0"));
+            }
+            Ty::TyDouble => {
+                self.output.push(format!("  movsd (%rax), %xmm0"));
+            }
             // When we load a char or a short value to a register, we always
             // extend them to the size of int, so we can assume the lower half of
             // a register always contains a valid value. The upper half of a
@@ -218,6 +303,12 @@ impl CodeGenerator {
                     self.output.push(format!("  mov {}(%rax), %r8b", i));
                     self.output.push(format!("  mov %r8b, {}(%rdi)", i));
                 }
+            }
+            Ty::TyFloat => {
+                self.output.push(format!("  movss %xmm0, (%rdi)"));
+            }
+            Ty::TyDouble => {
+                self.output.push(format!("  movsd %xmm0, (%rdi)"));
             }
             _ => match ty.get_size() {
                 1 => self.output.push(format!("  mov %al, (%rdi)")),
@@ -479,12 +570,12 @@ impl CodeGenerator {
             }
             ast::Expr::ConstFloat { value } => {
                 self.output
-                    .push(format!("  mov ${}, %rax # float {}", *value as u32, value));
+                    .push(format!("  mov ${}, %rax # float {}", (*value).to_bits(), value));
                 self.output.push(format!("  movq %rax, %xmm0"));
             }
             ast::Expr::ConstDouble { value } => {
                 self.output
-                    .push(format!("  mov ${}, %rax # double {}", *value as u64, value));
+                    .push(format!("  mov ${}, %rax # double {}", (*value).to_bits(), value));
                 self.output.push(format!("  movq %rax, %xmm0"));
             }
             ast::Expr::Unary { expr, op } => match op.node {

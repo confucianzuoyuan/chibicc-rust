@@ -148,7 +148,7 @@ impl ExprWithPos {
 
     pub fn new_double(i: f64, pos: Pos) -> Self {
         WithPos::new(
-            WithType::new(Expr::ConstDouble { value: i }, Type::new_float()),
+            WithType::new(Expr::ConstDouble { value: i }, Type::new_double()),
             pos,
         )
     }

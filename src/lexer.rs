@@ -491,6 +491,8 @@ impl<'a> Lexer<'a> {
             "int" => Tok::KeywordInt,
             "char" => Tok::KeywordChar,
             "long" => Tok::KeywordLong,
+            "float" => Tok::KeywordFloat,
+            "double" => Tok::KeywordDouble,
             "short" => Tok::KeywordShort,
             "sizeof" => Tok::KeywordSizeof,
             "struct" => Tok::KeywordStruct,

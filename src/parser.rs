@@ -1262,9 +1262,11 @@ impl<'a> Parser<'a> {
             SHORT = 1 << 6,
             INT = 1 << 8,
             LONG = 1 << 10,
-            OTHER = 1 << 12,
-            SIGNED = 1 << 13,
-            UNSIGNED = 1 << 14,
+            FLOAT = 1 << 12,
+            DOUBLE = 1 << 14,
+            OTHER = 1 << 16,
+            SIGNED = 1 << 17,
+            UNSIGNED = 1 << 18,
         }
 
         let mut counter = 0;
@@ -1415,6 +1417,14 @@ impl<'a> Parser<'a> {
                     eat!(self, KeywordUnsigned);
                     counter |= Counter::UNSIGNED as i32;
                 }
+                Tok::KeywordFloat => {
+                    eat!(self, KeywordFloat);
+                    counter |= Counter::FLOAT as i32;
+                }
+                Tok::KeywordDouble => {
+                    eat!(self, KeywordDouble);
+                    counter |= Counter::DOUBLE as i32;
+                }
                 _ => unreachable!(),
             }
 
@@ -1495,6 +1505,10 @@ impl<'a> Parser<'a> {
                     + Counter::INT as i32
             {
                 ty = Type::new_ulong();
+            } else if counter == Counter::FLOAT as i32 {
+                ty = Type::new_float();
+            } else if counter == Counter::DOUBLE as i32 {
+                ty = Type::new_double();
             } else {
                 panic!("invalid type.");
             }
@@ -1643,6 +1657,8 @@ impl<'a> Parser<'a> {
             | Tok::KeywordBool
             | Tok::KeywordChar
             | Tok::KeywordShort
+            | Tok::KeywordFloat
+            | Tok::KeywordDouble
             | Tok::KeywordStruct
             | Tok::KeywordUnion
             | Tok::KeywordTypedef
