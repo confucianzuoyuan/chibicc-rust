@@ -1,7 +1,7 @@
 use std::{collections::HashMap, io::Write};
 
 use crate::{
-    ast::{self, FunctionDefinition, InitData},
+    ast::{self, ExprWithPos, FunctionDefinition, InitData},
     sema::{self, Ty, Type},
 };
 
@@ -262,10 +262,21 @@ impl CodeGenerator {
         self.depth += 1;
     }
 
-    fn popf(&mut self, arg: String) {
-        self.output.push(format!("  movsd (%rsp), {}", arg));
+    fn popf(&mut self, reg: usize) {
+        self.output.push(format!("  movsd (%rsp), %xmm{}", reg));
         self.output.push(format!("  add $8, %rsp"));
         self.depth -= 1;
+    }
+
+    fn push_args(&mut self, args: Vec<ExprWithPos>) {
+        for arg in args.iter().rev() {
+            self.gen_expr(arg);
+            if arg.node.ty.is_flonum() {
+                self.pushf();
+            } else {
+                self.push();
+            }
+        }
     }
 
     // Load a value from where %rax is pointing to.
@@ -681,18 +692,19 @@ impl CodeGenerator {
                 self.output.push(format!(".L.end.{}:", c));
             }
             ast::Expr::FunctionCall { name, args } => {
-                if args.len() > 0 {
-                    // 参数逆序入栈
-                    for arg in args.iter().rev() {
-                        self.gen_expr(arg);
-                        self.push();
-                    }
-                    for i in 0..=args.len() - 1 {
-                        self.pop(ARGREG_64[i].to_string());
+                self.push_args(args.clone());
+                let mut gp = 0;
+                let mut fp = 0;
+                for arg in args {
+                    if arg.node.ty.is_flonum() {
+                        self.popf(fp);
+                        fp += 1;
+                    } else {
+                        self.pop(ARGREG_64[gp].to_string());
+                        gp += 1;
                     }
                 }
 
-                self.output.push(format!("  mov $0, %rax"));
                 if self.depth % 2 == 0 {
                     self.output.push(format!("  call {}", name));
                 } else {
@@ -726,7 +738,7 @@ impl CodeGenerator {
                     self.gen_expr(&right);
                     self.pushf();
                     self.gen_expr(&left);
-                    self.popf("%xmm1".to_string());
+                    self.popf(1);
 
                     let sz = if left.node.ty.is_float() { "ss" } else { "sd" };
 
