@@ -1,3 +1,3 @@
 int main() {
-    return 2.3f+3.8;
+    return ({ double i=10.0; int j=0; do j++; while(--i); j; });
 }

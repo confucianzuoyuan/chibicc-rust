@@ -525,26 +525,8 @@ pub fn get_common_type(ty1: Type, ty2: Type) -> Type {
 /// This operation is called the "usual arithmetic conversion".
 pub fn usual_arith_conv(lhs: &mut ExprWithPos, rhs: &mut ExprWithPos) {
     let ty = get_common_type(lhs.node.ty.clone(), rhs.node.ty.clone());
-    *lhs = WithPos::new(
-        WithType::new(
-            Expr::CastExpr {
-                expr: Box::new(lhs.clone()),
-                ty: ty.clone(),
-            },
-            ty.clone(),
-        ),
-        lhs.pos,
-    );
-    *rhs = WithPos::new(
-        WithType::new(
-            Expr::CastExpr {
-                expr: Box::new(rhs.clone()),
-                ty: ty.clone(),
-            },
-            ty.clone(),
-        ),
-        rhs.pos,
-    );
+    *lhs = ExprWithPos::new_cast_expr(lhs.clone(), ty.clone(), lhs.pos);
+    *rhs = ExprWithPos::new_cast_expr(rhs.clone(), ty, rhs.pos);
 }
 
 pub fn add_type(e: &mut ast::ExprWithPos) {
@@ -559,10 +541,7 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
             ref mut right,
         } => {
             usual_arith_conv(left, right);
-            e.node.ty = Type {
-                ty: Ty::TyInt,
-                name: None,
-            };
+            e.node.ty = Type::new_int();
         }
         ast::Expr::Binary {
             op:

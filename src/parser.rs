@@ -2210,7 +2210,7 @@ impl<'a> Parser<'a> {
             PlusPlus => {
                 let pos = eat!(self, PlusPlus);
                 let i = self.unary()?;
-                let one = ExprWithPos::new_long(1, pos);
+                let one = ExprWithPos::new_int(1, pos);
                 let binary = self.new_add(i, one, pos)?;
                 self.to_assign(binary)
             }
@@ -2218,7 +2218,7 @@ impl<'a> Parser<'a> {
             MinusMinus => {
                 let pos = eat!(self, MinusMinus);
                 let i = self.unary()?;
-                let one = ExprWithPos::new_long(1, pos);
+                let one = ExprWithPos::new_int(1, pos);
                 let binary = self.new_sub(i, one, pos)?;
                 self.to_assign(binary)
             }
@@ -2402,15 +2402,18 @@ impl<'a> Parser<'a> {
 
         let pos = self.peek()?.pos;
 
-        let positive_one = ExprWithPos::new_long(addend as i64, pos);
-        let negative_one = ExprWithPos::new_long(-addend as i64, pos);
+        let positive_one = ExprWithPos::new_int(addend as i32, pos);
+        let negative_one = ExprWithPos::new_int(-addend as i32, pos);
 
         // A += 1
         // A + 1
-        let a_plus_one = self.new_add(node.clone(), positive_one, pos)?;
+        let mut a_plus_one = self.new_add(node.clone(), positive_one, pos)?;
+        // add_type(&mut a_plus_one);
         // A = A + 1
-        let a = self.to_assign(a_plus_one)?;
-        let e = self.new_add(a, negative_one, pos)?;
+        let mut a = self.to_assign(a_plus_one)?;
+        // add_type(&mut a);
+        let mut e = self.new_add(a, negative_one, pos)?;
+        add_type(&mut e);
 
         // cast
         let c = ExprWithPos::new_cast_expr(e, node.node.ty, pos);

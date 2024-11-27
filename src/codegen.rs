@@ -370,7 +370,13 @@ impl CodeGenerator {
     }
 
     fn cmp_zero(&mut self, ty: Type) {
-        if ty.is_integer() && ty.get_size() <= 4 {
+        if ty.is_float() {
+            self.output.push(format!("  xorps %xmm1, %xmm1"));
+            self.output.push(format!("  ucomiss %xmm1, %xmm0"));
+        } else if ty.is_double() {
+            self.output.push(format!("  xorpd %xmm1, %xmm1"));
+            self.output.push(format!("  ucomisd %xmm1, %xmm0"));
+        } else if ty.is_integer() && ty.get_size() <= 4 {
             self.output.push(format!("  cmp $0, %eax"));
         } else {
             self.output.push(format!("  cmp $0, %rax"));
@@ -430,7 +436,7 @@ impl CodeGenerator {
                 let c = self.label_count;
                 self.label_count += 1;
                 self.gen_expr(condition);
-                self.output.push(format!("  cmp $0, %rax"));
+                self.cmp_zero(condition.node.ty.clone());
                 self.output.push(format!("  je .L.else.{}", c));
                 self.gen_stmt(&then_clause);
                 self.output.push(format!("  jmp .L.end.{}", c));
@@ -454,7 +460,7 @@ impl CodeGenerator {
                 self.output.push(format!(".L.begin.{}:", c));
                 if let Some(cond) = condition {
                     self.gen_expr(cond);
-                    self.output.push(format!("  cmp $0, %rax"));
+                    self.cmp_zero(cond.node.ty.clone());
                     if let Some(brk_label) = break_label {
                         self.output.push(format!("  je {}", brk_label));
                     }
@@ -481,7 +487,7 @@ impl CodeGenerator {
                 self.label_count += 1;
                 self.output.push(format!(".L.begin.{}:", c));
                 self.gen_expr(condition);
-                self.output.push(format!("  cmp $0, %rax"));
+                self.cmp_zero(condition.node.ty.clone());
                 if let Some(brk_label) = break_label {
                     self.output.push(format!("  je {}", brk_label));
                 }
@@ -508,8 +514,8 @@ impl CodeGenerator {
                     self.output.push(format!("{}:", cont_label));
                 }
                 self.gen_expr(condition);
-                self.output.push(format!("  cmp $0, %rax"));
-                self.output.push(format!(" jne .L.begin.{}", c));
+                self.cmp_zero(condition.node.ty.clone());
+                self.output.push(format!("  jne .L.begin.{}", c));
                 if let Some(brk_label) = break_label {
                     self.output.push(format!("{}:", brk_label));
                 }
@@ -617,7 +623,7 @@ impl CodeGenerator {
                 }
                 ast::UnaryOperator::Not => {
                     self.gen_expr(expr);
-                    self.output.push(format!("  cmp $0, %rax"));
+                    self.cmp_zero(expr.node.ty.clone());
                     self.output.push(format!("  sete %al"));
                     self.output.push(format!("  movzx %al, %rax"));
                 }
@@ -666,7 +672,7 @@ impl CodeGenerator {
                 let c = self.label_count;
                 self.label_count += 1;
                 self.gen_expr(&condition);
-                self.output.push(format!("  cmp $0, %rax"));
+                self.cmp_zero(condition.node.ty.clone());
                 self.output.push(format!("  je .L.else.{}", c));
                 self.gen_expr(&then_clause);
                 self.output.push(format!("  jmp .L.end.{}", c));
@@ -777,7 +783,37 @@ impl CodeGenerator {
                             self.output.push(format!("  and $1, %al"));
                             self.output.push(format!("  movzb %al, %rax"));
                         }
-                        _ => panic!("invalid expression"),
+                        ast::BinaryOperator::LogAnd => {
+                            let c = self.label_count;
+                            self.label_count += 1;
+                            self.gen_expr(left);
+                            self.cmp_zero(left.node.ty.clone());
+                            self.output.push(format!("  je .L.false.{}", c));
+                            self.gen_expr(&right);
+                            self.cmp_zero(right.node.ty.clone());
+                            self.output.push(format!("  je .L.false.{}", c));
+                            self.output.push(format!("  mov $1, %rax"));
+                            self.output.push(format!("  jmp .L.end.{}", c));
+                            self.output.push(format!(".L.false.{}:", c));
+                            self.output.push(format!("  mov $0, %rax"));
+                            self.output.push(format!(".L.end.{}:", c));
+                        }
+                        ast::BinaryOperator::LogOr => {
+                            let c = self.label_count;
+                            self.label_count += 1;
+                            self.gen_expr(left);
+                            self.cmp_zero(left.node.ty.clone());
+                            self.output.push(format!("  jne .L.true.{}", c));
+                            self.gen_expr(right);
+                            self.cmp_zero(right.node.ty.clone());
+                            self.output.push(format!("  jne .L.true.{}", c));
+                            self.output.push(format!("  mov $0, %rax"));
+                            self.output.push(format!("  jmp .L.end.{}", c));
+                            self.output.push(format!(".L.true.{}:", c));
+                            self.output.push(format!("  mov $1, %rax"));
+                            self.output.push(format!(".L.end.{}:", c));
+                        }
+                        _ => panic!("invalid expression {:?}", op.node),
                     }
 
                     return ();
@@ -886,7 +922,10 @@ impl CodeGenerator {
                         let c = self.label_count;
                         self.label_count += 1;
                         self.gen_expr(left);
-                        self.output.push(format!("  cmp $0, %rax"));
+                        self.cmp_zero(left.node.ty.clone());
+                        self.output.push(format!("  je .L.false.{}", c));
+                        self.gen_expr(&right);
+                        self.cmp_zero(right.node.ty.clone());
                         self.output.push(format!("  je .L.false.{}", c));
                         self.output.push(format!("  mov $1, %rax"));
                         self.output.push(format!("  jmp .L.end.{}", c));
@@ -898,10 +937,10 @@ impl CodeGenerator {
                         let c = self.label_count;
                         self.label_count += 1;
                         self.gen_expr(left);
-                        self.output.push(format!("  cmp $0, %rax"));
+                        self.cmp_zero(left.node.ty.clone());
                         self.output.push(format!("  jne .L.true.{}", c));
                         self.gen_expr(right);
-                        self.output.push(format!("  cmp $0, %rax"));
+                        self.cmp_zero(right.node.ty.clone());
                         self.output.push(format!("  jne .L.true.{}", c));
                         self.output.push(format!("  mov $0, %rax"));
                         self.output.push(format!("  jmp .L.end.{}", c));
