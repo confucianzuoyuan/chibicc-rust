@@ -1531,6 +1531,8 @@ impl<'a> Parser<'a> {
                 ty = Type::new_float();
             } else if counter == Counter::DOUBLE as i32 {
                 ty = Type::new_double();
+            } else if counter == Counter::LONG as i32 + Counter::DOUBLE as i32 {
+                ty = Type::new_double();
             } else {
                 panic!("invalid type.");
             }
