@@ -2407,10 +2407,10 @@ impl<'a> Parser<'a> {
 
         // A += 1
         // A + 1
-        let mut a_plus_one = self.new_add(node.clone(), positive_one, pos)?;
+        let a_plus_one = self.new_add(node.clone(), positive_one, pos)?;
         // add_type(&mut a_plus_one);
         // A = A + 1
-        let mut a = self.to_assign(a_plus_one)?;
+        let a = self.to_assign(a_plus_one)?;
         // add_type(&mut a);
         let mut e = self.new_add(a, negative_one, pos)?;
         add_type(&mut e);
@@ -2533,15 +2533,21 @@ impl<'a> Parser<'a> {
                     if params_ty.is_empty() && !func_found.clone().unwrap().ty.is_variadic() {
                         panic!("too many arguments");
                     }
-                    if arg_exp.node.ty.is_union() || arg_exp.node.ty.is_struct() {
-                        panic!("passing struct or union is not supported yet.");
+
+                    if let Some(param_type) = params_ty.get(i) {
+                        if arg_exp.node.ty.is_union() || arg_exp.node.ty.is_struct() {
+                            panic!("passing struct or union is not supported yet.");
+                        }
+
+                        arg_exp = ExprWithPos::new_cast_expr(arg_exp, param_type.clone(), pos);
+                    } else if arg_exp.node.ty.is_float() {
+                        // If parameter type is omitted (e.g. in "..."), float
+                        // arguments are promoted to double.
+                        arg_exp = ExprWithPos::new_cast_expr(arg_exp, Type::new_double(), pos);
                     }
-                    let param_type = match params_ty.get(i).clone() {
-                        Some(t) => t.clone(),
-                        _ => arg_exp.node.ty.clone(),
-                    };
-                    let node = ExprWithPos::new_cast_expr(arg_exp, param_type, pos);
-                    args.push(node);
+
+                    args.push(arg_exp);
+
                     i += 1;
                 }
             }
