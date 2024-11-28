@@ -342,6 +342,18 @@ impl CodeGenerator {
         }
     }
 
+    fn store_fp(&mut self, r: i32, offset: i32, sz: i32) {
+        match sz {
+            4 => self
+                .output
+                .push(format!("  movss %xmm{}, {}(%rbp)", r, offset)),
+            8 => self
+                .output
+                .push(format!("  movsd %xmm{}, {}(%rbp)", r, offset)),
+            _ => unreachable!(),
+        }
+    }
+
     fn store_gp(&mut self, r: i32, offset: i32, sz: i32) {
         match sz {
             1 => self
@@ -1124,11 +1136,16 @@ impl CodeGenerator {
             }
 
             // Save passed-by-register arguments to the stack
-            let mut i = 0;
+            let mut gp = 0;
+            let mut fp = 0;
             for p in &mut f.params.iter().rev() {
-                let offset = p.borrow().offset;
-                self.store_gp(i, offset, p.borrow().ty.get_size());
-                i += 1;
+                if p.borrow().ty.is_flonum() {
+                    self.store_fp(fp, p.borrow().offset, p.borrow().ty.get_size());
+                    fp += 1;
+                } else {
+                    self.store_gp(gp, p.borrow().offset, p.borrow().ty.get_size());
+                    gp += 1;
+                }
             }
 
             // Emit code
