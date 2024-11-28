@@ -1099,13 +1099,22 @@ impl CodeGenerator {
 
             // Save arg registers if function is variadic
             if let Some(va_area) = &f.va_area {
-                let gp = f.params.len();
+                let mut gp = 0;
+                let mut fp = 0;
+                for v in f.params.clone() {
+                    if v.borrow().ty.is_flonum() {
+                        fp += 1;
+                    } else {
+                        gp += 1;
+                    }
+                }
                 let off = va_area.borrow().offset;
 
                 // va_elem
                 self.output
                     .push(format!("  movl ${}, {}(%rbp)", gp * 8, off));
-                self.output.push(format!("  movl $0, {}(%rbp)", off + 4));
+                self.output
+                    .push(format!("  movl ${}, {}(%rbp)", fp * 8 + 48, off + 4));
                 self.output.push(format!("  movq %rbp, {}(%rbp)", off + 16));
                 self.output
                     .push(format!("  addq ${}, {}(%rbp)", off + 24, off + 16));
