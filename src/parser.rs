@@ -624,6 +624,28 @@ impl<'a> Parser<'a> {
         }
 
         if let Some(init_expr) = &mut init.expr {
+            if ty.is_float() {
+                let val = self.eval_double(init_expr)? as f32;
+                let val = val.to_bits();
+                buf[offset as usize] = (val >> 0) as u8;
+                buf[(offset + 1) as usize] = (val >> 8) as u8;
+                buf[(offset + 2) as usize] = (val >> 16) as u8;
+                buf[(offset + 3) as usize] = (val >> 24) as u8;
+                return Ok(vec![]);
+            }
+            if ty.is_double() {
+                let val = self.eval_double(init_expr)?;
+                let val = val.to_bits();
+                buf[offset as usize] = val as u8;
+                buf[(offset + 1) as usize] = (val >> 8) as u8;
+                buf[(offset + 2) as usize] = (val >> 16) as u8;
+                buf[(offset + 3) as usize] = (val >> 24) as u8;
+                buf[(offset + 4) as usize] = (val >> 32) as u8;
+                buf[(offset + 5) as usize] = (val >> 40) as u8;
+                buf[(offset + 6) as usize] = (val >> 48) as u8;
+                buf[(offset + 7) as usize] = (val >> 56) as u8;
+                return Ok(vec![]);
+            }
             let mut label = None;
             let val = self.eval_constexpr_with_label(init_expr, &mut label)?;
             if let Some(label) = label {
@@ -2122,16 +2144,19 @@ impl<'a> Parser<'a> {
                     let pos = eat!(self, Star);
                     let rhs = self.cast()?;
                     node = ExprWithPos::new_binary(BinaryOperator::Mul, node, rhs, pos);
+                    add_type(&mut node);
                 }
                 Tok::Slash => {
                     let pos = eat!(self, Slash);
                     let rhs = self.cast()?;
                     node = ExprWithPos::new_binary(BinaryOperator::Div, node, rhs, pos);
+                    add_type(&mut node);
                 }
                 Tok::Percent => {
                     let pos = eat!(self, Percent);
                     let rhs = self.cast()?;
                     node = ExprWithPos::new_binary(BinaryOperator::Mod, node, rhs, pos);
+                    add_type(&mut node);
                 }
                 _ => break,
             }
@@ -3127,6 +3152,10 @@ impl<'a> Parser<'a> {
     ) -> Result<i64> {
         add_type(node);
 
+        if node.node.ty.is_flonum() {
+            return Ok(self.eval_double(node)? as i64);
+        }
+
         match node.node.node.clone() {
             Expr::Binary {
                 mut left,
@@ -3274,6 +3303,66 @@ impl<'a> Parser<'a> {
                 return Ok(self.eval_rvalue(&mut strct, label)? + member.offset as i64);
             }
             _ => return Err(Error::InvalidInitializer { pos: node.pos }),
+        }
+    }
+
+    fn eval_double(&mut self, node: &mut ExprWithPos) -> Result<f64> {
+        add_type(node);
+
+        if node.node.ty.is_integer() {
+            if node.node.ty.is_unsigned() {
+                return Ok(self.eval_constexpr(node)? as u64 as f64);
+            }
+            return Ok(self.eval_constexpr(node)? as f64);
+        }
+
+        match node.node.node.clone() {
+            Expr::Binary {
+                mut left,
+                op,
+                mut right,
+            } => match op.node {
+                BinaryOperator::Add => {
+                    return Ok(self.eval_double(&mut left)? + self.eval_double(&mut right)?)
+                }
+                BinaryOperator::Sub => {
+                    return Ok(self.eval_double(&mut left)? - self.eval_double(&mut right)?)
+                }
+                BinaryOperator::Mul => {
+                    return Ok(self.eval_double(&mut left)? * self.eval_double(&mut right)?)
+                }
+                BinaryOperator::Div => {
+                    let val = self.eval_double(&mut left)? / self.eval_double(&mut right)?;
+                    return Ok(val);
+                }
+                _ => panic!(),
+            },
+            Expr::Unary { op, mut expr } => match op.node {
+                UnaryOperator::Neg => return Ok(-self.eval_double(&mut expr)?),
+                _ => panic!(),
+            },
+            Expr::CommaExpr { left: _, mut right } => return self.eval_double(&mut right),
+            Expr::TernaryExpr {
+                mut condition,
+                mut then_clause,
+                mut else_clause,
+            } => {
+                let val = self.eval_double(&mut condition)?;
+                if val != 0.0 {
+                    return self.eval_double(&mut then_clause);
+                } else {
+                    return self.eval_double(&mut else_clause);
+                }
+            }
+            Expr::CastExpr { mut expr, ty } => {
+                if expr.node.ty.is_flonum() {
+                    return self.eval_double(&mut expr);
+                }
+                return Ok(self.eval_constexpr(&mut expr)? as f64);
+            }
+            Expr::ConstDouble { value } => return Ok(value),
+            Expr::ConstFloat { value } => return Ok(value as f64),
+            _ => panic!(),
         }
     }
 

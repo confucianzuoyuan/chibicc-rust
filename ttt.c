@@ -1,3 +1,5 @@
+double g41 = 1 * 5.0 / 2;
+
 int main() {
-    return ({ double i=10.0; int j=0; do j++; while(--i); j; });
+    return g41;
 }

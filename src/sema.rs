@@ -1,6 +1,5 @@
 use crate::ast::BinaryOperator::*;
 use crate::ast::{self, BinaryOperatorWithPos, Expr, ExprWithPos, UnaryOperatorWithPos};
-use crate::position::WithPos;
 use crate::token::{Tok, Token};
 
 #[derive(Clone, Debug, PartialEq)]
