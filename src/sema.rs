@@ -438,10 +438,6 @@ impl Type {
         }
     }
 
-    pub fn set_name(&mut self, tok: Token) {
-        self.name = Some(tok.clone());
-    }
-
     pub fn set_members(&mut self, new_members: Vec<Member>) {
         match self.ty {
             Ty::TyStruct {
@@ -496,6 +492,8 @@ pub fn get_common_type(ty1: Type, ty2: Type) -> Type {
         (Ty::TyArray { base, .. } | Ty::TyPtr { base, .. }, _) => pointer_to(*base),
         (Ty::TyDouble, _) | (_, Ty::TyDouble) => Type::new_double(),
         (Ty::TyFloat, _) | (_, Ty::TyFloat) => Type::new_float(),
+        (Ty::TyFunc { .. }, _) => pointer_to(ty1),
+        (_, Ty::TyFunc { .. }) => pointer_to(ty2),
         _ => {
             let ty1 = if ty1.get_size() < 4 {
                 Type::new_int()
