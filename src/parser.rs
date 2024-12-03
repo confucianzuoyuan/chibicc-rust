@@ -1635,42 +1635,32 @@ impl<'a> Parser<'a> {
     fn declarator(&mut self, ty: &mut Type) -> Result<Type> {
         let mut ty = self.pointers(ty)?;
 
-        if self.peek()?.token == LeftParen
-            && self.peek_next_one()?.token.is_ident()
-            && self.peek_next_two()?.token == RightParen
-        {
-            eat!(self, LeftParen);
-            let tok = self.token()?;
-            eat!(self, RightParen);
-            let mut ty = self.type_suffix(&mut ty)?;
-            ty.set_name(tok);
-            return Ok(ty);
-        }
-
         if self.peek()?.token == LeftParen {
-            eat!(self, LeftParen);
-            let mut _ty = self.declarator(&mut ty)?;
+            let start = self.current_pos;
+            let mut dummy = Type::new_placeholder();
+            self.current_pos = start + 1;
+            self.declarator(&mut dummy)?;
             eat!(self, RightParen);
-            let ty = self.type_suffix(&mut ty)?;
-            match _ty.ty {
-                Ty::TyPtr { ref mut base, .. } | Ty::TyArray { ref mut base, .. } => {
-                    *base = Box::new(ty);
-                }
-                _ => panic!(),
-            }
-            return Ok(_ty);
+            ty = self.type_suffix(&mut ty)?;
+            let after_suffix = self.current_pos;
+            self.current_pos = start + 1;
+            let ty = self.declarator(&mut ty);
+            self.current_pos = after_suffix;
+            return ty;
         }
 
-        if self.peek()?.token.is_ident() {
-            let tok = self.token()?;
-            ty = self.type_suffix(&mut ty)?;
-            ty.set_name(tok);
-            return Ok(ty);
+        let name = if self.peek()?.token.is_ident() {
+            let tok = self.peek()?.clone();
+            self.token()?;
+            Some(tok)
         } else {
-            ty = self.type_suffix(&mut ty)?;
-            ty.name = None;
-            return Ok(ty);
-        }
+            None
+        };
+
+        ty = self.type_suffix(&mut ty)?;
+        ty.name = name;
+
+        return Ok(ty);
     }
 
     fn is_typename(&mut self, tok: Tok) -> Result<bool> {
