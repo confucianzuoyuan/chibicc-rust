@@ -291,6 +291,7 @@ impl CodeGenerator {
             Ty::TyArray { .. } => (),
             Ty::TyStruct { .. } => (),
             Ty::TyUnion { .. } => (),
+            Ty::TyFunc { .. } => (),
             Ty::TyFloat => {
                 self.output.push(format!("  movss (%rax), %xmm0"));
             }
@@ -409,15 +410,57 @@ impl CodeGenerator {
     fn gen_addr(&mut self, ast: &ast::ExprWithPos) {
         match &ast.node.node {
             ast::Expr::Variable { obj, .. } => {
+                // Local variable
                 if obj.borrow().is_local {
                     self.output
                         .push(format!("  lea {}(%rbp), %rax", obj.borrow().offset));
-                } else {
-                    self.output.push(format!(
-                        "  lea {}(%rip), %rax",
-                        obj.borrow().name.clone().unwrap()
-                    ));
+                    return ();
                 }
+
+                // Here, we generate an absolute address of a function or a global
+                // variable. Even though they exist at a certain address at runtime,
+                // their addresses are not known at link-time for the following
+                // two reasons.
+                //
+                //  - Address randomization: Executables are loaded to memory as a
+                //    whole but it is not known what address they are loaded to.
+                //    Therefore, at link-time, relative address in the same
+                //    exectuable (i.e. the distance between two functions in the
+                //    same executable) is known, but the absolute address is not
+                //    known.
+                //
+                //  - Dynamic linking: Dynamic shared objects (DSOs) or .so files
+                //    are loaded to memory alongside an executable at runtime and
+                //    linked by the runtime loader in memory. We know nothing
+                //    about addresses of global stuff that may be defined by DSOs
+                //    until the runtime relocation is complete.
+                //
+                // In order to deal with the former case, we use RIP-relative
+                // addressing, denoted by `(%rip)`. For the latter, we obtain an
+                // address of a stuff that may be in a shared object file from the
+                // Global Offset Table using `@GOTPCREL(%rip)` notation.
+
+                // Function
+                if ast.node.ty.is_func() {
+                    if obj.borrow().is_definition {
+                        self.output.push(format!(
+                            "  lea {}(%rip), %rax",
+                            obj.borrow().name.clone().unwrap()
+                        ));
+                    } else {
+                        self.output.push(format!(
+                            "  mov {}@GOTPCREL(%rip), %rax",
+                            obj.borrow().name.clone().unwrap()
+                        ));
+                    }
+                    return ();
+                }
+
+                // Global variable
+                self.output.push(format!(
+                    "  lea {}(%rip), %rax",
+                    obj.borrow().name.clone().unwrap()
+                ));
             }
             ast::Expr::Deref { expr, .. } => self.gen_expr(expr),
             ast::Expr::CommaExpr { left, right } => {
@@ -703,8 +746,10 @@ impl CodeGenerator {
                 self.gen_expr(&else_clause);
                 self.output.push(format!(".L.end.{}:", c));
             }
-            ast::Expr::FunctionCall { name, args } => {
+            ast::Expr::FunctionCall { expr, args } => {
                 self.push_args(args.clone());
+                self.gen_expr(&expr);
+
                 let mut gp = 0;
                 let mut fp = 0;
                 for arg in args {
@@ -718,10 +763,10 @@ impl CodeGenerator {
                 }
 
                 if self.depth % 2 == 0 {
-                    self.output.push(format!("  call {}", name));
+                    self.output.push(format!("  call *%rax"));
                 } else {
                     self.output.push(format!("  sub $8, %rsp"));
-                    self.output.push(format!("  call {}", name));
+                    self.output.push(format!("  call *%rax"));
                     self.output.push(format!("  add $8, %rsp"));
                 }
 
@@ -1003,6 +1048,9 @@ impl CodeGenerator {
 
     fn emit_data(&mut self, ast: &mut ast::Program) {
         for global in &mut ast.globals {
+            if global.borrow().ty.is_func() {
+                continue;
+            }
             if !global.borrow().is_definition {
                 continue;
             }

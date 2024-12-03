@@ -49,7 +49,7 @@ pub enum Expr {
         expr: Box<ExprWithPos>,
     },
     FunctionCall {
-        name: String,
+        expr: Box<ExprWithPos>,
         args: Vec<ExprWithPos>,
     },
     StmtExpr {
@@ -363,8 +363,8 @@ impl Display for ExprWithPos {
                     }
                     Expr::CommaExpr { left, right } => return format!("{}, {}", left, right),
                     Expr::Deref { expr } => return format!("deref {}", expr),
-                    Expr::FunctionCall { name, args } => {
-                        let mut r = format!("funname {} args: ", name);
+                    Expr::FunctionCall { expr, args } => {
+                        let mut r = format!("funname {} args: ", expr);
                         for arg in args {
                             r.push_str(format!(" {}", arg).as_str());
                         }

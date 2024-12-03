@@ -26,10 +26,6 @@ pub enum Error {
         escape: String,
         pos: Pos,
     },
-    ImplicitDeclarationOfFunction {
-        name: String,
-        pos: Pos,
-    },
     InvalidInitializer {
         pos: Pos,
     },
@@ -70,15 +66,6 @@ impl Error {
             }
             Error::InvalidEscape { ref escape, pos } => {
                 eprintln!("Invalid escape \\{}{}", escape, terminal.end_bold());
-                pos.show(symbols, terminal);
-                highlight_line(pos, symbols, terminal)?;
-            }
-            Error::ImplicitDeclarationOfFunction { ref name, pos } => {
-                eprintln!(
-                    "Implicit Declaration of A Function \\{}{}",
-                    name,
-                    terminal.end_bold()
-                );
                 pos.show(symbols, terminal);
                 highlight_line(pos, symbols, terminal)?;
             }

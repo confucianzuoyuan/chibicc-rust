@@ -2474,6 +2474,10 @@ impl<'a> Parser<'a> {
 
         loop {
             match self.peek()?.token {
+                Tok::LeftParen => {
+                    eat!(self, LeftParen);
+                    node = self.funcall(&mut node)?;
+                }
                 Tok::LeftBracket => {
                     // x[y] is short for *(x+y)
                     let pos = eat!(self, LeftBracket);
@@ -2509,30 +2513,33 @@ impl<'a> Parser<'a> {
         Ok(node)
     }
 
-    /// funcall = ident "(" (assign ("," assign)*)? ")"
-    fn funcall(&mut self, funname: String) -> Result<ExprWithPos> {
-        let mut func_found = None;
-        for f in &self.functions {
-            if f.name.clone().unwrap() == funname {
-                func_found = Some(f.clone());
-                break;
+    /// funcall = (assign ("," assign)*)? ")"
+    fn funcall(&mut self, func: &mut ExprWithPos) -> Result<ExprWithPos> {
+        add_type(func);
+
+        if !func.node.ty.is_func() {
+            if !func.node.ty.is_ptr() {
+                panic!("not a function");
+            }
+            if let Some(base) = func.node.ty.base() {
+                if !base.is_func() {
+                    panic!("not a function");
+                }
             }
         }
 
-        if func_found.is_none() {
-            return Err(Error::ImplicitDeclarationOfFunction {
-                name: funname,
-                pos: self.peek()?.pos,
-            });
-        }
+        let ty = if func.node.ty.is_func() {
+            func.node.ty.clone()
+        } else {
+            func.node.ty.clone().base().unwrap()
+        };
 
-        let pos = eat!(self, LeftParen);
-        let mut args = vec![];
-
-        let params_ty = match func_found.clone().unwrap().ty.clone().ty {
+        let params_ty = match ty.clone().ty {
             Ty::TyFunc { params, .. } => params,
             _ => unreachable!(),
         };
+
+        let mut args = vec![];
 
         let mut i = 0;
         loop {
@@ -2547,7 +2554,7 @@ impl<'a> Parser<'a> {
                 _ => {
                     let mut arg_exp = self.assign()?;
                     add_type(&mut arg_exp);
-                    if params_ty.is_empty() && !func_found.clone().unwrap().ty.is_variadic() {
+                    if params_ty.is_empty() && !func.node.clone().ty.is_variadic() {
                         panic!("too many arguments");
                     }
 
@@ -2556,11 +2563,19 @@ impl<'a> Parser<'a> {
                             panic!("passing struct or union is not supported yet.");
                         }
 
-                        arg_exp = ExprWithPos::new_cast_expr(arg_exp, param_type.clone(), pos);
+                        arg_exp = ExprWithPos::new_cast_expr(
+                            arg_exp.clone(),
+                            param_type.clone(),
+                            arg_exp.pos.clone(),
+                        );
                     } else if arg_exp.node.ty.is_float() {
                         // If parameter type is omitted (e.g. in "..."), float
                         // arguments are promoted to double.
-                        arg_exp = ExprWithPos::new_cast_expr(arg_exp, Type::new_double(), pos);
+                        arg_exp = ExprWithPos::new_cast_expr(
+                            arg_exp.clone(),
+                            Type::new_double(),
+                            arg_exp.pos.clone(),
+                        );
                     }
 
                     args.push(arg_exp);
@@ -2577,15 +2592,15 @@ impl<'a> Parser<'a> {
         let node = WithPos::new(
             WithType::new(
                 Expr::FunctionCall {
-                    name: funname,
+                    expr: Box::new(func.clone()),
                     args,
                 },
-                match func_found.unwrap().ty.ty {
+                match ty.ty {
                     Ty::TyFunc { return_ty, .. } => *return_ty,
                     _ => unreachable!(),
                 },
             ),
-            pos,
+            func.pos,
         );
         Ok(node)
     }
@@ -2725,10 +2740,6 @@ impl<'a> Parser<'a> {
             Tok::Ident(_) => {
                 let name;
                 let pos = eat!(self, Ident, name);
-                // function call
-                if self.peek()?.token == Tok::LeftParen {
-                    return self.funcall(name.clone());
-                }
                 // variable
                 if let Some(var) = self.var_env.look(self.symbols.symbol(&name)) {
                     let _ty = var.borrow_mut().ty.clone();
@@ -2831,7 +2842,7 @@ impl<'a> Parser<'a> {
     }
 
     fn function(&mut self, basety: &mut Type, attr: &Option<VarAttr>) -> Result<()> {
-        let ty = self.declarator(basety)?;
+        let mut ty = self.declarator(basety)?;
         if ty.name.is_none() {
             panic!("function name omitted.");
         }
@@ -2848,6 +2859,18 @@ impl<'a> Parser<'a> {
             Some(_attr) => _attr.is_static(),
             _ => false,
         };
+
+        let func = self.new_global_variable(
+            ty.clone().name.unwrap().token.get_ident_name().unwrap(),
+            &mut ty,
+            None,
+        )?;
+        func.borrow_mut().is_definition = is_definition;
+        func.borrow_mut().is_static = is_static;
+
+        if !func.borrow().is_definition {
+            return Ok(());
+        }
 
         self.locals = Vec::new();
 

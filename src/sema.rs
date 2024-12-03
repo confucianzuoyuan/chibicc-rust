@@ -239,7 +239,7 @@ impl Type {
 
     pub fn base(&self) -> Option<Type> {
         match &self.ty {
-            Ty::TyArray { base, .. } => Some(*base.clone()),
+            Ty::TyArray { base, .. } | Ty::TyPtr { base, .. } => Some(*base.clone()),
             _ => None,
         }
     }
@@ -308,6 +308,13 @@ impl Type {
     pub fn is_func(&self) -> bool {
         match self.ty {
             Ty::TyFunc { .. } => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_ptr(&self) -> bool {
+        match self.ty {
+            Ty::TyPtr { .. } => true,
             _ => false,
         }
     }
@@ -404,7 +411,7 @@ impl Type {
             Ty::TyLong | Ty::TyULong | Ty::TyDouble | Ty::TyPtr { .. } => 8,
             Ty::TyStruct { align, .. } | Ty::TyUnion { align, .. } => *align,
             Ty::TyArray { base, .. } => base.get_align(),
-            _ => panic!("type {:?} has no align infomation.", self),
+            _ => 0,
         }
     }
 
