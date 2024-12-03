@@ -1570,12 +1570,17 @@ impl<'a> Parser<'a> {
                     let mut ty2 = self.declspec(&mut None)?;
                     ty2 = self.declarator(&mut ty2)?;
 
-                    // "array of T" is converted to "pointer to T" only in the parameter
-                    // context. For example, *argv[] is converted to **argv by this.
+                    let type_name = ty2.clone().name;
                     if ty2.is_array() {
-                        let type_name = ty2.clone().name.unwrap();
+                        // "array of T" is converted to "pointer to T" only in the parameter
+                        // context. For example, *argv[] is converted to **argv by this.
                         ty2 = pointer_to(ty2.base().unwrap());
-                        ty2.set_name(type_name);
+                        ty2.name = type_name;
+                    } else if ty2.is_func() {
+                        // Likewise, a function is converted to a pointer to a function
+                        // only in the parameter context.
+                        ty2 = pointer_to(ty2);
+                        ty2.name = type_name;
                     }
 
                     params.push(ty2);
