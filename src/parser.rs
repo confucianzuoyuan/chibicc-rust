@@ -2812,14 +2812,6 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn peek_next_two(&mut self) -> std::result::Result<&Token, &Error> {
-        if let Some(tok) = self.tokens.get(self.current_pos + 2) {
-            Ok(tok)
-        } else {
-            panic!()
-        }
-    }
-
     fn token(&mut self) -> Result<Token> {
         if let Some(tok) = self.tokens.get(self.current_pos) {
             self.current_pos += 1;
@@ -3346,7 +3338,7 @@ impl<'a> Parser<'a> {
                     return self.eval_double(&mut else_clause);
                 }
             }
-            Expr::CastExpr { mut expr, ty } => {
+            Expr::CastExpr { mut expr, .. } => {
                 if expr.node.ty.is_flonum() {
                     return self.eval_double(&mut expr);
                 }

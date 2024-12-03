@@ -1,1 +1,3 @@
-char (*x)[3];
+int (*fnptr(int (*fn)(int n, ...)))(int, ...) {
+  return fn;
+}
