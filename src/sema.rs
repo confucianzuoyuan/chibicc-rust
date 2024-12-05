@@ -1,5 +1,5 @@
 use crate::ast::BinaryOperator::*;
-use crate::ast::{self, BinaryOperatorWithPos, Expr, ExprWithPos, UnaryOperatorWithPos};
+use crate::ast::{self, BinaryOperatorWithPos, Expr, ExprInner, UnaryOperatorWithPos};
 use crate::token::{Tok, Token};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -466,18 +466,6 @@ pub struct Member {
     pub align: i32,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct WithType<T> {
-    pub node: T,
-    pub ty: Type,
-}
-
-impl<T> WithType<T> {
-    pub fn new(node: T, ty: Type) -> Self {
-        Self { node, ty }
-    }
-}
-
 pub fn pointer_to(base: Type) -> Type {
     Type {
         ty: Ty::TyPtr {
@@ -527,15 +515,15 @@ pub fn get_common_type(ty1: Type, ty2: Type) -> Type {
 /// be promoted to match with the other.
 ///
 /// This operation is called the "usual arithmetic conversion".
-pub fn usual_arith_conv(lhs: &mut ExprWithPos, rhs: &mut ExprWithPos) {
-    let ty = get_common_type(lhs.node.ty.clone(), rhs.node.ty.clone());
-    *lhs = ExprWithPos::new_cast_expr(lhs.clone(), ty.clone(), lhs.pos);
-    *rhs = ExprWithPos::new_cast_expr(rhs.clone(), ty, rhs.pos);
+pub fn usual_arith_conv(lhs: &mut Expr, rhs: &mut Expr) {
+    let ty = get_common_type(lhs.ty.clone(), rhs.ty.clone());
+    *lhs = Expr::new_cast_expr(lhs.clone(), ty.clone(), lhs.pos);
+    *rhs = Expr::new_cast_expr(rhs.clone(), ty, rhs.pos);
 }
 
-pub fn add_type(e: &mut ast::ExprWithPos) {
-    match &mut e.node.node {
-        ast::Expr::Binary {
+pub fn add_type(e: &mut ast::Expr) {
+    match &mut e.expr {
+        ExprInner::Binary {
             op:
                 BinaryOperatorWithPos {
                     node: Eq | Ne | Lt | Le | Ge | Gt,
@@ -545,9 +533,9 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
             ref mut right,
         } => {
             usual_arith_conv(left, right);
-            e.node.ty = Type::new_int();
+            e.ty = Type::new_int();
         }
-        ast::Expr::Binary {
+        ExprInner::Binary {
             op:
                 BinaryOperatorWithPos {
                     node: Add | Sub | Mul | Div | Mod | BitAnd | BitOr | BitXor,
@@ -557,9 +545,9 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
             ref mut right,
         } => {
             usual_arith_conv(left, right);
-            e.node.ty = left.node.ty.clone();
+            e.ty = left.ty.clone();
         }
-        ast::Expr::Binary {
+        ExprInner::Binary {
             op:
                 BinaryOperatorWithPos {
                     node: LogOr | LogAnd,
@@ -567,34 +555,34 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
                 },
             ..
         } => {
-            e.node.ty = Type {
+            e.ty = Type {
                 ty: Ty::TyInt,
                 name: None,
             }
         }
-        ast::Expr::ConstInt { .. } => e.node.ty = Type::new_int(),
-        ast::Expr::ConstUInt { .. } => e.node.ty = Type::new_uint(),
-        ast::Expr::ConstLong { .. } => e.node.ty = Type::new_long(),
-        ast::Expr::ConstULong { .. } => e.node.ty = Type::new_ulong(),
-        ast::Expr::ConstFloat { .. } => e.node.ty = Type::new_float(),
-        ast::Expr::ConstDouble { .. } => e.node.ty = Type::new_double(),
-        ast::Expr::Variable { obj } => e.node.ty = obj.borrow().ty.clone(),
-        ast::Expr::Assign {
+        ExprInner::ConstInt { .. } => e.ty = Type::new_int(),
+        ExprInner::ConstUInt { .. } => e.ty = Type::new_uint(),
+        ExprInner::ConstLong { .. } => e.ty = Type::new_long(),
+        ExprInner::ConstULong { .. } => e.ty = Type::new_ulong(),
+        ExprInner::ConstFloat { .. } => e.ty = Type::new_float(),
+        ExprInner::ConstDouble { .. } => e.ty = Type::new_double(),
+        ExprInner::Variable { ref obj } => e.ty = obj.borrow().ty.clone(),
+        ExprInner::Assign {
             l_value,
             ref mut r_value,
-        } => match l_value.node.ty.ty {
-            Ty::TyPlaceholder => e.node.ty = l_value.node.ty.clone(),
-            Ty::TyArray { .. } => panic!("array type is not lvalue. {:?}", l_value.node.ty),
-            Ty::TyStruct { .. } => e.node.ty = l_value.node.ty.clone(),
+        } => match l_value.ty.ty {
+            Ty::TyPlaceholder => e.ty = l_value.ty.clone(),
+            Ty::TyArray { .. } => panic!("array type is not lvalue. {:?}", l_value.ty),
+            Ty::TyStruct { .. } => e.ty = l_value.ty.clone(),
             _ => {
-                r_value.node.node = Expr::CastExpr {
+                r_value.expr = ExprInner::CastExpr {
                     expr: r_value.clone(),
-                    ty: l_value.node.ty.clone(),
+                    ty: l_value.ty.clone(),
                 };
-                e.node.ty = l_value.node.ty.clone();
+                e.ty = l_value.ty.clone();
             }
         },
-        ast::Expr::Unary {
+        ExprInner::Unary {
             op:
                 UnaryOperatorWithPos {
                     node: ast::UnaryOperator::Neg,
@@ -607,15 +595,15 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
                     ty: Ty::TyInt,
                     name: None,
                 },
-                expr.node.ty.clone(),
+                expr.ty.clone(),
             );
-            expr.node.node = Expr::CastExpr {
+            expr.expr = ExprInner::CastExpr {
                 expr: expr.clone(),
                 ty: ty.clone(),
             };
-            e.node.ty = ty.clone();
+            e.ty = ty.clone();
         }
-        ast::Expr::Unary {
+        ExprInner::Unary {
             op:
                 UnaryOperatorWithPos {
                     node: ast::UnaryOperator::Not,
@@ -623,76 +611,76 @@ pub fn add_type(e: &mut ast::ExprWithPos) {
                 },
             ..
         } => {
-            e.node.ty = Type {
+            e.ty = Type {
                 ty: Ty::TyInt,
                 name: None,
             }
         }
-        ast::Expr::Unary {
+        ExprInner::Unary {
             op:
                 UnaryOperatorWithPos {
                     node: ast::UnaryOperator::BitNot,
                     ..
                 },
             expr,
-        } => e.node.ty = expr.node.ty.clone(),
-        ast::Expr::Binary {
+        } => e.ty = expr.ty.clone(),
+        ExprInner::Binary {
             op: BinaryOperatorWithPos {
                 node: SHL | SHR, ..
             },
             left,
             ..
-        } => e.node.ty = left.node.ty.clone(),
+        } => e.ty = left.ty.clone(),
         // "&" addr
-        ast::Expr::Addr { expr } => match expr.node.ty.clone().ty {
-            Ty::TyArray { base, array_len: _ } => e.node.ty = pointer_to(*base),
-            _ => e.node.ty = pointer_to(expr.node.ty.clone()),
+        ExprInner::Addr { expr } => match expr.ty.clone().ty {
+            Ty::TyArray { base, array_len: _ } => e.ty = pointer_to(*base),
+            _ => e.ty = pointer_to(expr.ty.clone()),
         },
         // "*" dereference
-        ast::Expr::Deref { expr } => match expr.node.ty.clone().ty {
-            Ty::TyPtr { base, .. } => e.node.ty = *base,
+        ExprInner::Deref { expr } => match expr.ty.clone().ty {
+            Ty::TyPtr { base, .. } => e.ty = *base,
             Ty::TyArray { base, array_len: _ } => match base.ty {
                 Ty::TyVoid => panic!("{:?} dereferencing a void pointer.", base.name),
-                _ => e.node.ty = *base,
+                _ => e.ty = *base,
             },
             _ => panic!(
                 "invalid pointer dereference: {:?}\n{:?}",
-                expr.node.ty, expr.node.node
+                expr.ty, expr.expr
             ),
         },
-        ast::Expr::FunctionCall { .. } => (),
-        ast::Expr::StmtExpr { body } => {
+        ExprInner::FunctionCall { .. } => (),
+        ExprInner::StmtExpr { body } => {
             if body.len() > 0 {
                 let stmt = body.last().unwrap().node.clone();
                 match stmt {
-                    ast::Stmt::ExprStmt { expr } => e.node.ty = expr.node.ty,
+                    ast::Stmt::ExprStmt { expr } => e.ty = expr.ty,
                     _ => panic!("statement expression returning void is not supported."),
                 }
             } else {
                 panic!("statement expression returning void is not supported.");
             }
         }
-        ast::Expr::CommaExpr { right, .. } => e.node.ty = right.node.ty.clone(),
-        ast::Expr::MemberExpr { member, .. } => e.node.ty = member.ty.clone(),
+        ExprInner::CommaExpr { right, .. } => e.ty = right.ty.clone(),
+        ExprInner::MemberExpr { member, .. } => e.ty = member.ty.clone(),
 
-        ast::Expr::CastExpr { .. } => (),
-        ast::Expr::Null => (),
-        ast::Expr::TernaryExpr {
+        ExprInner::CastExpr { .. } => (),
+        ExprInner::Null => (),
+        ExprInner::TernaryExpr {
             condition: _,
             ref mut then_clause,
             ref mut else_clause,
         } => {
-            if then_clause.node.ty.is_void() || else_clause.node.ty.is_void() {
-                e.node.ty = Type {
+            if then_clause.ty.is_void() || else_clause.ty.is_void() {
+                e.ty = Type {
                     ty: Ty::TyVoid,
                     name: None,
                 }
             } else {
                 usual_arith_conv(then_clause, else_clause);
-                e.node.ty = then_clause.node.ty.clone();
+                e.ty = then_clause.ty.clone();
             }
         }
-        ast::Expr::MemZero { .. } => (),
+        ExprInner::MemZero { .. } => (),
     }
 }
 

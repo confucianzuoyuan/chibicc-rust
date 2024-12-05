@@ -2,20 +2,20 @@ use std::{cell::RefCell, collections::HashMap, fmt::Display, rc::Rc};
 
 use crate::{
     position::{Pos, WithPos},
-    sema::{Member, Ty, Type, WithType},
+    sema::{Member, Ty, Type},
     token::Token,
 };
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Expr {
+pub enum ExprInner {
     Binary {
-        left: Box<ExprWithPos>,
+        left: Box<Expr>,
         op: BinaryOperatorWithPos,
-        right: Box<ExprWithPos>,
+        right: Box<Expr>,
     },
     Unary {
         op: UnaryOperatorWithPos,
-        expr: Box<ExprWithPos>,
+        expr: Box<Expr>,
     },
     ConstInt {
         value: i32,
@@ -36,42 +36,42 @@ pub enum Expr {
         value: f64,
     },
     Assign {
-        l_value: Box<ExprWithPos>,
-        r_value: Box<ExprWithPos>,
+        l_value: Box<Expr>,
+        r_value: Box<Expr>,
     },
     Variable {
         obj: Rc<RefCell<Obj>>,
     },
     Deref {
-        expr: Box<ExprWithPos>,
+        expr: Box<Expr>,
     },
     Addr {
-        expr: Box<ExprWithPos>,
+        expr: Box<Expr>,
     },
     FunctionCall {
-        expr: Box<ExprWithPos>,
-        args: Vec<ExprWithPos>,
+        expr: Box<Expr>,
+        args: Vec<Expr>,
     },
     StmtExpr {
         body: Vec<StmtWithPos>,
     },
     CommaExpr {
-        left: Box<ExprWithPos>,
-        right: Box<ExprWithPos>,
+        left: Box<Expr>,
+        right: Box<Expr>,
     },
     /// . (struct member access)
     MemberExpr {
-        strct: Box<ExprWithPos>,
+        strct: Box<Expr>,
         member: Member,
     },
     CastExpr {
-        expr: Box<ExprWithPos>,
+        expr: Box<Expr>,
         ty: Type,
     },
     TernaryExpr {
-        condition: Box<ExprWithPos>,
-        then_clause: Box<ExprWithPos>,
-        else_clause: Box<ExprWithPos>,
+        condition: Box<Expr>,
+        then_clause: Box<Expr>,
+        else_clause: Box<Expr>,
     },
     /// Zero-clear a stack variable
     MemZero {
@@ -80,259 +80,201 @@ pub enum Expr {
     Null,
 }
 
-pub type ExprWithPos = WithPos<ExprWithType>;
-pub type ExprWithType = WithType<Expr>;
+#[derive(Clone, Debug, PartialEq)]
+pub struct Expr {
+    pub expr: ExprInner,
+    pub ty: Type,
+    pub pos: Pos,
+}
 
-impl ExprWithPos {
-    pub fn new_cast_expr(expr: ExprWithPos, ty: Type, pos: Pos) -> Self {
-        WithPos::new(
-            WithType::new(
-                Expr::CastExpr {
-                    expr: Box::new(expr),
-                    ty: ty.clone(),
-                },
-                ty,
-            ),
+impl Expr {
+    pub fn new_cast_expr(expr: Expr, ty: Type, pos: Pos) -> Self {
+        Expr {
+            expr: ExprInner::CastExpr {
+                expr: Box::new(expr),
+                ty: ty.clone(),
+            },
+            ty,
             pos,
-        )
+        }
     }
 
-    pub fn new_member_expr(strct: ExprWithPos, member: Member, pos: Pos) -> Self {
-        WithPos::new(
-            WithType::new(
-                Expr::MemberExpr {
-                    strct: Box::new(strct),
-                    member,
-                },
-                Type::new_placeholder(),
-            ),
+    pub fn new_member_expr(strct: Expr, member: Member, pos: Pos) -> Self {
+        Expr {
+            expr: ExprInner::MemberExpr {
+                strct: Box::new(strct),
+                member,
+            },
+            ty: Type::new_placeholder(),
             pos,
-        )
+        }
     }
 
     pub fn new_memzero(var: Rc<RefCell<Obj>>, pos: Pos) -> Self {
-        WithPos::new(
-            WithType::new(Expr::MemZero { var }, Type::new_placeholder()),
+        Expr {
+            expr: ExprInner::MemZero { var },
+            ty: Type::new_placeholder(),
             pos,
-        )
+        }
     }
 
     pub fn new_null_expr(pos: Pos) -> Self {
-        WithPos::new(WithType::new(Expr::Null, Type::new_placeholder()), pos)
+        Expr {
+            expr: ExprInner::Null,
+            ty: Type::new_placeholder(),
+            pos,
+        }
     }
 
     pub fn new_float(i: f32, pos: Pos) -> Self {
-        WithPos::new(
-            WithType::new(Expr::ConstFloat { value: i }, Type::new_float()),
+        Expr {
+            expr: ExprInner::ConstFloat { value: i },
+            ty: Type::new_float(),
             pos,
-        )
+        }
     }
 
     pub fn new_double(i: f64, pos: Pos) -> Self {
-        WithPos::new(
-            WithType::new(Expr::ConstDouble { value: i }, Type::new_double()),
+        Expr {
+            expr: ExprInner::ConstDouble { value: i },
+            ty: Type::new_double(),
             pos,
-        )
+        }
     }
 
     pub fn new_int(i: i32, pos: Pos) -> Self {
-        WithPos::new(
-            WithType::new(Expr::ConstInt { value: i }, Type::new_int()),
+        Expr {
+            expr: ExprInner::ConstInt { value: i },
+            ty: Type::new_int(),
             pos,
-        )
+        }
     }
 
     pub fn new_uint(i: u32, pos: Pos) -> Self {
-        WithPos::new(
-            WithType::new(Expr::ConstUInt { value: i }, Type::new_uint()),
+        Expr {
+            expr: ExprInner::ConstUInt { value: i },
+            ty: Type::new_uint(),
             pos,
-        )
+        }
     }
 
     pub fn new_long(i: i64, pos: Pos) -> Self {
-        WithPos::new(
-            WithType::new(Expr::ConstLong { value: i }, Type::new_long()),
+        Expr {
+            expr: ExprInner::ConstLong { value: i },
+            ty: Type::new_long(),
             pos,
-        )
+        }
     }
 
     pub fn new_ulong(i: u64, pos: Pos) -> Self {
-        WithPos::new(
-            WithType::new(Expr::ConstULong { value: i }, Type::new_ulong()),
+        Expr {
+            expr: ExprInner::ConstULong { value: i },
+            ty: Type::new_ulong(),
             pos,
-        )
+        }
     }
 
     pub fn new_var(obj: Rc<RefCell<Obj>>, pos: Pos) -> Self {
-        WithPos::new(
-            WithType::new(Expr::Variable { obj }, Type::new_placeholder()),
+        Expr {
+            expr: ExprInner::Variable { obj },
+            ty: Type::new_placeholder(),
             pos,
-        )
+        }
     }
 
-    pub fn new_deref(expr: ExprWithPos, pos: Pos) -> Self {
-        WithPos::new(
-            WithType::new(
-                Expr::Deref {
-                    expr: Box::new(expr),
-                },
-                Type::new_placeholder(),
-            ),
+    pub fn new_deref(expr: Expr, pos: Pos) -> Self {
+        Expr {
+            expr: ExprInner::Deref {
+                expr: Box::new(expr),
+            },
+            ty: Type::new_placeholder(),
             pos,
-        )
+        }
     }
 
-    pub fn new_addr(expr: ExprWithPos, pos: Pos) -> Self {
-        WithPos::new(
-            WithType::new(
-                Expr::Addr {
-                    expr: Box::new(expr),
-                },
-                Type::new_placeholder(),
-            ),
+    pub fn new_addr(expr: Expr, pos: Pos) -> Self {
+        Expr {
+            expr: ExprInner::Addr {
+                expr: Box::new(expr),
+            },
+            ty: Type::new_placeholder(),
             pos,
-        )
+        }
     }
 
-    pub fn new_comma(left: ExprWithPos, right: ExprWithPos, pos: Pos) -> Self {
-        WithPos::new(
-            WithType::new(
-                Expr::CommaExpr {
-                    left: Box::new(left),
-                    right: Box::new(right),
-                },
-                Type::new_placeholder(),
-            ),
+    pub fn new_comma(left: Expr, right: Expr, pos: Pos) -> Self {
+        Expr {
+            expr: ExprInner::CommaExpr {
+                left: Box::new(left),
+                right: Box::new(right),
+            },
+            ty: Type::new_placeholder(),
             pos,
-        )
+        }
     }
 
-    pub fn new_assign(left: ExprWithPos, right: ExprWithPos, pos: Pos) -> Self {
-        WithPos::new(
-            WithType::new(
-                Expr::Assign {
-                    l_value: Box::new(left),
-                    r_value: Box::new(right),
-                },
-                Type::new_placeholder(),
-            ),
+    pub fn new_assign(left: Expr, right: Expr, pos: Pos) -> Self {
+        Expr {
+            expr: ExprInner::Assign {
+                l_value: Box::new(left),
+                r_value: Box::new(right),
+            },
+            ty: Type::new_placeholder(),
             pos,
-        )
+        }
     }
 
-    pub fn new_binary(op: BinaryOperator, left: ExprWithPos, right: ExprWithPos, pos: Pos) -> Self {
-        WithPos::new(
-            WithType::new(
-                Expr::Binary {
-                    left: Box::new(left),
-                    op: WithPos::new(op, pos),
-                    right: Box::new(right),
-                },
-                Type::new_placeholder(),
-            ),
+    pub fn new_unary(op: UnaryOperatorWithPos, expr: Expr, pos: Pos) -> Self {
+        Expr {
+            expr: ExprInner::Unary {
+                op,
+                expr: Box::new(expr),
+            },
+            ty: Type::new_placeholder(),
             pos,
-        )
+        }
+    }
+
+    pub fn new_binary(op: BinaryOperator, left: Expr, right: Expr, pos: Pos) -> Self {
+        Expr {
+            expr: ExprInner::Binary {
+                left: Box::new(left),
+                op: WithPos::new(op, pos),
+                right: Box::new(right),
+            },
+            ty: Type::new_placeholder(),
+            pos,
+        }
     }
 
     pub fn new_binary_with_type(
         op: BinaryOperator,
-        left: ExprWithPos,
-        right: ExprWithPos,
+        left: Expr,
+        right: Expr,
         pos: Pos,
         ty: Type,
     ) -> Self {
-        WithPos::new(
-            WithType::new(
-                Expr::Binary {
-                    left: Box::new(left),
-                    op: WithPos::new(op, pos),
-                    right: Box::new(right),
-                },
-                ty,
-            ),
+        Expr {
+            expr: ExprInner::Binary {
+                left: Box::new(left),
+                op: WithPos::new(op, pos),
+                right: Box::new(right),
+            },
+            ty,
             pos,
-        )
+        }
     }
 
-    pub fn new_ternary(
-        condition: ExprWithPos,
-        then_clause: ExprWithPos,
-        else_clause: ExprWithPos,
-        pos: Pos,
-    ) -> Self {
-        WithPos::new(
-            WithType::new(
-                Expr::TernaryExpr {
-                    then_clause: Box::new(then_clause),
-                    else_clause: Box::new(else_clause),
-                    condition: Box::new(condition),
-                },
-                Type::new_placeholder(),
-            ),
+    pub fn new_ternary(condition: Expr, then_clause: Expr, else_clause: Expr, pos: Pos) -> Self {
+        Expr {
+            expr: ExprInner::TernaryExpr {
+                then_clause: Box::new(then_clause),
+                else_clause: Box::new(else_clause),
+                condition: Box::new(condition),
+            },
+            ty: Type::new_placeholder(),
             pos,
-        )
-    }
-}
-
-impl Display for ExprWithPos {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let string = (|| {
-            let string = match self {
-                WithPos {
-                    node: WithType { node, .. },
-                    ..
-                } => match node {
-                    Expr::ConstInt { value } => value.to_string(),
-                    Expr::ConstUInt { value } => value.to_string(),
-                    Expr::ConstLong { value } => value.to_string(),
-                    Expr::ConstULong { value } => value.to_string(),
-                    Expr::ConstFloat { value } => value.to_string(),
-                    Expr::ConstDouble { value } => value.to_string(),
-                    Expr::Binary { left, op, right } => {
-                        return format!("{} {} {}", left, op, right)
-                    }
-                    Expr::Addr { expr } => return format!("get address of {}", expr),
-                    Expr::Assign { l_value, r_value } => {
-                        return format!("#{} assign to {}#", r_value, l_value)
-                    }
-                    Expr::CommaExpr { left, right } => return format!("{}, {}", left, right),
-                    Expr::Deref { expr } => return format!("deref {}", expr),
-                    Expr::FunctionCall { expr, args } => {
-                        let mut r = format!("funname {} args: ", expr);
-                        for arg in args {
-                            r.push_str(format!(" {}", arg).as_str());
-                        }
-                        return r;
-                    }
-                    Expr::MemberExpr { strct, member } => return format!("{}.{:?}", strct, member),
-                    Expr::StmtExpr { body } => {
-                        let mut r = format!("stmt-expr");
-                        for stmt in body {
-                            r.push_str(format!(" {}", stmt).as_str());
-                        }
-                        return r;
-                    }
-                    Expr::Variable { obj } => {
-                        return format!("var expr {}", obj.borrow());
-                    }
-                    Expr::Unary { op, expr } => return format!("{}{}", op, expr),
-                    Expr::CastExpr { expr, ty } => {
-                        return format!("cast expr {} to type {:?}", expr, ty);
-                    }
-                    Expr::TernaryExpr {
-                        condition,
-                        then_clause,
-                        else_clause,
-                    } => {
-                        return format!("{} ? {} : {}", condition, then_clause, else_clause);
-                    }
-                    Expr::MemZero { var } => format!("{}", var.borrow()),
-                    Expr::Null => format!("null expr"),
-                },
-            };
-            string.to_string()
-        })();
-        write!(f, "{}", string)
+        }
     }
 }
 
@@ -419,36 +361,36 @@ impl Display for UnaryOperatorWithPos {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Stmt {
     ExprStmt {
-        expr: ExprWithPos,
+        expr: Expr,
     },
     Return {
-        expr: Option<ExprWithPos>,
+        expr: Option<Expr>,
     },
     Block {
         body: Vec<StmtWithPos>,
     },
     NullStmt,
     IfStmt {
-        condition: ExprWithPos,
+        condition: Expr,
         then_clause: Box<StmtWithPos>,
         else_clause: Option<Box<StmtWithPos>>,
     },
     ForStmt {
         init: Box<StmtWithPos>,
-        condition: Option<ExprWithPos>,
+        condition: Option<Expr>,
         body: Box<StmtWithPos>,
-        increment: Option<ExprWithPos>,
+        increment: Option<Expr>,
         break_label: Option<String>,
         continue_label: Option<String>,
     },
     WhileStmt {
-        condition: ExprWithPos,
+        condition: Expr,
         body: Box<StmtWithPos>,
         break_label: Option<String>,
         continue_label: Option<String>,
     },
     DoWhileStmt {
-        condition: ExprWithPos,
+        condition: Expr,
         body: Box<StmtWithPos>,
         break_label: Option<String>,
         continue_label: Option<String>,
@@ -461,7 +403,7 @@ pub enum Stmt {
         stmt: Box<StmtWithPos>,
     },
     SwitchStmt {
-        condition: ExprWithPos,
+        condition: Expr,
         cases: Vec<StmtWithPos>,
         default_case: Option<Box<StmtWithPos>>,
         break_label: Option<String>,
@@ -491,7 +433,7 @@ impl StmtWithPos {
         }
     }
 
-    pub fn new_switch(condition: ExprWithPos, pos: Pos) -> Self {
+    pub fn new_switch(condition: Expr, pos: Pos) -> Self {
         WithPos::new(
             Stmt::SwitchStmt {
                 condition,
@@ -542,37 +484,6 @@ impl StmtWithPos {
             }
             _ => (),
         }
-    }
-}
-
-impl Display for StmtWithPos {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let string = (|| {
-            let string = match self {
-                WithPos { node, .. } => match node.clone() {
-                    Stmt::Block { body } => {
-                        let mut r = format!("block: ");
-                        for stmt in body {
-                            r.push_str(format!("{} ", stmt).as_str());
-                        }
-                        return r;
-                    }
-                    Stmt::ExprStmt { expr } => return format!("expr-stmt: {}", expr),
-                    Stmt::ForStmt { .. } => return format!("{:?}", node),
-                    Stmt::NullStmt => "null stmt.",
-                    Stmt::IfStmt { .. } => return format!("{:?}", node),
-                    Stmt::Return { expr } => return format!("return {:?}", expr),
-                    Stmt::WhileStmt { .. } => return format!("{:?}", node),
-                    Stmt::GotoStmt { .. } => return format!("{:?}", node),
-                    Stmt::LabelStmt { .. } => return format!("{:?}", node),
-                    Stmt::SwitchStmt { .. } => return format!("{:?}", node),
-                    Stmt::CaseStmt { .. } => return format!("{:?}", node),
-                    Stmt::DoWhileStmt { .. } => return format!("{:?}", node),
-                },
-            };
-            string.to_string()
-        })();
-        writeln!(f, "{}", string)
     }
 }
 
@@ -728,7 +639,7 @@ pub struct Initializer {
     pub ty: Type,
     // If it's not an aggregate type and has an initializer,
     // `expr` has an initialization expression.
-    pub expr: Option<ExprWithPos>,
+    pub expr: Option<Expr>,
     pub is_flexible: bool,
     pub tok: Option<Token>,
 }

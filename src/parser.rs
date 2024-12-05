@@ -2,12 +2,12 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc, result};
 
 use crate::{
     ast::{
-        self, BinaryOperator, Expr, ExprWithPos, FunctionDefinition, InitData, InitDesg,
-        Initializer, Obj, Program, Relocation, Stmt, StmtWithPos, UnaryOperator, VarAttr,
+        self, BinaryOperator, Expr, ExprInner, FunctionDefinition, InitData, InitDesg, Initializer,
+        Obj, Program, Relocation, Stmt, StmtWithPos, UnaryOperator, VarAttr,
     },
     error::Error::{self, UnexpectedToken},
     position::{Pos, WithPos},
-    sema::{self, add_type, align_to, pointer_to, sema_stmt, Ty, Type, WithType},
+    sema::{self, add_type, align_to, pointer_to, sema_stmt, Ty, Type},
     symbol::{Strings, Symbols},
     token::{
         Tok::{self, *},
@@ -234,7 +234,7 @@ impl<'a> Parser<'a> {
 
         for i in 0..len {
             let num = s.as_bytes().get(i).unwrap();
-            init.get_child(i as i32).expr = Some(ExprWithPos::new_long(*num as i64, pos));
+            init.get_child(i as i32).expr = Some(Expr::new_long(*num as i64, pos));
         }
 
         Ok(())
@@ -394,7 +394,7 @@ impl<'a> Parser<'a> {
             let old_pos = self.current_pos;
             let mut expr = self.assign()?;
             add_type(&mut expr);
-            if expr.node.ty.is_struct() {
+            if expr.ty.is_struct() {
                 init.expr = Some(expr);
                 return Ok(());
             }
@@ -440,11 +440,11 @@ impl<'a> Parser<'a> {
         Ok(init)
     }
 
-    fn init_desg_expr(&mut self, desg: &mut InitDesg, tok: Token) -> Result<ExprWithPos> {
+    fn init_desg_expr(&mut self, desg: &mut InitDesg, tok: Token) -> Result<Expr> {
         if let Some(var) = &desg.var {
-            return Ok(ExprWithPos::new_var(var.clone(), tok.pos.clone()));
+            return Ok(Expr::new_var(var.clone(), tok.pos.clone()));
         } else if let Some(mem) = desg.member.clone() {
-            let node = ExprWithPos::new_member_expr(
+            let node = Expr::new_member_expr(
                 self.init_desg_expr(desg.next(), tok.clone())?,
                 mem,
                 tok.pos.clone(),
@@ -452,8 +452,8 @@ impl<'a> Parser<'a> {
             return Ok(node);
         } else {
             let lhs = self.init_desg_expr(desg.next(), tok.clone())?;
-            let rhs = ExprWithPos::new_long(desg.idx, tok.pos);
-            return Ok(ExprWithPos::new_deref(
+            let rhs = Expr::new_long(desg.idx, tok.pos);
+            return Ok(Expr::new_deref(
                 self.new_add(lhs, rhs, tok.clone().pos)?,
                 tok.clone().pos,
             ));
@@ -466,9 +466,9 @@ impl<'a> Parser<'a> {
         mut ty: Type,
         desg: &mut InitDesg,
         tok: Token,
-    ) -> Result<ExprWithPos> {
+    ) -> Result<Expr> {
         if ty.is_array() {
-            let mut node = ExprWithPos::new_null_expr(tok.pos.clone());
+            let mut node = Expr::new_null_expr(tok.pos.clone());
             for i in 0..ty.get_array_len() {
                 let mut desg2 = InitDesg {
                     idx: i as i64,
@@ -482,14 +482,14 @@ impl<'a> Parser<'a> {
                     &mut desg2,
                     tok.clone(),
                 )?;
-                node = ExprWithPos::new_comma(node, rhs, tok.pos.clone());
+                node = Expr::new_comma(node, rhs, tok.pos.clone());
             }
 
             return Ok(node);
         }
 
         if ty.is_struct() && init.expr.is_none() {
-            let mut node = ExprWithPos::new_null_expr(self.peek()?.pos);
+            let mut node = Expr::new_null_expr(self.peek()?.pos);
             let mut i = 0;
             for mem in ty.get_members().unwrap() {
                 let mut desg2 = InitDesg {
@@ -500,7 +500,7 @@ impl<'a> Parser<'a> {
                 };
                 let rhs =
                     self.create_local_var_init(init.get_child(i), mem.ty, &mut desg2, tok.clone())?;
-                node = ExprWithPos::new_comma(node, rhs, tok.pos.clone());
+                node = Expr::new_comma(node, rhs, tok.pos.clone());
                 i += 1;
             }
 
@@ -519,14 +519,14 @@ impl<'a> Parser<'a> {
         }
 
         if init.expr.is_none() {
-            return Ok(ExprWithPos::new_null_expr(self.peek()?.pos.clone()));
+            return Ok(Expr::new_null_expr(self.peek()?.pos.clone()));
         }
 
         let mut lhs = self.init_desg_expr(desg, tok.clone())?;
         add_type(&mut lhs);
         let mut rhs = init.expr.clone().unwrap();
         add_type(&mut rhs);
-        let mut node = ExprWithPos::new_assign(lhs, rhs, tok.pos);
+        let mut node = Expr::new_assign(lhs, rhs, tok.pos);
         add_type(&mut node);
         Ok(node)
     }
@@ -541,7 +541,7 @@ impl<'a> Parser<'a> {
     ///   x[0][1] = 7;
     ///   x[1][0] = 8;
     ///   x[1][1] = 9;
-    fn local_var_initializer(&mut self, var: Rc<RefCell<Obj>>) -> Result<ExprWithPos> {
+    fn local_var_initializer(&mut self, var: Rc<RefCell<Obj>>) -> Result<Expr> {
         let mut init = self.initializer(&mut var.borrow_mut().ty)?;
         let mut desg = InitDesg {
             var: Some(var.clone()),
@@ -554,10 +554,10 @@ impl<'a> Parser<'a> {
         // that unspecified elements are set to 0. Here, we simply
         // zero-initialize the entire memory region of a variable before
         // initializing it with user-supplied values.
-        let lhs = ExprWithPos::new_memzero(var.clone(), tok.pos.clone());
+        let lhs = Expr::new_memzero(var.clone(), tok.pos.clone());
         let rhs =
             self.create_local_var_init(&mut init, var.borrow().ty.clone(), &mut desg, tok.clone())?;
-        Ok(ExprWithPos::new_comma(lhs, rhs, tok.pos.clone()))
+        Ok(Expr::new_comma(lhs, rhs, tok.pos.clone()))
     }
 
     /// Initializers for global variables are evaluated at compile-time and
@@ -719,7 +719,7 @@ impl<'a> Parser<'a> {
                 let mut expr = self.expr()?;
                 add_type(&mut expr);
                 let return_ty = self.current_fn.as_mut().unwrap().get_return_ty().unwrap();
-                expr = ExprWithPos::new_cast_expr(expr, return_ty, pos);
+                expr = Expr::new_cast_expr(expr, return_ty, pos);
                 let node = WithPos::new(Stmt::Return { expr: Some(expr) }, pos);
                 eat!(self, Semicolon);
                 Ok(node)
@@ -1785,12 +1785,12 @@ impl<'a> Parser<'a> {
     }
 
     /// expr = assign ("," expr)?
-    fn expr(&mut self) -> Result<ExprWithPos> {
+    fn expr(&mut self) -> Result<Expr> {
         let node = self.assign()?;
         match self.peek()?.token {
             Tok::Comma => {
                 let pos = eat!(self, Comma);
-                let node = ExprWithPos::new_comma(node, self.expr()?, pos);
+                let node = Expr::new_comma(node, self.expr()?, pos);
                 Ok(node)
             }
             _ => Ok(node),
@@ -1799,9 +1799,9 @@ impl<'a> Parser<'a> {
 
     /// Convert `A op= B` to `tmp = &A, *tmp = *tmp op B`
     /// where tmp is a fresh pointer variable.
-    fn to_assign(&mut self, binary: ExprWithPos) -> Result<ExprWithPos> {
-        match binary.node.node {
-            Expr::Binary {
+    fn to_assign(&mut self, binary: Expr) -> Result<Expr> {
+        match binary.expr {
+            ExprInner::Binary {
                 mut left,
                 op,
                 mut right,
@@ -1810,27 +1810,26 @@ impl<'a> Parser<'a> {
                 add_type(&mut right);
 
                 let var =
-                    self.new_local_variable("".to_string(), &mut pointer_to(left.node.ty.clone()))?;
+                    self.new_local_variable("".to_string(), &mut pointer_to(left.ty.clone()))?;
 
                 // tmp = &A
                 // tmp
-                let mut l_value = ExprWithPos::new_var(var.clone(), left.pos.clone());
+                let mut l_value = Expr::new_var(var.clone(), left.pos.clone());
                 add_type(&mut l_value);
-                let mut r_value = ExprWithPos::new_addr(*left.clone(), left.pos.clone());
+                let mut r_value = Expr::new_addr(*left.clone(), left.pos.clone());
                 add_type(&mut r_value);
-                let mut expr1 = ExprWithPos::new_assign(l_value.clone(), r_value, left.pos.clone());
+                let mut expr1 = Expr::new_assign(l_value.clone(), r_value, left.pos.clone());
                 add_type(&mut expr1);
 
                 // *tmp = *tmp op B
-                let mut l_value = ExprWithPos::new_deref(l_value, left.pos);
+                let mut l_value = Expr::new_deref(l_value, left.pos);
                 add_type(&mut l_value);
-                let mut r_value =
-                    ExprWithPos::new_binary(op.node, l_value.clone(), *right, left.pos);
+                let mut r_value = Expr::new_binary(op.node, l_value.clone(), *right, left.pos);
                 add_type(&mut r_value);
-                let mut expr2 = ExprWithPos::new_assign(l_value, r_value, left.pos);
+                let mut expr2 = Expr::new_assign(l_value, r_value, left.pos);
                 add_type(&mut expr2);
 
-                let mut node = ExprWithPos::new_comma(expr1, expr2, left.pos);
+                let mut node = Expr::new_comma(expr1, expr2, left.pos);
                 add_type(&mut node);
 
                 Ok(node)
@@ -1842,14 +1841,14 @@ impl<'a> Parser<'a> {
     /// assign    = conditional (assign-op assign)?
     /// assign-op = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^="
     ///           | "<<=" | ">>="
-    fn assign(&mut self) -> Result<ExprWithPos> {
+    fn assign(&mut self) -> Result<Expr> {
         let mut expr = self.conditional()?;
         add_type(&mut expr);
         match self.peek()?.token {
             Tok::Equal => {
                 let pos = eat!(self, Equal);
                 let r_value = self.assign()?;
-                expr = ExprWithPos::new_assign(expr, r_value, pos);
+                expr = Expr::new_assign(expr, r_value, pos);
             }
             Tok::PlusEqual => {
                 let pos = eat!(self, PlusEqual);
@@ -1866,49 +1865,49 @@ impl<'a> Parser<'a> {
             Tok::StarEqual => {
                 let pos = eat!(self, StarEqual);
                 let rhs = self.assign()?;
-                expr = ExprWithPos::new_binary(ast::BinaryOperator::Mul, expr, rhs, pos);
+                expr = Expr::new_binary(ast::BinaryOperator::Mul, expr, rhs, pos);
                 expr = self.to_assign(expr)?;
             }
             Tok::SlashEqual => {
                 let pos = eat!(self, SlashEqual);
                 let rhs = self.assign()?;
-                expr = ExprWithPos::new_binary(ast::BinaryOperator::Div, expr, rhs, pos);
+                expr = Expr::new_binary(ast::BinaryOperator::Div, expr, rhs, pos);
                 expr = self.to_assign(expr)?;
             }
             Tok::PercentEqual => {
                 let pos = eat!(self, PercentEqual);
                 let rhs = self.assign()?;
-                expr = ExprWithPos::new_binary(ast::BinaryOperator::Mod, expr, rhs, pos);
+                expr = Expr::new_binary(ast::BinaryOperator::Mod, expr, rhs, pos);
                 expr = self.to_assign(expr)?;
             }
             Tok::AmpEqual => {
                 let pos = eat!(self, AmpEqual);
                 let rhs = self.assign()?;
-                expr = ExprWithPos::new_binary(ast::BinaryOperator::BitAnd, expr, rhs, pos);
+                expr = Expr::new_binary(ast::BinaryOperator::BitAnd, expr, rhs, pos);
                 expr = self.to_assign(expr)?;
             }
             Tok::BarEqual => {
                 let pos = eat!(self, BarEqual);
                 let rhs = self.assign()?;
-                expr = ExprWithPos::new_binary(ast::BinaryOperator::BitOr, expr, rhs, pos);
+                expr = Expr::new_binary(ast::BinaryOperator::BitOr, expr, rhs, pos);
                 expr = self.to_assign(expr)?;
             }
             Tok::HatEqual => {
                 let pos = eat!(self, HatEqual);
                 let rhs = self.assign()?;
-                expr = ExprWithPos::new_binary(ast::BinaryOperator::BitXor, expr, rhs, pos);
+                expr = Expr::new_binary(ast::BinaryOperator::BitXor, expr, rhs, pos);
                 expr = self.to_assign(expr)?;
             }
             Tok::LesserLesserEqual => {
                 let pos = eat!(self, LesserLesserEqual);
                 let rhs = self.assign()?;
-                expr = ExprWithPos::new_binary(ast::BinaryOperator::SHL, expr, rhs, pos);
+                expr = Expr::new_binary(ast::BinaryOperator::SHL, expr, rhs, pos);
                 expr = self.to_assign(expr)?;
             }
             Tok::GreaterGreaterEqual => {
                 let pos = eat!(self, GreaterGreaterEqual);
                 let rhs = self.assign()?;
-                expr = ExprWithPos::new_binary(ast::BinaryOperator::SHR, expr, rhs, pos);
+                expr = Expr::new_binary(ast::BinaryOperator::SHR, expr, rhs, pos);
                 expr = self.to_assign(expr)?;
             }
             _ => (),
@@ -1917,7 +1916,7 @@ impl<'a> Parser<'a> {
     }
 
     /// equality = relational ("==" relational | "!=" relational)*
-    fn equality(&mut self) -> Result<ExprWithPos> {
+    fn equality(&mut self) -> Result<Expr> {
         let mut expr = self.relational()?;
 
         loop {
@@ -1925,12 +1924,12 @@ impl<'a> Parser<'a> {
                 Tok::EqualEqual => {
                     let pos = eat!(self, EqualEqual);
                     let right = self.relational()?;
-                    expr = ExprWithPos::new_binary(ast::BinaryOperator::Eq, expr, right, pos);
+                    expr = Expr::new_binary(ast::BinaryOperator::Eq, expr, right, pos);
                 }
                 Tok::BangEqual => {
                     let pos = eat!(self, BangEqual);
                     let right = self.relational()?;
-                    expr = ExprWithPos::new_binary(ast::BinaryOperator::Ne, expr, right, pos);
+                    expr = Expr::new_binary(ast::BinaryOperator::Ne, expr, right, pos);
                 }
                 _ => break,
             }
@@ -1939,7 +1938,7 @@ impl<'a> Parser<'a> {
     }
 
     /// relational = shift ("<" shift | "<=" shift | ">" shift | ">=" shift)*
-    fn relational(&mut self) -> Result<ExprWithPos> {
+    fn relational(&mut self) -> Result<Expr> {
         let mut expr = self.shift()?;
 
         loop {
@@ -1947,22 +1946,22 @@ impl<'a> Parser<'a> {
                 Tok::Lesser => {
                     let pos = eat!(self, Lesser);
                     let right = self.shift()?;
-                    expr = ExprWithPos::new_binary(ast::BinaryOperator::Lt, expr, right, pos);
+                    expr = Expr::new_binary(ast::BinaryOperator::Lt, expr, right, pos);
                 }
                 Tok::LesserEqual => {
                     let pos = eat!(self, LesserEqual);
                     let right = self.shift()?;
-                    expr = ExprWithPos::new_binary(ast::BinaryOperator::Le, expr, right, pos);
+                    expr = Expr::new_binary(ast::BinaryOperator::Le, expr, right, pos);
                 }
                 Tok::Greater => {
                     let pos = eat!(self, Greater);
                     let right = self.shift()?;
-                    expr = ExprWithPos::new_binary(ast::BinaryOperator::Gt, expr, right, pos);
+                    expr = Expr::new_binary(ast::BinaryOperator::Gt, expr, right, pos);
                 }
                 Tok::GreaterEqual => {
                     let pos = eat!(self, GreaterEqual);
                     let right = self.shift()?;
-                    expr = ExprWithPos::new_binary(ast::BinaryOperator::Ge, expr, right, pos);
+                    expr = Expr::new_binary(ast::BinaryOperator::Ge, expr, right, pos);
                 }
                 _ => break,
             }
@@ -1972,7 +1971,7 @@ impl<'a> Parser<'a> {
     }
 
     /// add = mul ("+" mul | "-" mul)*
-    fn add(&mut self) -> Result<ExprWithPos> {
+    fn add(&mut self) -> Result<Expr> {
         let mut expr = self.mul()?;
 
         loop {
@@ -2000,7 +1999,7 @@ impl<'a> Parser<'a> {
     }
 
     /// shift = add ("<<" add | ">>" add)*
-    fn shift(&mut self) -> Result<ExprWithPos> {
+    fn shift(&mut self) -> Result<Expr> {
         let mut node = self.add()?;
         add_type(&mut node);
 
@@ -2009,13 +2008,13 @@ impl<'a> Parser<'a> {
                 Tok::LesserLesser => {
                     let pos = eat!(self, LesserLesser);
                     let rhs = self.add()?;
-                    node = ExprWithPos::new_binary(BinaryOperator::SHL, node, rhs, pos);
+                    node = Expr::new_binary(BinaryOperator::SHL, node, rhs, pos);
                     add_type(&mut node);
                 }
                 Tok::GreaterGreater => {
                     let pos = eat!(self, GreaterGreater);
                     let rhs = self.add()?;
-                    node = ExprWithPos::new_binary(BinaryOperator::SHR, node, rhs, pos);
+                    node = Expr::new_binary(BinaryOperator::SHR, node, rhs, pos);
                     add_type(&mut node);
                 }
                 _ => break,
@@ -2026,7 +2025,7 @@ impl<'a> Parser<'a> {
     }
 
     /// conditional = logor ("?" expr ":" conditional)?
-    fn conditional(&mut self) -> Result<ExprWithPos> {
+    fn conditional(&mut self) -> Result<Expr> {
         let condition = self.logor()?;
         match self.peek()?.token {
             Tok::QuestionMark => {
@@ -2034,7 +2033,7 @@ impl<'a> Parser<'a> {
                 let then_clause = self.expr()?;
                 eat!(self, Colon);
                 let else_clause = self.conditional()?;
-                let node = ExprWithPos::new_ternary(condition, then_clause, else_clause, pos);
+                let node = Expr::new_ternary(condition, then_clause, else_clause, pos);
                 Ok(node)
             }
             _ => Ok(condition),
@@ -2042,7 +2041,7 @@ impl<'a> Parser<'a> {
     }
 
     /// logor = logand ("||" logand)*
-    fn logor(&mut self) -> Result<ExprWithPos> {
+    fn logor(&mut self) -> Result<Expr> {
         let mut node = self.logand()?;
 
         loop {
@@ -2050,7 +2049,7 @@ impl<'a> Parser<'a> {
                 Tok::BarBar => {
                     let pos = eat!(self, BarBar);
                     let rhs = self.logand()?;
-                    node = ExprWithPos::new_binary(BinaryOperator::LogOr, node, rhs, pos);
+                    node = Expr::new_binary(BinaryOperator::LogOr, node, rhs, pos);
                 }
                 _ => break,
             }
@@ -2060,7 +2059,7 @@ impl<'a> Parser<'a> {
     }
 
     /// logand = bitor ("&&" bitor)*
-    fn logand(&mut self) -> Result<ExprWithPos> {
+    fn logand(&mut self) -> Result<Expr> {
         let mut node = self.bitor()?;
 
         loop {
@@ -2068,7 +2067,7 @@ impl<'a> Parser<'a> {
                 Tok::AmpAmp => {
                     let pos = eat!(self, AmpAmp);
                     let rhs = self.bitor()?;
-                    node = ExprWithPos::new_binary(BinaryOperator::LogAnd, node, rhs, pos);
+                    node = Expr::new_binary(BinaryOperator::LogAnd, node, rhs, pos);
                 }
                 _ => break,
             }
@@ -2078,7 +2077,7 @@ impl<'a> Parser<'a> {
     }
 
     /// bitor = bitxor ("|" bitxor)*
-    fn bitor(&mut self) -> Result<ExprWithPos> {
+    fn bitor(&mut self) -> Result<Expr> {
         let mut node = self.bitxor()?;
 
         loop {
@@ -2086,7 +2085,7 @@ impl<'a> Parser<'a> {
                 Tok::Bar => {
                     let pos = eat!(self, Bar);
                     let rhs = self.bitxor()?;
-                    node = ExprWithPos::new_binary(BinaryOperator::BitOr, node, rhs, pos);
+                    node = Expr::new_binary(BinaryOperator::BitOr, node, rhs, pos);
                 }
                 _ => break,
             }
@@ -2096,7 +2095,7 @@ impl<'a> Parser<'a> {
     }
 
     /// bitxor = bitand ("^" bitand)*
-    fn bitxor(&mut self) -> Result<ExprWithPos> {
+    fn bitxor(&mut self) -> Result<Expr> {
         let mut node = self.bitand()?;
 
         loop {
@@ -2104,7 +2103,7 @@ impl<'a> Parser<'a> {
                 Tok::Hat => {
                     let pos = eat!(self, Hat);
                     let rhs = self.bitand()?;
-                    node = ExprWithPos::new_binary(BinaryOperator::BitXor, node, rhs, pos);
+                    node = Expr::new_binary(BinaryOperator::BitXor, node, rhs, pos);
                 }
                 _ => break,
             }
@@ -2114,7 +2113,7 @@ impl<'a> Parser<'a> {
     }
 
     /// bitand = equality ("&" equality)*
-    fn bitand(&mut self) -> Result<ExprWithPos> {
+    fn bitand(&mut self) -> Result<Expr> {
         let mut node = self.equality()?;
 
         loop {
@@ -2122,7 +2121,7 @@ impl<'a> Parser<'a> {
                 Tok::Amp => {
                     let pos = eat!(self, Amp);
                     let rhs = self.equality()?;
-                    node = ExprWithPos::new_binary(BinaryOperator::BitAnd, node, rhs, pos);
+                    node = Expr::new_binary(BinaryOperator::BitAnd, node, rhs, pos);
                 }
                 _ => break,
             }
@@ -2132,7 +2131,7 @@ impl<'a> Parser<'a> {
     }
 
     /// mul = cast ("*" cast | "/" cast)*
-    fn mul(&mut self) -> Result<ExprWithPos> {
+    fn mul(&mut self) -> Result<Expr> {
         let mut node = self.cast()?;
 
         loop {
@@ -2140,19 +2139,19 @@ impl<'a> Parser<'a> {
                 Tok::Star => {
                     let pos = eat!(self, Star);
                     let rhs = self.cast()?;
-                    node = ExprWithPos::new_binary(BinaryOperator::Mul, node, rhs, pos);
+                    node = Expr::new_binary(BinaryOperator::Mul, node, rhs, pos);
                     add_type(&mut node);
                 }
                 Tok::Slash => {
                     let pos = eat!(self, Slash);
                     let rhs = self.cast()?;
-                    node = ExprWithPos::new_binary(BinaryOperator::Div, node, rhs, pos);
+                    node = Expr::new_binary(BinaryOperator::Div, node, rhs, pos);
                     add_type(&mut node);
                 }
                 Tok::Percent => {
                     let pos = eat!(self, Percent);
                     let rhs = self.cast()?;
-                    node = ExprWithPos::new_binary(BinaryOperator::Mod, node, rhs, pos);
+                    node = Expr::new_binary(BinaryOperator::Mod, node, rhs, pos);
                     add_type(&mut node);
                 }
                 _ => break,
@@ -2165,7 +2164,7 @@ impl<'a> Parser<'a> {
     /// unary = ("+" | "-" | "*" | "&" | "!" | "~") cast
     ///       | ("++" | "--") unary
     ///       | postfix
-    fn unary(&mut self) -> Result<ExprWithPos> {
+    fn unary(&mut self) -> Result<Expr> {
         match self.peek()?.token {
             Plus => {
                 eat!(self, Plus);
@@ -2175,64 +2174,37 @@ impl<'a> Parser<'a> {
                 let op = WithPos::new(UnaryOperator::Neg, eat!(self, Minus));
                 let expr = self.cast()?;
                 let pos = expr.pos.grow(expr.pos);
-                Ok(WithPos::new(
-                    WithType::new(
-                        Expr::Unary {
-                            op,
-                            expr: Box::new(expr),
-                        },
-                        Type::new_placeholder(),
-                    ),
-                    pos,
-                ))
+                Ok(Expr::new_unary(op, expr, pos))
             }
             Amp => {
                 let pos = eat!(self, Amp);
                 let mut expr = self.cast()?;
                 add_type(&mut expr);
-                Ok(ExprWithPos::new_addr(expr, pos))
+                Ok(Expr::new_addr(expr, pos))
             }
             Star => {
                 let pos = eat!(self, Star);
                 let mut expr = self.cast()?;
                 add_type(&mut expr);
-                Ok(ExprWithPos::new_deref(expr, pos))
+                Ok(Expr::new_deref(expr, pos))
             }
             Bang => {
                 let op = WithPos::new(UnaryOperator::Not, eat!(self, Bang));
                 let expr = self.cast()?;
                 let pos = expr.pos.grow(expr.pos);
-                Ok(WithPos::new(
-                    WithType::new(
-                        Expr::Unary {
-                            op,
-                            expr: Box::new(expr),
-                        },
-                        Type::new_placeholder(),
-                    ),
-                    pos,
-                ))
+                Ok(Expr::new_unary(op, expr, pos))
             }
             Tilde => {
                 let op = WithPos::new(UnaryOperator::BitNot, eat!(self, Tilde));
                 let expr = self.cast()?;
                 let pos = expr.pos.grow(expr.pos);
-                Ok(WithPos::new(
-                    WithType::new(
-                        Expr::Unary {
-                            op,
-                            expr: Box::new(expr),
-                        },
-                        Type::new_placeholder(),
-                    ),
-                    pos,
-                ))
+                Ok(Expr::new_unary(op, expr, pos))
             }
             // read ++i as i+=1
             PlusPlus => {
                 let pos = eat!(self, PlusPlus);
                 let i = self.unary()?;
-                let one = ExprWithPos::new_int(1, pos);
+                let one = Expr::new_int(1, pos);
                 let binary = self.new_add(i, one, pos)?;
                 self.to_assign(binary)
             }
@@ -2240,7 +2212,7 @@ impl<'a> Parser<'a> {
             MinusMinus => {
                 let pos = eat!(self, MinusMinus);
                 let i = self.unary()?;
-                let one = ExprWithPos::new_int(1, pos);
+                let one = Expr::new_int(1, pos);
                 let binary = self.new_sub(i, one, pos)?;
                 self.to_assign(binary)
             }
@@ -2249,7 +2221,7 @@ impl<'a> Parser<'a> {
     }
 
     /// cast = "(" type-name ")" cast | unary
-    fn cast(&mut self) -> Result<ExprWithPos> {
+    fn cast(&mut self) -> Result<Expr> {
         match self.peek()?.token {
             Tok::LeftParen => {
                 let old_pos = self.current_pos;
@@ -2266,7 +2238,7 @@ impl<'a> Parser<'a> {
                     }
 
                     // type cast
-                    let node = ExprWithPos::new_cast_expr(self.cast()?, ty, pos);
+                    let node = Expr::new_cast_expr(self.cast()?, ty, pos);
                     Ok(node)
                 } else {
                     self.unary()
@@ -2276,33 +2248,28 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn new_sub(
-        &mut self,
-        mut lhs: ExprWithPos,
-        mut rhs: ExprWithPos,
-        pos: Pos,
-    ) -> Result<ExprWithPos> {
+    fn new_sub(&mut self, mut lhs: Expr, mut rhs: Expr, pos: Pos) -> Result<Expr> {
         add_type(&mut lhs);
         add_type(&mut rhs);
 
-        match (lhs.node.ty.clone().ty, rhs.node.ty.clone().ty) {
+        match (lhs.ty.clone().ty, rhs.ty.clone().ty) {
             // num - num
-            _ if lhs.node.ty.is_number() && rhs.node.ty.is_number() => {
-                lhs = ExprWithPos::new_binary(BinaryOperator::Sub, lhs, rhs, pos);
+            _ if lhs.ty.is_number() && rhs.ty.is_number() => {
+                lhs = Expr::new_binary(BinaryOperator::Sub, lhs, rhs, pos);
             }
             // ptr - num
             (Ty::TyPtr { base, .. } | Ty::TyArray { base, .. }, Ty::TyInt | Ty::TyLong) => {
                 // num * 8
-                let num = ExprWithPos::new_long(base.get_size() as i64, pos);
-                rhs = ExprWithPos::new_binary(BinaryOperator::Mul, rhs, num, pos);
+                let num = Expr::new_long(base.get_size() as i64, pos);
+                rhs = Expr::new_binary(BinaryOperator::Mul, rhs, num, pos);
                 add_type(&mut rhs);
-                lhs = ExprWithPos::new_binary(BinaryOperator::Sub, lhs, rhs, pos);
+                lhs = Expr::new_binary(BinaryOperator::Sub, lhs, rhs, pos);
             }
             // ptr - ptr, which returns how many elements are between the two.
             (Ty::TyPtr { base, .. }, Ty::TyPtr { .. }) => {
-                let num = ExprWithPos::new_long(base.get_size() as i64, pos);
-                lhs = ExprWithPos::new_binary(BinaryOperator::Sub, lhs, rhs, pos);
-                lhs = ExprWithPos::new_binary(BinaryOperator::Div, lhs, num, pos);
+                let num = Expr::new_long(base.get_size() as i64, pos);
+                lhs = Expr::new_binary(BinaryOperator::Sub, lhs, rhs, pos);
+                lhs = Expr::new_binary(BinaryOperator::Div, lhs, num, pos);
             }
             // other
             _ => panic!(
@@ -2314,45 +2281,40 @@ impl<'a> Parser<'a> {
         Ok(lhs)
     }
 
-    fn new_add(
-        &mut self,
-        mut lhs: ExprWithPos,
-        mut rhs: ExprWithPos,
-        pos: Pos,
-    ) -> Result<ExprWithPos> {
+    fn new_add(&mut self, mut lhs: Expr, mut rhs: Expr, pos: Pos) -> Result<Expr> {
         add_type(&mut lhs);
         add_type(&mut rhs);
 
-        match (lhs.node.ty.clone().ty, rhs.node.ty.clone().ty) {
+        match (lhs.ty.clone().ty, rhs.ty.clone().ty) {
             // ptr + num
-            (Ty::TyPtr { base, .. } | Ty::TyArray { base, .. }, _) if rhs.node.ty.is_integer() => {
+            (Ty::TyPtr { base, .. } | Ty::TyArray { base, .. }, _) if rhs.ty.is_integer() => {
                 // num * 8
-                let num = ExprWithPos::new_long(base.get_size() as i64, pos);
-                rhs = ExprWithPos::new_binary(ast::BinaryOperator::Mul, rhs, num, pos);
-                lhs = ExprWithPos::new_binary_with_type(
+                let num = Expr::new_long(base.get_size() as i64, pos);
+                rhs = Expr::new_binary(ast::BinaryOperator::Mul, rhs, num, pos);
+                lhs = Expr::new_binary_with_type(
                     ast::BinaryOperator::Add,
                     lhs.clone(),
                     rhs,
                     pos,
-                    lhs.node.ty,
+                    lhs.ty,
                 );
             }
             // num + ptr
-            (_, Ty::TyPtr { base, .. } | Ty::TyArray { base, .. }) if lhs.node.ty.is_integer() => {
+            (_, Ty::TyPtr { base, .. } | Ty::TyArray { base, .. }) if lhs.ty.is_integer() => {
                 // num * 8
-                let num = ExprWithPos::new_long(base.get_size() as i64, pos);
-                lhs = ExprWithPos::new_binary(ast::BinaryOperator::Mul, lhs, num, pos);
-                lhs = ExprWithPos::new_binary_with_type(
+                let num = Expr::new_long(base.get_size() as i64, pos);
+                lhs = Expr::new_binary(ast::BinaryOperator::Mul, lhs, num, pos);
+                lhs = Expr::new_binary_with_type(
                     ast::BinaryOperator::Add,
                     rhs.clone(),
                     lhs,
                     pos,
-                    rhs.node.ty,
+                    rhs.ty,
                 );
             }
             // num + num
-            _ if lhs.node.ty.is_number() && rhs.node.ty.is_number() => {
-                lhs = ExprWithPos::new_binary(ast::BinaryOperator::Add, lhs, rhs, pos);
+            _ if lhs.ty.is_number() && rhs.ty.is_number() => {
+                lhs = Expr::new_binary(ast::BinaryOperator::Add, lhs, rhs, pos);
             }
             // other
             _ => panic!("invalid operands for pointer arithmetic add."),
@@ -2361,16 +2323,16 @@ impl<'a> Parser<'a> {
         Ok(lhs)
     }
 
-    fn struct_ref(&mut self, node: ExprWithPos) -> Result<ExprWithPos> {
-        match node.node.ty.clone().ty {
+    fn struct_ref(&mut self, node: Expr) -> Result<Expr> {
+        match node.ty.clone().ty {
             Ty::TyStruct { members, .. } | Ty::TyUnion { members, .. } => {
                 let mem_ident;
                 let pos = eat!(self, Ident, mem_ident);
                 let mut mem_found = None;
-                let name = node.node.ty.get_ident();
+                let name = node.ty.get_ident();
 
                 if name.is_some() {
-                    let name = node.node.ty.get_ident().unwrap();
+                    let name = node.ty.get_ident().unwrap();
                     let ty = self.struct_union_tag_env.look(self.symbols.symbol(&name));
 
                     if let Some(ty) = ty {
@@ -2388,8 +2350,7 @@ impl<'a> Parser<'a> {
                                     }
                                 }
 
-                                let mem_expr =
-                                    ExprWithPos::new_member_expr(node, mem_found.unwrap(), pos);
+                                let mem_expr = Expr::new_member_expr(node, mem_found.unwrap(), pos);
                                 return Ok(mem_expr);
                             }
                             _ => (),
@@ -2409,7 +2370,7 @@ impl<'a> Parser<'a> {
                     }
                 }
 
-                let mut mem_expr = ExprWithPos::new_member_expr(node, mem_found.unwrap(), pos);
+                let mut mem_expr = Expr::new_member_expr(node, mem_found.unwrap(), pos);
                 add_type(&mut mem_expr);
                 return Ok(mem_expr);
             }
@@ -2419,13 +2380,13 @@ impl<'a> Parser<'a> {
 
     /// Convert A++ to `(typeof A)((A += 1) - 1)`
     /// Convert A-- to `(typeof A)((A -= 1) + 1)`
-    fn new_inc_dec(&mut self, mut node: ExprWithPos, addend: i32) -> Result<ExprWithPos> {
+    fn new_inc_dec(&mut self, mut node: Expr, addend: i32) -> Result<Expr> {
         add_type(&mut node);
 
         let pos = self.peek()?.pos;
 
-        let positive_one = ExprWithPos::new_int(addend as i32, pos);
-        let negative_one = ExprWithPos::new_int(-addend as i32, pos);
+        let positive_one = Expr::new_int(addend as i32, pos);
+        let negative_one = Expr::new_int(-addend as i32, pos);
 
         // A += 1
         // A + 1
@@ -2438,14 +2399,14 @@ impl<'a> Parser<'a> {
         add_type(&mut e);
 
         // cast
-        let c = ExprWithPos::new_cast_expr(e, node.node.ty, pos);
+        let c = Expr::new_cast_expr(e, node.ty, pos);
 
         Ok(c)
     }
 
     /// postfix = "(" type-name ")" "{" initializer-list "}"
     ///         | primary ("[" expr "]" | "." ident | "->" ident | "++" | "--")*
-    fn postfix(&mut self) -> Result<ExprWithPos> {
+    fn postfix(&mut self) -> Result<Expr> {
         let current_token = self.peek()?.token.clone();
         let next_token = self.peek_next_one()?.token.clone();
         if current_token == LeftParen && self.is_typename(next_token)? {
@@ -2462,7 +2423,7 @@ impl<'a> Parser<'a> {
                 let var =
                     self.new_global_variable(unique_name, &mut ty, Some(InitData::IntInitData(0)))?;
                 self.global_var_initializer(var.clone())?;
-                let mut node = ExprWithPos::new_var(var, pos);
+                let mut node = Expr::new_var(var, pos);
                 add_type(&mut node);
                 return Ok(node);
             }
@@ -2470,9 +2431,9 @@ impl<'a> Parser<'a> {
             let var = self.new_local_variable("".to_string(), &mut ty)?;
             let mut lhs = self.local_var_initializer(var.clone())?;
             add_type(&mut lhs);
-            let mut rhs = ExprWithPos::new_var(var, pos);
+            let mut rhs = Expr::new_var(var, pos);
             add_type(&mut rhs);
-            return Ok(ExprWithPos::new_comma(lhs, rhs, pos));
+            return Ok(Expr::new_comma(lhs, rhs, pos));
         }
 
         let mut node = self.primary()?;
@@ -2488,7 +2449,7 @@ impl<'a> Parser<'a> {
                     let pos = eat!(self, LeftBracket);
                     let idx = self.expr()?;
                     eat!(self, RightBracket);
-                    node = ExprWithPos::new_deref(self.new_add(node, idx, pos)?, pos);
+                    node = Expr::new_deref(self.new_add(node, idx, pos)?, pos);
                 }
                 Tok::Dot => {
                     eat!(self, Dot);
@@ -2498,7 +2459,7 @@ impl<'a> Parser<'a> {
                 Tok::MinusGreater => {
                     // x->y is short for (*x).y
                     let pos = eat!(self, MinusGreater);
-                    node = ExprWithPos::new_deref(node, pos);
+                    node = Expr::new_deref(node, pos);
                     add_type(&mut node);
                     node = self.struct_ref(node)?;
                     add_type(&mut node);
@@ -2519,24 +2480,24 @@ impl<'a> Parser<'a> {
     }
 
     /// funcall = (assign ("," assign)*)? ")"
-    fn funcall(&mut self, func: &mut ExprWithPos) -> Result<ExprWithPos> {
+    fn funcall(&mut self, func: &mut Expr) -> Result<Expr> {
         add_type(func);
 
-        if !func.node.ty.is_func() {
-            if !func.node.ty.is_ptr() {
+        if !func.ty.is_func() {
+            if !func.ty.is_ptr() {
                 panic!("not a function");
             }
-            if let Some(base) = func.node.ty.base() {
+            if let Some(base) = func.ty.base() {
                 if !base.is_func() {
                     panic!("not a function");
                 }
             }
         }
 
-        let ty = if func.node.ty.is_func() {
-            func.node.ty.clone()
+        let ty = if func.ty.is_func() {
+            func.ty.clone()
         } else {
-            func.node.ty.clone().base().unwrap()
+            func.ty.clone().base().unwrap()
         };
 
         let params_ty = match ty.clone().ty {
@@ -2559,24 +2520,24 @@ impl<'a> Parser<'a> {
                 _ => {
                     let mut arg_exp = self.assign()?;
                     add_type(&mut arg_exp);
-                    if params_ty.is_empty() && !func.node.clone().ty.is_variadic() {
+                    if params_ty.is_empty() && !func.clone().ty.is_variadic() {
                         panic!("too many arguments");
                     }
 
                     if let Some(param_type) = params_ty.get(i) {
-                        if arg_exp.node.ty.is_union() || arg_exp.node.ty.is_struct() {
+                        if arg_exp.ty.is_union() || arg_exp.ty.is_struct() {
                             panic!("passing struct or union is not supported yet.");
                         }
 
-                        arg_exp = ExprWithPos::new_cast_expr(
+                        arg_exp = Expr::new_cast_expr(
                             arg_exp.clone(),
                             param_type.clone(),
                             arg_exp.pos.clone(),
                         );
-                    } else if arg_exp.node.ty.is_float() {
+                    } else if arg_exp.ty.is_float() {
                         // If parameter type is omitted (e.g. in "..."), float
                         // arguments are promoted to double.
-                        arg_exp = ExprWithPos::new_cast_expr(
+                        arg_exp = Expr::new_cast_expr(
                             arg_exp.clone(),
                             Type::new_double(),
                             arg_exp.pos.clone(),
@@ -2594,19 +2555,17 @@ impl<'a> Parser<'a> {
             panic!("too few arguments");
         }
 
-        let node = WithPos::new(
-            WithType::new(
-                Expr::FunctionCall {
-                    expr: Box::new(func.clone()),
-                    args,
-                },
-                match ty.ty {
-                    Ty::TyFunc { return_ty, .. } => *return_ty,
-                    _ => unreachable!(),
-                },
-            ),
-            func.pos,
-        );
+        let node = Expr {
+            expr: ExprInner::FunctionCall {
+                expr: Box::new(func.clone()),
+                args,
+            },
+            ty: match ty.ty {
+                Ty::TyFunc { return_ty, .. } => *return_ty,
+                _ => unreachable!(),
+            },
+            pos: func.pos,
+        };
         Ok(node)
     }
 
@@ -2641,7 +2600,7 @@ impl<'a> Parser<'a> {
     ///         | ident func-args?
     ///         | str
     ///         | num
-    fn primary(&mut self) -> Result<ExprWithPos> {
+    fn primary(&mut self) -> Result<Expr> {
         match self.peek()?.token {
             LeftParen => {
                 eat!(self, LeftParen);
@@ -2651,14 +2610,15 @@ impl<'a> Parser<'a> {
                         let pos = eat!(self, LeftBrace);
                         let stmt = self.compound_stmt()?.node;
                         let node = match stmt {
-                            Stmt::Block { body } => Expr::StmtExpr { body: body.clone() },
+                            Stmt::Block { body } => ExprInner::StmtExpr { body: body.clone() },
                             _ => panic!(),
                         };
                         eat!(self, RightParen);
-                        Ok(WithPos::new(
-                            WithType::new(node, Type::new_placeholder()),
+                        Ok(Expr {
+                            expr: node,
+                            ty: Type::new_placeholder(),
                             pos,
-                        ))
+                        })
                     }
                     _ => {
                         let expr = self.expr()?;
@@ -2670,37 +2630,37 @@ impl<'a> Parser<'a> {
             ConstLong(_) => {
                 let value;
                 let pos = eat!(self, ConstLong, value);
-                let node = ExprWithPos::new_long(value, pos);
+                let node = Expr::new_long(value, pos);
                 Ok(node)
             }
             ConstInt(_) => {
                 let value;
                 let pos = eat!(self, ConstInt, value);
-                let node = ExprWithPos::new_int(value, pos);
+                let node = Expr::new_int(value, pos);
                 Ok(node)
             }
             ConstULong(_) => {
                 let value;
                 let pos = eat!(self, ConstULong, value);
-                let node = ExprWithPos::new_ulong(value, pos);
+                let node = Expr::new_ulong(value, pos);
                 Ok(node)
             }
             ConstUInt(_) => {
                 let value;
                 let pos = eat!(self, ConstUInt, value);
-                let node = ExprWithPos::new_uint(value, pos);
+                let node = Expr::new_uint(value, pos);
                 Ok(node)
             }
             ConstFloat(_) => {
                 let value;
                 let pos = eat!(self, ConstFloat, value);
-                let node = ExprWithPos::new_float(value, pos);
+                let node = Expr::new_float(value, pos);
                 Ok(node)
             }
             ConstDouble(_) => {
                 let value;
                 let pos = eat!(self, ConstDouble, value);
-                let node = ExprWithPos::new_double(value, pos);
+                let node = Expr::new_double(value, pos);
                 Ok(node)
             }
             Tok::KeywordSizeof => {
@@ -2719,17 +2679,17 @@ impl<'a> Parser<'a> {
                                     .struct_union_tag_env
                                     .look(self.symbols.symbol(&type_name))
                                 {
-                                    return Ok(ExprWithPos::new_ulong(ty.get_size() as u64, pos));
+                                    return Ok(Expr::new_ulong(ty.get_size() as u64, pos));
                                 }
                             }
 
-                            Ok(ExprWithPos::new_ulong(ty.get_size() as u64, pos))
+                            Ok(Expr::new_ulong(ty.get_size() as u64, pos))
                         }
                         // sizeof(x)
                         else {
                             let mut node = self.unary()?;
                             add_type(&mut node);
-                            node = ExprWithPos::new_ulong(node.node.ty.get_size() as u64, pos);
+                            node = Expr::new_ulong(node.ty.get_size() as u64, pos);
                             Ok(node)
                         }
                     }
@@ -2737,7 +2697,7 @@ impl<'a> Parser<'a> {
                     _ => {
                         let mut node = self.unary()?;
                         add_type(&mut node);
-                        node = ExprWithPos::new_ulong(node.node.ty.get_size() as u64, pos);
+                        node = Expr::new_ulong(node.ty.get_size() as u64, pos);
                         Ok(node)
                     }
                 }
@@ -2751,19 +2711,14 @@ impl<'a> Parser<'a> {
                     match _ty.ty {
                         Ty::TyEnum => {
                             if let Some(InitData::IntInitData(i)) = var.borrow_mut().init_data {
-                                return Ok(ExprWithPos::new_long(i as i64, pos));
+                                return Ok(Expr::new_long(i as i64, pos));
                             } else {
-                                return Ok(WithPos::new(
-                                    WithType::new(Expr::Variable { obj: var.clone() }, _ty),
-                                    pos,
-                                ));
+                                let node = Expr::new_var(var.clone(), pos);
+                                return Ok(node);
                             }
                         }
                         _ => {
-                            let mut node = WithPos::new(
-                                WithType::new(Expr::Variable { obj: var.clone() }, _ty),
-                                pos,
-                            );
+                            let mut node = Expr::new_var(var.clone(), pos);
                             add_type(&mut node);
                             return Ok(node);
                         }
@@ -2785,10 +2740,9 @@ impl<'a> Parser<'a> {
                     &mut var_type,
                     Some(InitData::StringInitData(string)),
                 )?;
-                Ok(WithPos::new(
-                    WithType::new(Expr::Variable { obj: var.clone() }, var_type),
-                    pos,
-                ))
+                let mut node = Expr::new_var(var.clone(), pos);
+                add_type(&mut node);
+                return Ok(node);
             }
             Tok::KeywordAlignof => {
                 eat!(self, KeywordAlignof);
@@ -2798,14 +2752,11 @@ impl<'a> Parser<'a> {
                     let pos = self.peek()?.pos;
                     let ty = self.typename()?;
                     eat!(self, RightParen);
-                    return Ok(ExprWithPos::new_ulong(ty.get_align() as u64, pos));
+                    return Ok(Expr::new_ulong(ty.get_align() as u64, pos));
                 } else {
                     let mut node = self.unary()?;
                     add_type(&mut node);
-                    return Ok(ExprWithPos::new_ulong(
-                        node.node.ty.get_align() as u64,
-                        node.pos,
-                    ));
+                    return Ok(Expr::new_ulong(node.ty.get_align() as u64, node.pos));
                 }
             }
             _ => Err(self.unexpected_token("expected `(` or number")?),
@@ -3147,7 +3098,7 @@ impl<'a> Parser<'a> {
         Ok(self.eval_constexpr(&mut node)?)
     }
 
-    fn eval_constexpr(&mut self, node: &mut ExprWithPos) -> Result<i64> {
+    fn eval_constexpr(&mut self, node: &mut Expr) -> Result<i64> {
         self.eval_constexpr_with_label(node, &mut None)
     }
 
@@ -3159,17 +3110,17 @@ impl<'a> Parser<'a> {
     /// expression for a global variable.
     fn eval_constexpr_with_label(
         &mut self,
-        node: &mut ExprWithPos,
+        node: &mut Expr,
         label: &mut Option<String>,
     ) -> Result<i64> {
         add_type(node);
 
-        if node.node.ty.is_flonum() {
+        if node.ty.is_flonum() {
             return Ok(self.eval_double(node)? as i64);
         }
 
-        match node.node.node.clone() {
-            Expr::Binary {
+        match node.expr.clone() {
+            ExprInner::Binary {
                 mut left,
                 op,
                 mut right,
@@ -3182,7 +3133,7 @@ impl<'a> Parser<'a> {
                     Ok(self.eval_constexpr(&mut left)? * self.eval_constexpr(&mut right)?)
                 }
                 ast::BinaryOperator::Div => {
-                    if node.node.ty.is_unsigned() && node.node.ty.get_size() == 8 {
+                    if node.ty.is_unsigned() && node.ty.get_size() == 8 {
                         return Ok(((self.eval_constexpr(&mut left)? as u64)
                             / (self.eval_constexpr(&mut right)? as u64))
                             as i64);
@@ -3190,7 +3141,7 @@ impl<'a> Parser<'a> {
                     Ok(self.eval_constexpr(&mut left)? / self.eval_constexpr(&mut right)?)
                 }
                 ast::BinaryOperator::Mod => {
-                    if node.node.ty.is_unsigned() && node.node.ty.get_size() == 8 {
+                    if node.ty.is_unsigned() && node.ty.get_size() == 8 {
                         return Ok(((self.eval_constexpr(&mut left)? as u64)
                             % (self.eval_constexpr(&mut right)? as u64))
                             as i64);
@@ -3210,7 +3161,7 @@ impl<'a> Parser<'a> {
                     Ok(self.eval_constexpr(&mut left)? << self.eval_constexpr(&mut right)?)
                 }
                 ast::BinaryOperator::SHR => {
-                    if node.node.ty.is_unsigned() && node.node.ty.get_size() == 8 {
+                    if node.ty.is_unsigned() && node.ty.get_size() == 8 {
                         return Ok(((self.eval_constexpr(&mut left)? as u64)
                             >> (self.eval_constexpr(&mut right)? as u64))
                             as i64);
@@ -3242,7 +3193,7 @@ impl<'a> Parser<'a> {
                     || self.eval_constexpr(&mut right)? != 0)
                     as i64),
             },
-            Expr::Unary { op, mut expr } => match op.node {
+            ExprInner::Unary { op, mut expr } => match op.node {
                 ast::UnaryOperator::Neg => Ok(-self.eval_constexpr(&mut expr)?),
                 ast::UnaryOperator::Not => {
                     if self.eval_constexpr(&mut expr)? == 0 {
@@ -3253,10 +3204,10 @@ impl<'a> Parser<'a> {
                 }
                 ast::UnaryOperator::BitNot => Ok(!self.eval_constexpr(&mut expr)?),
             },
-            Expr::CommaExpr { mut right, .. } => {
+            ExprInner::CommaExpr { mut right, .. } => {
                 Ok(self.eval_constexpr_with_label(&mut right, label)?)
             }
-            Expr::CastExpr { mut expr, ty } => {
+            ExprInner::CastExpr { mut expr, ty } => {
                 let val = self.eval_constexpr_with_label(&mut expr, label)?;
                 match ty.is_integer() {
                     true => match ty.get_size() {
@@ -3271,7 +3222,7 @@ impl<'a> Parser<'a> {
                     false => Ok(val),
                 }
             }
-            Expr::TernaryExpr {
+            ExprInner::TernaryExpr {
                 mut condition,
                 mut then_clause,
                 mut else_clause,
@@ -3279,57 +3230,59 @@ impl<'a> Parser<'a> {
                 0 => Ok(self.eval_constexpr_with_label(&mut else_clause, label)?),
                 _ => Ok(self.eval_constexpr_with_label(&mut then_clause, label)?),
             },
-            Expr::Addr { mut expr } => self.eval_rvalue(&mut expr, label),
-            Expr::MemberExpr { mut strct, member } => {
-                if !node.node.ty.is_array() {
+            ExprInner::Addr { mut expr } => self.eval_rvalue(&mut expr, label),
+            ExprInner::MemberExpr { mut strct, member } => {
+                if !node.ty.is_array() {
                     panic!()
                 }
                 return Ok(self.eval_rvalue(&mut strct, label)? + member.offset as i64);
             }
-            Expr::Variable { obj } => {
+            ExprInner::Variable { obj } => {
                 if !obj.borrow().ty.is_array() && !obj.borrow().ty.is_func() {
                     panic!()
                 }
                 *label = Some(obj.borrow().name.clone().unwrap());
                 return Ok(0);
             }
-            Expr::ConstInt { value } => Ok(value as i64),
-            Expr::ConstUInt { value } => Ok(value as i64),
-            Expr::ConstLong { value } => Ok(value as i64),
-            Expr::ConstULong { value } => Ok(value as i64),
-            _ => panic!("not a compile-time constant. {:?}", node.node.clone()),
+            ExprInner::ConstInt { value } => Ok(value as i64),
+            ExprInner::ConstUInt { value } => Ok(value as i64),
+            ExprInner::ConstLong { value } => Ok(value as i64),
+            ExprInner::ConstULong { value } => Ok(value as i64),
+            _ => panic!("not a compile-time constant. {:?}", node.clone()),
         }
     }
 
-    fn eval_rvalue(&mut self, node: &mut ExprWithPos, label: &mut Option<String>) -> Result<i64> {
-        match node.node.node.clone() {
-            Expr::Variable { obj } => {
+    fn eval_rvalue(&mut self, node: &mut Expr, label: &mut Option<String>) -> Result<i64> {
+        match node.expr.clone() {
+            ExprInner::Variable { obj } => {
                 if obj.borrow().is_local {
                     panic!("{} not a compile-time constant", obj.borrow());
                 }
                 *label = Some(obj.borrow().name.clone().unwrap());
                 return Ok(0);
             }
-            Expr::Deref { mut expr } => return self.eval_constexpr_with_label(&mut expr, label),
-            Expr::MemberExpr { mut strct, member } => {
+            ExprInner::Deref { mut expr } => {
+                return self.eval_constexpr_with_label(&mut expr, label)
+            }
+            ExprInner::MemberExpr { mut strct, member } => {
                 return Ok(self.eval_rvalue(&mut strct, label)? + member.offset as i64);
             }
             _ => return Err(Error::InvalidInitializer { pos: node.pos }),
         }
     }
 
-    fn eval_double(&mut self, node: &mut ExprWithPos) -> Result<f64> {
+    fn eval_double(&mut self, node: &mut Expr) -> Result<f64> {
         add_type(node);
 
-        if node.node.ty.is_integer() {
-            if node.node.ty.is_unsigned() {
+        if node.ty.is_integer() {
+            if node.ty.is_unsigned() {
                 return Ok(self.eval_constexpr(node)? as u64 as f64);
             }
             return Ok(self.eval_constexpr(node)? as f64);
         }
 
-        match node.node.node.clone() {
-            Expr::Binary {
+        match node.expr.clone() {
+            ExprInner::Binary {
                 mut left,
                 op,
                 mut right,
@@ -3349,12 +3302,12 @@ impl<'a> Parser<'a> {
                 }
                 _ => panic!(),
             },
-            Expr::Unary { op, mut expr } => match op.node {
+            ExprInner::Unary { op, mut expr } => match op.node {
                 UnaryOperator::Neg => return Ok(-self.eval_double(&mut expr)?),
                 _ => panic!(),
             },
-            Expr::CommaExpr { left: _, mut right } => return self.eval_double(&mut right),
-            Expr::TernaryExpr {
+            ExprInner::CommaExpr { left: _, mut right } => return self.eval_double(&mut right),
+            ExprInner::TernaryExpr {
                 mut condition,
                 mut then_clause,
                 mut else_clause,
@@ -3366,14 +3319,14 @@ impl<'a> Parser<'a> {
                     return self.eval_double(&mut else_clause);
                 }
             }
-            Expr::CastExpr { mut expr, .. } => {
-                if expr.node.ty.is_flonum() {
+            ExprInner::CastExpr { mut expr, .. } => {
+                if expr.ty.is_flonum() {
                     return self.eval_double(&mut expr);
                 }
                 return Ok(self.eval_constexpr(&mut expr)? as f64);
             }
-            Expr::ConstDouble { value } => return Ok(value),
-            Expr::ConstFloat { value } => return Ok(value as f64),
+            ExprInner::ConstDouble { value } => return Ok(value),
+            ExprInner::ConstFloat { value } => return Ok(value as f64),
             _ => panic!(),
         }
     }

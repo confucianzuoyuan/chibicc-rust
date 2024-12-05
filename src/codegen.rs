@@ -1,7 +1,7 @@
 use std::{collections::HashMap, io::Write};
 
 use crate::{
-    ast::{self, ExprWithPos, FunctionDefinition, InitData},
+    ast::{self, Expr, FunctionDefinition, InitData},
     sema::{self, Ty, Type},
 };
 
@@ -268,10 +268,10 @@ impl CodeGenerator {
         self.depth -= 1;
     }
 
-    fn push_args(&mut self, args: Vec<ExprWithPos>) {
+    fn push_args(&mut self, args: Vec<Expr>) {
         for arg in args.iter().rev() {
             self.gen_expr(arg);
-            if arg.node.ty.is_flonum() {
+            if arg.ty.is_flonum() {
                 self.pushf();
             } else {
                 self.push();
@@ -407,9 +407,9 @@ impl CodeGenerator {
         }
     }
 
-    fn gen_addr(&mut self, ast: &ast::ExprWithPos) {
-        match &ast.node.node {
-            ast::Expr::Variable { obj, .. } => {
+    fn gen_addr(&mut self, ast: &ast::Expr) {
+        match &ast.expr {
+            ast::ExprInner::Variable { obj, .. } => {
                 // Local variable
                 if obj.borrow().is_local {
                     self.output
@@ -441,7 +441,7 @@ impl CodeGenerator {
                 // Global Offset Table using `@GOTPCREL(%rip)` notation.
 
                 // Function
-                if ast.node.ty.is_func() {
+                if ast.ty.is_func() {
                     if obj.borrow().is_definition {
                         self.output.push(format!(
                             "  lea {}(%rip), %rax",
@@ -462,12 +462,12 @@ impl CodeGenerator {
                     obj.borrow().name.clone().unwrap()
                 ));
             }
-            ast::Expr::Deref { expr, .. } => self.gen_expr(expr),
-            ast::Expr::CommaExpr { left, right } => {
+            ast::ExprInner::Deref { expr, .. } => self.gen_expr(expr),
+            ast::ExprInner::CommaExpr { left, right } => {
                 self.gen_expr(&left);
                 self.gen_addr(&right);
             }
-            ast::Expr::MemberExpr { strct, member } => {
+            ast::ExprInner::MemberExpr { strct, member } => {
                 self.gen_addr(&strct);
                 self.output.push(format!("  add ${}, %rax", member.offset));
             }
@@ -502,7 +502,7 @@ impl CodeGenerator {
                 let c = self.label_count;
                 self.label_count += 1;
                 self.gen_expr(condition);
-                self.cmp_zero(condition.node.ty.clone());
+                self.cmp_zero(condition.ty.clone());
                 self.output.push(format!("  je .L.else.{}", c));
                 self.gen_stmt(&then_clause);
                 self.output.push(format!("  jmp .L.end.{}", c));
@@ -526,7 +526,7 @@ impl CodeGenerator {
                 self.output.push(format!(".L.begin.{}:", c));
                 if let Some(cond) = condition {
                     self.gen_expr(cond);
-                    self.cmp_zero(cond.node.ty.clone());
+                    self.cmp_zero(cond.ty.clone());
                     if let Some(brk_label) = break_label {
                         self.output.push(format!("  je {}", brk_label));
                     }
@@ -553,7 +553,7 @@ impl CodeGenerator {
                 self.label_count += 1;
                 self.output.push(format!(".L.begin.{}:", c));
                 self.gen_expr(condition);
-                self.cmp_zero(condition.node.ty.clone());
+                self.cmp_zero(condition.ty.clone());
                 if let Some(brk_label) = break_label {
                     self.output.push(format!("  je {}", brk_label));
                 }
@@ -580,7 +580,7 @@ impl CodeGenerator {
                     self.output.push(format!("{}:", cont_label));
                 }
                 self.gen_expr(condition);
-                self.cmp_zero(condition.node.ty.clone());
+                self.cmp_zero(condition.ty.clone());
                 self.output.push(format!("  jne .L.begin.{}", c));
                 if let Some(brk_label) = break_label {
                     self.output.push(format!("{}:", brk_label));
@@ -605,7 +605,7 @@ impl CodeGenerator {
                 self.gen_expr(condition);
 
                 for n in cases {
-                    let reg = if condition.node.ty.get_size() == 8 {
+                    let reg = if condition.ty.get_size() == 8 {
                         "%rax"
                     } else {
                         "%eax"
@@ -636,23 +636,23 @@ impl CodeGenerator {
         }
     }
 
-    fn gen_expr(&mut self, ast: &ast::ExprWithPos) {
+    fn gen_expr(&mut self, ast: &ast::Expr) {
         self.output.push(format!("  .loc 1 {}", ast.pos.line));
-        match &ast.node.node {
-            ast::Expr::Null => (),
-            ast::Expr::ConstInt { value, .. } => {
+        match &ast.expr {
+            ast::ExprInner::Null => (),
+            ast::ExprInner::ConstInt { value, .. } => {
                 self.output.push(format!("  mov ${}, %rax", value))
             }
-            ast::Expr::ConstUInt { value, .. } => {
+            ast::ExprInner::ConstUInt { value, .. } => {
                 self.output.push(format!("  mov ${}, %rax", value))
             }
-            ast::Expr::ConstLong { value, .. } => {
+            ast::ExprInner::ConstLong { value, .. } => {
                 self.output.push(format!("  mov ${}, %rax", value))
             }
-            ast::Expr::ConstULong { value, .. } => {
+            ast::ExprInner::ConstULong { value, .. } => {
                 self.output.push(format!("  mov ${}, %rax", value))
             }
-            ast::Expr::ConstFloat { value } => {
+            ast::ExprInner::ConstFloat { value } => {
                 self.output.push(format!(
                     "  mov ${}, %rax # float {}",
                     (*value).to_bits(),
@@ -660,7 +660,7 @@ impl CodeGenerator {
                 ));
                 self.output.push(format!("  movq %rax, %xmm0"));
             }
-            ast::Expr::ConstDouble { value } => {
+            ast::ExprInner::ConstDouble { value } => {
                 self.output.push(format!(
                     "  mov ${}, %rax # double {}",
                     (*value).to_bits(),
@@ -668,17 +668,17 @@ impl CodeGenerator {
                 ));
                 self.output.push(format!("  movq %rax, %xmm0"));
             }
-            ast::Expr::Unary { expr, op } => match op.node {
+            ast::ExprInner::Unary { expr, op } => match op.node {
                 ast::UnaryOperator::Neg => {
                     self.gen_expr(expr);
-                    if ast.node.ty.is_float() {
+                    if ast.ty.is_float() {
                         self.output.push(format!("  mov $1, %rax"));
                         self.output.push(format!("  shl $31, %rax"));
                         self.output.push(format!("  movq %rax, %xmm1"));
                         self.output.push(format!("  xorps %xmm1, %xmm0"));
                         return ();
                     }
-                    if ast.node.ty.is_double() {
+                    if ast.ty.is_double() {
                         self.output.push(format!("  mov $1, %rax"));
                         self.output.push(format!("  shl $63, %rax"));
                         self.output.push(format!("  movq %rax, %xmm1"));
@@ -689,7 +689,7 @@ impl CodeGenerator {
                 }
                 ast::UnaryOperator::Not => {
                     self.gen_expr(expr);
-                    self.cmp_zero(expr.node.ty.clone());
+                    self.cmp_zero(expr.ty.clone());
                     self.output.push(format!("  sete %al"));
                     self.output.push(format!("  movzx %al, %rax"));
                 }
@@ -698,39 +698,39 @@ impl CodeGenerator {
                     self.output.push(format!("  not %rax"));
                 }
             },
-            ast::Expr::Variable { .. } | ast::Expr::MemberExpr { .. } => {
+            ast::ExprInner::Variable { .. } | ast::ExprInner::MemberExpr { .. } => {
                 self.gen_addr(ast);
-                self.load(&ast.node.ty);
+                self.load(&ast.ty);
             }
-            ast::Expr::CastExpr { expr, ty } => {
+            ast::ExprInner::CastExpr { expr, ty } => {
                 self.gen_expr(&expr);
-                self.cast(expr.node.ty.clone(), ty.clone());
+                self.cast(expr.ty.clone(), ty.clone());
             }
-            ast::Expr::Assign {
+            ast::ExprInner::Assign {
                 l_value, r_value, ..
             } => {
                 self.gen_addr(l_value);
                 self.push();
                 self.gen_expr(r_value);
-                self.store(&ast.node.ty);
+                self.store(&ast.ty);
             }
-            ast::Expr::Deref { expr, .. } => {
+            ast::ExprInner::Deref { expr, .. } => {
                 self.gen_expr(expr);
-                self.load(&ast.node.ty);
+                self.load(&ast.ty);
             }
-            ast::Expr::Addr { expr, .. } => {
+            ast::ExprInner::Addr { expr, .. } => {
                 self.gen_addr(expr);
             }
-            ast::Expr::StmtExpr { body } => {
+            ast::ExprInner::StmtExpr { body } => {
                 for n in body {
                     self.gen_stmt(n);
                 }
             }
-            ast::Expr::CommaExpr { left, right } => {
+            ast::ExprInner::CommaExpr { left, right } => {
                 self.gen_expr(&left);
                 self.gen_expr(&right);
             }
-            ast::Expr::TernaryExpr {
+            ast::ExprInner::TernaryExpr {
                 condition,
                 then_clause,
                 else_clause,
@@ -738,7 +738,7 @@ impl CodeGenerator {
                 let c = self.label_count;
                 self.label_count += 1;
                 self.gen_expr(&condition);
-                self.cmp_zero(condition.node.ty.clone());
+                self.cmp_zero(condition.ty.clone());
                 self.output.push(format!("  je .L.else.{}", c));
                 self.gen_expr(&then_clause);
                 self.output.push(format!("  jmp .L.end.{}", c));
@@ -746,14 +746,14 @@ impl CodeGenerator {
                 self.gen_expr(&else_clause);
                 self.output.push(format!(".L.end.{}:", c));
             }
-            ast::Expr::FunctionCall { expr, args } => {
+            ast::ExprInner::FunctionCall { expr, args } => {
                 self.push_args(args.clone());
                 self.gen_expr(&expr);
 
                 let mut gp = 0;
                 let mut fp = 0;
                 for arg in args {
-                    if arg.node.ty.is_flonum() {
+                    if arg.ty.is_flonum() {
                         self.popf(fp);
                         fp += 1;
                     } else {
@@ -770,7 +770,7 @@ impl CodeGenerator {
                     self.output.push(format!("  add $8, %rsp"));
                 }
 
-                match ast.node.ty.ty {
+                match ast.ty.ty {
                     Ty::TyBool => self.output.push(format!("  movzx %al, %eax")),
                     Ty::TyChar => self.output.push(format!("  movsbl %al, %eax")),
                     Ty::TyUChar => self.output.push(format!("  movzbl %al, %eax")),
@@ -779,7 +779,7 @@ impl CodeGenerator {
                     _ => (),
                 }
             }
-            ast::Expr::MemZero { var } => {
+            ast::ExprInner::MemZero { var } => {
                 // `rep stosb` is equivalent to `memset(%rdi, %al, %rcx)`.
                 self.output
                     .push(format!("  mov ${}, %rcx", var.borrow().ty.get_size()));
@@ -788,16 +788,16 @@ impl CodeGenerator {
                 self.output.push(format!("  mov $0, %al"));
                 self.output.push(format!("  rep stosb"));
             }
-            ast::Expr::Binary {
+            ast::ExprInner::Binary {
                 left, op, right, ..
             } => {
-                if left.node.ty.is_flonum() {
+                if left.ty.is_flonum() {
                     self.gen_expr(&right);
                     self.pushf();
                     self.gen_expr(&left);
                     self.popf(1);
 
-                    let sz = if left.node.ty.is_float() { "ss" } else { "sd" };
+                    let sz = if left.ty.is_float() { "ss" } else { "sd" };
 
                     match op.node {
                         ast::BinaryOperator::Add => {
@@ -856,10 +856,10 @@ impl CodeGenerator {
                             let c = self.label_count;
                             self.label_count += 1;
                             self.gen_expr(left);
-                            self.cmp_zero(left.node.ty.clone());
+                            self.cmp_zero(left.ty.clone());
                             self.output.push(format!("  je .L.false.{}", c));
                             self.gen_expr(&right);
-                            self.cmp_zero(right.node.ty.clone());
+                            self.cmp_zero(right.ty.clone());
                             self.output.push(format!("  je .L.false.{}", c));
                             self.output.push(format!("  mov $1, %rax"));
                             self.output.push(format!("  jmp .L.end.{}", c));
@@ -871,10 +871,10 @@ impl CodeGenerator {
                             let c = self.label_count;
                             self.label_count += 1;
                             self.gen_expr(left);
-                            self.cmp_zero(left.node.ty.clone());
+                            self.cmp_zero(left.ty.clone());
                             self.output.push(format!("  jne .L.true.{}", c));
                             self.gen_expr(right);
-                            self.cmp_zero(right.node.ty.clone());
+                            self.cmp_zero(right.ty.clone());
                             self.output.push(format!("  jne .L.true.{}", c));
                             self.output.push(format!("  mov $0, %rax"));
                             self.output.push(format!("  jmp .L.end.{}", c));
@@ -893,7 +893,7 @@ impl CodeGenerator {
                 self.push();
                 self.gen_expr(left);
                 self.pop("%rdi".to_string());
-                let (ax, di, dx) = match (left.node.ty.clone().ty, right.node.ty.clone().ty) {
+                let (ax, di, dx) = match (left.ty.clone().ty, right.ty.clone().ty) {
                     (Ty::TyLong | Ty::TyULong | Ty::TyArray { .. } | Ty::TyPtr { .. }, _) => {
                         ("%rax", "%rdi", "%rdx")
                     }
@@ -907,11 +907,11 @@ impl CodeGenerator {
                     ast::BinaryOperator::Sub => self.output.push(format!("  sub {}, {}", di, ax)),
                     ast::BinaryOperator::Mul => self.output.push(format!("  imul {}, {}", di, ax)),
                     ast::BinaryOperator::Div => {
-                        if ast.node.ty.is_unsigned() {
+                        if ast.ty.is_unsigned() {
                             self.output.push(format!("  mov $0, {}", dx));
                             self.output.push(format!("  div {}", di));
                         } else {
-                            if left.node.ty.get_size() == 8 {
+                            if left.ty.get_size() == 8 {
                                 self.output.push(format!("  cqo"));
                             } else {
                                 self.output.push(format!("  cdq"));
@@ -920,11 +920,11 @@ impl CodeGenerator {
                         }
                     }
                     ast::BinaryOperator::Mod => {
-                        if ast.node.ty.is_unsigned() {
+                        if ast.ty.is_unsigned() {
                             self.output.push(format!("  mov $0, {}", dx));
                             self.output.push(format!("  div {}", di));
                         } else {
-                            if left.node.ty.get_size() == 8 {
+                            if left.ty.get_size() == 8 {
                                 self.output.push(format!("  cqo"));
                             } else {
                                 self.output.push(format!("  cdq"));
@@ -946,7 +946,7 @@ impl CodeGenerator {
                     }
                     ast::BinaryOperator::Lt => {
                         self.output.push(format!("  cmp {}, {}", di, ax));
-                        if left.node.ty.is_unsigned() {
+                        if left.ty.is_unsigned() {
                             self.output.push(format!("  setb %al"));
                         } else {
                             self.output.push(format!("  setl %al"));
@@ -955,7 +955,7 @@ impl CodeGenerator {
                     }
                     ast::BinaryOperator::Le => {
                         self.output.push(format!("  cmp {}, {}", di, ax));
-                        if left.node.ty.is_unsigned() {
+                        if left.ty.is_unsigned() {
                             self.output.push(format!("  setbe %al"));
                         } else {
                             self.output.push(format!("  setle %al"));
@@ -964,7 +964,7 @@ impl CodeGenerator {
                     }
                     ast::BinaryOperator::Gt => {
                         self.output.push(format!("  cmp {}, {}", di, ax));
-                        if left.node.ty.is_unsigned() {
+                        if left.ty.is_unsigned() {
                             self.output.push(format!("  seta %al"));
                         } else {
                             self.output.push(format!("  setg %al"));
@@ -973,7 +973,7 @@ impl CodeGenerator {
                     }
                     ast::BinaryOperator::Ge => {
                         self.output.push(format!("  cmp {}, {}", di, ax));
-                        if left.node.ty.is_unsigned() {
+                        if left.ty.is_unsigned() {
                             self.output.push(format!("  setbe %al"));
                         } else {
                             self.output.push(format!("  setge %al"));
@@ -991,10 +991,10 @@ impl CodeGenerator {
                         let c = self.label_count;
                         self.label_count += 1;
                         self.gen_expr(left);
-                        self.cmp_zero(left.node.ty.clone());
+                        self.cmp_zero(left.ty.clone());
                         self.output.push(format!("  je .L.false.{}", c));
                         self.gen_expr(&right);
-                        self.cmp_zero(right.node.ty.clone());
+                        self.cmp_zero(right.ty.clone());
                         self.output.push(format!("  je .L.false.{}", c));
                         self.output.push(format!("  mov $1, %rax"));
                         self.output.push(format!("  jmp .L.end.{}", c));
@@ -1006,10 +1006,10 @@ impl CodeGenerator {
                         let c = self.label_count;
                         self.label_count += 1;
                         self.gen_expr(left);
-                        self.cmp_zero(left.node.ty.clone());
+                        self.cmp_zero(left.ty.clone());
                         self.output.push(format!("  jne .L.true.{}", c));
                         self.gen_expr(right);
-                        self.cmp_zero(right.node.ty.clone());
+                        self.cmp_zero(right.ty.clone());
                         self.output.push(format!("  jne .L.true.{}", c));
                         self.output.push(format!("  mov $0, %rax"));
                         self.output.push(format!("  jmp .L.end.{}", c));
@@ -1023,7 +1023,7 @@ impl CodeGenerator {
                     }
                     ast::BinaryOperator::SHR => {
                         self.output.push(format!("  mov %rdi, %rcx"));
-                        if left.node.ty.is_unsigned() {
+                        if left.ty.is_unsigned() {
                             self.output.push(format!("  shr %cl, {}", ax));
                         } else {
                             self.output.push(format!("  sar %cl, {}", ax));
