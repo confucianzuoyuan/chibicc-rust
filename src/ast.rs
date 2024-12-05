@@ -104,10 +104,7 @@ impl ExprWithPos {
                     strct: Box::new(strct),
                     member,
                 },
-                Type {
-                    ty: Ty::TyPlaceholder,
-                    name: None,
-                },
+                Type::new_placeholder(),
             ),
             pos,
         )
@@ -115,28 +112,13 @@ impl ExprWithPos {
 
     pub fn new_memzero(var: Rc<RefCell<Obj>>, pos: Pos) -> Self {
         WithPos::new(
-            WithType::new(
-                Expr::MemZero { var },
-                Type {
-                    ty: Ty::TyPlaceholder,
-                    name: None,
-                },
-            ),
+            WithType::new(Expr::MemZero { var }, Type::new_placeholder()),
             pos,
         )
     }
 
     pub fn new_null_expr(pos: Pos) -> Self {
-        WithPos::new(
-            WithType::new(
-                Expr::Null,
-                Type {
-                    ty: Ty::TyPlaceholder,
-                    name: None,
-                },
-            ),
-            pos,
-        )
+        WithPos::new(WithType::new(Expr::Null, Type::new_placeholder()), pos)
     }
 
     pub fn new_float(i: f32, pos: Pos) -> Self {
@@ -155,65 +137,35 @@ impl ExprWithPos {
 
     pub fn new_int(i: i32, pos: Pos) -> Self {
         WithPos::new(
-            WithType::new(
-                Expr::ConstInt { value: i },
-                Type {
-                    ty: Ty::TyInt,
-                    name: None,
-                },
-            ),
+            WithType::new(Expr::ConstInt { value: i }, Type::new_int()),
             pos,
         )
     }
 
     pub fn new_uint(i: u32, pos: Pos) -> Self {
         WithPos::new(
-            WithType::new(
-                Expr::ConstUInt { value: i },
-                Type {
-                    ty: Ty::TyUInt,
-                    name: None,
-                },
-            ),
+            WithType::new(Expr::ConstUInt { value: i }, Type::new_uint()),
             pos,
         )
     }
 
     pub fn new_long(i: i64, pos: Pos) -> Self {
         WithPos::new(
-            WithType::new(
-                Expr::ConstLong { value: i },
-                Type {
-                    ty: Ty::TyLong,
-                    name: None,
-                },
-            ),
+            WithType::new(Expr::ConstLong { value: i }, Type::new_long()),
             pos,
         )
     }
 
     pub fn new_ulong(i: u64, pos: Pos) -> Self {
         WithPos::new(
-            WithType::new(
-                Expr::ConstULong { value: i },
-                Type {
-                    ty: Ty::TyULong,
-                    name: None,
-                },
-            ),
+            WithType::new(Expr::ConstULong { value: i }, Type::new_ulong()),
             pos,
         )
     }
 
     pub fn new_var(obj: Rc<RefCell<Obj>>, pos: Pos) -> Self {
         WithPos::new(
-            WithType::new(
-                Expr::Variable { obj },
-                Type {
-                    ty: Ty::TyPlaceholder,
-                    name: None,
-                },
-            ),
+            WithType::new(Expr::Variable { obj }, Type::new_placeholder()),
             pos,
         )
     }
@@ -224,10 +176,7 @@ impl ExprWithPos {
                 Expr::Deref {
                     expr: Box::new(expr),
                 },
-                Type {
-                    ty: Ty::TyPlaceholder,
-                    name: None,
-                },
+                Type::new_placeholder(),
             ),
             pos,
         )
@@ -239,10 +188,7 @@ impl ExprWithPos {
                 Expr::Addr {
                     expr: Box::new(expr),
                 },
-                Type {
-                    ty: Ty::TyPlaceholder,
-                    name: None,
-                },
+                Type::new_placeholder(),
             ),
             pos,
         )
@@ -255,10 +201,7 @@ impl ExprWithPos {
                     left: Box::new(left),
                     right: Box::new(right),
                 },
-                Type {
-                    ty: Ty::TyPlaceholder,
-                    name: None,
-                },
+                Type::new_placeholder(),
             ),
             pos,
         )
@@ -271,10 +214,7 @@ impl ExprWithPos {
                     l_value: Box::new(left),
                     r_value: Box::new(right),
                 },
-                Type {
-                    ty: Ty::TyPlaceholder,
-                    name: None,
-                },
+                Type::new_placeholder(),
             ),
             pos,
         )
@@ -288,10 +228,7 @@ impl ExprWithPos {
                     op: WithPos::new(op, pos),
                     right: Box::new(right),
                 },
-                Type {
-                    ty: Ty::TyPlaceholder,
-                    name: None,
-                },
+                Type::new_placeholder(),
             ),
             pos,
         )
@@ -330,10 +267,7 @@ impl ExprWithPos {
                     else_clause: Box::new(else_clause),
                     condition: Box::new(condition),
                 },
-                Type {
-                    ty: Ty::TyPlaceholder,
-                    name: None,
-                },
+                Type::new_placeholder(),
             ),
             pos,
         )
