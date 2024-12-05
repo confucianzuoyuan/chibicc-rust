@@ -84,6 +84,7 @@ pub enum ExprInner {
 pub struct Expr {
     pub expr: ExprInner,
     pub ty: Type,
+    pub pass_by_stack: bool,
     pub pos: Pos,
 }
 
@@ -95,6 +96,7 @@ impl Expr {
                 ty: ty.clone(),
             },
             ty,
+            pass_by_stack: false,
             pos,
         }
     }
@@ -106,6 +108,7 @@ impl Expr {
                 member,
             },
             ty: Type::new_placeholder(),
+            pass_by_stack: false,
             pos,
         }
     }
@@ -114,6 +117,7 @@ impl Expr {
         Expr {
             expr: ExprInner::MemZero { var },
             ty: Type::new_placeholder(),
+            pass_by_stack: false,
             pos,
         }
     }
@@ -122,6 +126,7 @@ impl Expr {
         Expr {
             expr: ExprInner::Null,
             ty: Type::new_placeholder(),
+            pass_by_stack: false,
             pos,
         }
     }
@@ -130,6 +135,7 @@ impl Expr {
         Expr {
             expr: ExprInner::ConstFloat { value: i },
             ty: Type::new_float(),
+            pass_by_stack: false,
             pos,
         }
     }
@@ -138,6 +144,7 @@ impl Expr {
         Expr {
             expr: ExprInner::ConstDouble { value: i },
             ty: Type::new_double(),
+            pass_by_stack: false,
             pos,
         }
     }
@@ -146,6 +153,7 @@ impl Expr {
         Expr {
             expr: ExprInner::ConstInt { value: i },
             ty: Type::new_int(),
+            pass_by_stack: false,
             pos,
         }
     }
@@ -154,6 +162,7 @@ impl Expr {
         Expr {
             expr: ExprInner::ConstUInt { value: i },
             ty: Type::new_uint(),
+            pass_by_stack: false,
             pos,
         }
     }
@@ -162,6 +171,7 @@ impl Expr {
         Expr {
             expr: ExprInner::ConstLong { value: i },
             ty: Type::new_long(),
+            pass_by_stack: false,
             pos,
         }
     }
@@ -170,6 +180,7 @@ impl Expr {
         Expr {
             expr: ExprInner::ConstULong { value: i },
             ty: Type::new_ulong(),
+            pass_by_stack: false,
             pos,
         }
     }
@@ -178,6 +189,7 @@ impl Expr {
         Expr {
             expr: ExprInner::Variable { obj },
             ty: Type::new_placeholder(),
+            pass_by_stack: false,
             pos,
         }
     }
@@ -188,6 +200,7 @@ impl Expr {
                 expr: Box::new(expr),
             },
             ty: Type::new_placeholder(),
+            pass_by_stack: false,
             pos,
         }
     }
@@ -198,6 +211,7 @@ impl Expr {
                 expr: Box::new(expr),
             },
             ty: Type::new_placeholder(),
+            pass_by_stack: false,
             pos,
         }
     }
@@ -209,6 +223,7 @@ impl Expr {
                 right: Box::new(right),
             },
             ty: Type::new_placeholder(),
+            pass_by_stack: false,
             pos,
         }
     }
@@ -220,6 +235,7 @@ impl Expr {
                 r_value: Box::new(right),
             },
             ty: Type::new_placeholder(),
+            pass_by_stack: false,
             pos,
         }
     }
@@ -231,6 +247,7 @@ impl Expr {
                 expr: Box::new(expr),
             },
             ty: Type::new_placeholder(),
+            pass_by_stack: false,
             pos,
         }
     }
@@ -243,6 +260,7 @@ impl Expr {
                 right: Box::new(right),
             },
             ty: Type::new_placeholder(),
+            pass_by_stack: false,
             pos,
         }
     }
@@ -261,6 +279,7 @@ impl Expr {
                 right: Box::new(right),
             },
             ty,
+            pass_by_stack: false,
             pos,
         }
     }
@@ -273,6 +292,7 @@ impl Expr {
                 condition: Box::new(condition),
             },
             ty: Type::new_placeholder(),
+            pass_by_stack: false,
             pos,
         }
     }

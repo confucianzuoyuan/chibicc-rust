@@ -554,12 +554,7 @@ pub fn add_type(e: &mut ast::Expr) {
                     ..
                 },
             ..
-        } => {
-            e.ty = Type {
-                ty: Ty::TyInt,
-                name: None,
-            }
-        }
+        } => e.ty = Type::new_int(),
         ExprInner::ConstInt { .. } => e.ty = Type::new_int(),
         ExprInner::ConstUInt { .. } => e.ty = Type::new_uint(),
         ExprInner::ConstLong { .. } => e.ty = Type::new_long(),

@@ -2564,6 +2564,7 @@ impl<'a> Parser<'a> {
                 Ty::TyFunc { return_ty, .. } => *return_ty,
                 _ => unreachable!(),
             },
+            pass_by_stack: false,
             pos: func.pos,
         };
         Ok(node)
@@ -2617,6 +2618,7 @@ impl<'a> Parser<'a> {
                         Ok(Expr {
                             expr: node,
                             ty: Type::new_placeholder(),
+                            pass_by_stack: false,
                             pos,
                         })
                     }
