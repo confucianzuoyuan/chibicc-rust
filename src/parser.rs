@@ -982,6 +982,7 @@ impl Parser {
 
     /// declaration = declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
     fn declaration(&mut self, basety: &mut Type, attr: &Option<VarAttr>) -> Result<StmtWithPos> {
+        let pos = self.peek()?.pos.clone();
         let mut decls = vec![];
 
         loop {
@@ -1043,7 +1044,7 @@ impl Parser {
             }
         }
 
-        Ok(WithPos::new(Stmt::Block { body: decls }, self.peek()?.pos))
+        Ok(WithPos::new(Stmt::Block { body: decls }, pos))
     }
 
     // struct-members = (declspec declarator (","  declarator)* ";")*
@@ -1695,6 +1696,7 @@ impl Parser {
 
     /// compound-stmt = (declaration | stmt)* "}"
     fn compound_stmt(&mut self) -> Result<StmtWithPos> {
+        let pos = self.peek()?.pos.clone();
         let mut stmts = vec![];
 
         self.scope.enter_scope();
@@ -1741,7 +1743,7 @@ impl Parser {
             }
         }
         self.scope.leave_scope();
-        Ok(WithPos::new(Stmt::Block { body: stmts }, self.peek()?.pos))
+        Ok(WithPos::new(Stmt::Block { body: stmts }, pos))
     }
 
     /// expr-stmt = expr? ";"
