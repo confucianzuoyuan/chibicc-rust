@@ -22,6 +22,7 @@ mod sema;
 mod symbol;
 mod terminal;
 mod token;
+mod environment;
 
 use clap::Parser as ClapParser;
 

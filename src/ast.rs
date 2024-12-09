@@ -526,6 +526,7 @@ pub struct Obj {
     pub rel: Vec<Relocation>,
     /// alignment
     pub align: i32,
+    pub type_def: Option<Type>,
 }
 
 impl Display for Obj {

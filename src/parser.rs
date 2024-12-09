@@ -5,6 +5,7 @@ use crate::{
         self, BinaryOperator, Expr, ExprInner, FunctionDefinition, InitData, InitDesg, Initializer,
         Obj, Program, Relocation, Stmt, StmtWithPos, UnaryOperator, VarAttr,
     },
+    environment::Scope,
     error::Error::{self, UnexpectedToken},
     position::{Pos, WithPos},
     sema::{self, add_type, align_to, pointer_to, sema_stmt, Ty, Type},
@@ -67,9 +68,7 @@ pub struct Parser<'a> {
     functions: Vec<FunctionDefinition>,
     unique_name_count: i32,
 
-    var_env: Symbols<Rc<RefCell<Obj>>>,
-    struct_union_tag_env: Symbols<Type>,
-    typedef_env: Symbols<Type>,
+    scope: Scope,
 
     // Points to the function object the parser is currently parsing.
     current_fn: Option<FunctionDefinition>,
@@ -84,9 +83,6 @@ pub struct Parser<'a> {
 
 impl<'a> Parser<'a> {
     pub fn new(tokens: Vec<Token>, symbols: &'a mut Symbols<()>, strings: Rc<Strings>) -> Self {
-        let var_env = Symbols::new(Rc::clone(&strings));
-        let struct_union_tag_env = Symbols::new(Rc::clone(&strings));
-        let typedef_env = Symbols::new(Rc::clone(&strings));
         Parser {
             tokens,
             current_pos: 0,
@@ -96,9 +92,7 @@ impl<'a> Parser<'a> {
             functions: Vec::new(),
             unique_name_count: 0,
 
-            var_env,
-            struct_union_tag_env,
-            typedef_env,
+            scope: Scope::new(),
 
             current_fn: None,
 
@@ -109,18 +103,6 @@ impl<'a> Parser<'a> {
             case_stmts: vec![],
             default_case_stmt: None,
         }
-    }
-
-    fn begin_scope(&mut self) {
-        self.var_env.begin_scope();
-        self.struct_union_tag_env.begin_scope();
-        self.typedef_env.begin_scope();
-    }
-
-    fn end_scope(&mut self) {
-        self.typedef_env.end_scope();
-        self.struct_union_tag_env.end_scope();
-        self.var_env.end_scope();
     }
 
     fn new_unique_name(&mut self) -> String {
@@ -759,7 +741,7 @@ impl<'a> Parser<'a> {
                 let pos = eat!(self, KeywordFor);
                 eat!(self, LeftParen);
 
-                self.begin_scope();
+                self.scope.enter_scope();
 
                 let old_break_label = self.break_label.clone();
                 self.break_label = Some(self.new_unique_name());
@@ -791,7 +773,7 @@ impl<'a> Parser<'a> {
 
                 let body = self.stmt()?;
 
-                self.end_scope();
+                self.scope.leave_scope();
 
                 let node = WithPos::new(
                     Stmt::ForStmt {
@@ -1035,8 +1017,7 @@ impl<'a> Parser<'a> {
                                 self.global_var_initializer(var.clone())?;
                             }
 
-                            self.var_env
-                                .enter(self.symbols.symbol(&ty.clone().get_ident().unwrap()), var);
+                            self.scope.enter_var(ty.get_ident().unwrap(), var);
                             continue;
                         }
                     }
@@ -1055,9 +1036,7 @@ impl<'a> Parser<'a> {
                         decls.push(expr_stmt);
                     }
 
-                    if self.typedef_env.look(self.symbols.symbol(&ident)).is_none()
-                        && var.borrow().ty.get_size() < 0
-                    {
+                    if var.borrow().ty.get_size() < 0 {
                         panic!("variable {} has incomplete type", var.borrow());
                     }
                     if var.borrow().ty.is_void() {
@@ -1152,15 +1131,11 @@ impl<'a> Parser<'a> {
             }
             _ => {
                 if let Some(struct_tag) = tag {
-                    let ty = self
-                        .struct_union_tag_env
-                        .look(self.symbols.symbol(&struct_tag));
-                    if let Some(_ty) = ty {
-                        return Ok(_ty.clone());
+                    if let Some(t) = self.scope.find_tag(struct_tag.clone()) {
+                        return Ok(t.clone());
                     } else {
                         let ty = Type::struct_type(tag_token, vec![], -1, 1);
-                        self.struct_union_tag_env
-                            .enter(self.symbols.symbol(&struct_tag), ty.clone());
+                        self.scope.enter_tag(struct_tag, ty.clone());
                         return Ok(ty);
                     }
                 }
@@ -1171,24 +1146,20 @@ impl<'a> Parser<'a> {
         self.struct_members(&mut ty)?;
 
         if let Some(tag) = tag {
-            // Assign offsets within the struct to members.
-            let mut offset = 0;
-            let mut members = ty.get_members().unwrap();
-            for mem in &mut members {
-                offset = align_to(offset, mem.ty.get_align());
-                mem.offset = offset;
-                offset += mem.ty.get_size();
-
-                if ty.get_align() < mem.ty.get_align() {
-                    ty.set_align(mem.ty.get_align());
+            // If this is a redefinition, overwrite a previous type.
+            // Otherwise, register the struct type.
+            if self.scope.find_tag_in_current_scope(tag.clone()).is_some() {
+                self.scope
+                    .replace_tag_in_current_scope(tag.clone(), ty.clone());
+                if let Some(obj) = self.scope.find_var(tag) {
+                    if obj.borrow().type_def.is_some() {
+                        obj.borrow_mut().type_def = Some(ty.clone());
+                    }
                 }
+                return Ok(ty);
             }
 
-            ty.set_size(sema::align_to(offset, ty.get_align()));
-            ty.set_members(members);
-
-            self.struct_union_tag_env
-                .enter(self.symbols.symbol(&tag), ty.clone());
+            self.scope.enter_tag(tag, ty.clone());
         }
 
         return Ok(ty);
@@ -1217,6 +1188,23 @@ impl<'a> Parser<'a> {
 
         ty.set_size(sema::align_to(offset, ty.get_align()));
         ty.set_members(members);
+
+        if let Some(tag) = ty.get_ident() {
+            // If this is a redefinition, overwrite a previous type.
+            // Otherwise, register the struct type.
+            if self.scope.find_tag_in_current_scope(tag.clone()).is_some() {
+                self.scope.replace_tag_in_current_scope(tag.clone(), ty.clone());
+                if let Some(obj) = self.scope.find_var(tag) {
+                    if obj.borrow().type_def.is_some() {
+                        obj.borrow_mut().type_def = Some(ty.clone());
+                    }
+                }
+                eprintln!("======{:?}", ty);
+                return Ok(ty);
+            }
+
+            // self.scope.enter_tag(tag, ty.clone());
+        }
 
         Ok(ty)
     }
@@ -1401,11 +1389,14 @@ impl<'a> Parser<'a> {
                         break;
                     }
                     self.token()?;
-                    if let Some(_ty) = self.typedef_env.look(self.symbols.symbol(&name)) {
-                        ty = _ty.clone();
-                        counter += Counter::OTHER as i32;
-                        continue;
+                    if let Some(obj) = self.scope.find_var(name) {
+                        if let Some(_ty) = obj.borrow().type_def.clone() {
+                            ty = _ty;
+                            counter += Counter::OTHER as i32;
+                            continue;
+                        }
                     }
+                    panic!()
                 }
                 Tok::KeywordVoid => {
                     eat!(self, KeywordVoid);
@@ -1696,8 +1687,12 @@ impl<'a> Parser<'a> {
             | Tok::KeywordNoreturn
             | Tok::KeywordVoid => Ok(true),
             Tok::Ident(name) => {
-                let symbol = self.symbols.symbol(&name);
-                Ok(self.typedef_env.look(symbol).is_some())
+                let obj = self.scope.find_var(name);
+                if let Some(obj) = obj {
+                    return Ok(obj.borrow().type_def.is_some());
+                } else {
+                    return Ok(false);
+                }
             }
             _ => Ok(false),
         }
@@ -1707,7 +1702,7 @@ impl<'a> Parser<'a> {
     fn compound_stmt(&mut self) -> Result<StmtWithPos> {
         let mut stmts = vec![];
 
-        self.begin_scope();
+        self.scope.enter_scope();
         loop {
             match self.peek()?.token {
                 Tok::RightBrace => {
@@ -1717,21 +1712,6 @@ impl<'a> Parser<'a> {
                 _ => {
                     // { typedef int t; t t=1; t t=2; t; }
                     let tok = self.peek()?.token.clone();
-                    match tok.clone() {
-                        Tok::Ident(name) => {
-                            let sym = self.symbols.symbol(&name);
-                            // handle case like `t t=2`;
-                            if self.var_env.look(sym).is_some()
-                                && !self.peek_next_one()?.token.is_ident()
-                            {
-                                let mut stmt = self.stmt()?;
-                                sema_stmt(&mut stmt);
-                                stmts.push(stmt);
-                                continue;
-                            }
-                        }
-                        _ => (),
-                    }
                     if self.is_typename(tok)? && self.peek_next_one()?.token != Colon {
                         let mut attr = Some(VarAttr::new_placeholder());
                         let mut basety = self.declspec(&mut attr)?;
@@ -1765,7 +1745,7 @@ impl<'a> Parser<'a> {
                 }
             }
         }
-        self.end_scope();
+        self.scope.leave_scope();
         Ok(WithPos::new(Stmt::Block { body: stmts }, self.peek()?.pos))
     }
 
@@ -2323,59 +2303,26 @@ impl<'a> Parser<'a> {
         Ok(lhs)
     }
 
-    fn struct_ref(&mut self, node: Expr) -> Result<Expr> {
-        match node.ty.clone().ty {
-            Ty::TyStruct { members, .. } | Ty::TyUnion { members, .. } => {
-                let mem_ident;
-                let pos = eat!(self, Ident, mem_ident);
-                let mut mem_found = None;
-                let name = node.ty.get_ident();
-
-                if name.is_some() {
-                    let name = node.ty.get_ident().unwrap();
-                    let ty = self.struct_union_tag_env.look(self.symbols.symbol(&name));
-
-                    if let Some(ty) = ty {
-                        match ty.clone().ty {
-                            Ty::TyStruct { members, .. } => {
-                                for mem in members {
-                                    match mem.name.token.clone() {
-                                        Tok::Ident(tok_name) => {
-                                            if mem_ident == tok_name {
-                                                mem_found = Some(mem.clone());
-                                                break;
-                                            }
-                                        }
-                                        _ => (),
-                                    }
-                                }
-
-                                let mem_expr = Expr::new_member_expr(node, mem_found.unwrap(), pos);
-                                return Ok(mem_expr);
-                            }
-                            _ => (),
-                        }
-                    }
-                }
-
-                for mem in members {
-                    match mem.name.token.clone() {
-                        Tok::Ident(tok_name) => {
-                            if mem_ident == tok_name {
-                                mem_found = Some(mem.clone());
-                                break;
-                            }
-                        }
-                        _ => (),
-                    }
-                }
-
-                let mut mem_expr = Expr::new_member_expr(node, mem_found.unwrap(), pos);
-                add_type(&mut mem_expr);
-                return Ok(mem_expr);
-            }
-            _ => panic!("must be struct or union type."),
+    fn struct_ref(&mut self, node: &mut Expr, name: String) -> Result<Expr> {
+        add_type(node);
+        if !node.ty.is_struct() && !node.ty.is_union() {
+            panic!("not a struct nor a union.")
         }
+
+        if let Some(member) = node.ty.get_member(name.clone()) {
+            let node = Expr::new_member_expr(node.clone(), member, self.peek()?.pos);
+            return Ok(node);
+        } else if let Some(tk) = &node.ty.name {
+            let struct_name = tk.token.get_ident_name().unwrap();
+            if let Some(t) = &mut self.scope.find_tag(struct_name) {
+                if let Some(member) = t.get_member(name.clone()) {
+                    let node = Expr::new_member_expr(node.clone(), member, self.peek()?.pos);
+                    return Ok(node);
+                }
+            }
+        }
+
+        panic!("{:?} ===> {}", node, name)
     }
 
     /// Convert A++ to `(typeof A)((A += 1) - 1)`
@@ -2415,10 +2362,7 @@ impl<'a> Parser<'a> {
             let mut ty = self.typename()?;
             eat!(self, RightParen);
 
-            if self.var_env.is_parent_empty()
-                && self.typedef_env.is_parent_empty()
-                && self.struct_union_tag_env.is_parent_empty()
-            {
+            if self.scope.is_parent_env_empty() {
                 let unique_name = self.new_unique_name();
                 let var =
                     self.new_global_variable(unique_name, &mut ty, Some(InitData::IntInitData(0)))?;
@@ -2454,15 +2398,20 @@ impl<'a> Parser<'a> {
                 Tok::Dot => {
                     eat!(self, Dot);
                     add_type(&mut node);
-                    node = self.struct_ref(node)?;
+                    let name;
+                    eat!(self, Ident, name);
+                    node = self.struct_ref(&mut node, name)?;
                 }
                 Tok::MinusGreater => {
                     // x->y is short for (*x).y
                     let pos = eat!(self, MinusGreater);
+                    add_type(&mut node);
                     node = Expr::new_deref(node, pos);
-                    add_type(&mut node);
-                    node = self.struct_ref(node)?;
-                    add_type(&mut node);
+                    // add_type(&mut node);
+                    let name;
+                    eat!(self, Ident, name);
+                    node = self.struct_ref(&mut node, name)?;
+                    // add_type(&mut node);
                 }
                 Tok::PlusPlus => {
                     eat!(self, PlusPlus);
@@ -2485,11 +2434,11 @@ impl<'a> Parser<'a> {
 
         if !func.ty.is_func() {
             if !func.ty.is_ptr() {
-                panic!("not a function");
+                panic!("{:?} not a function", func.ty);
             }
             if let Some(base) = func.ty.base() {
                 if !base.is_func() {
-                    panic!("not a function");
+                    panic!("{:?} not a function", func.ty);
                 }
             }
         }
@@ -2674,16 +2623,6 @@ impl<'a> Parser<'a> {
                             eat!(self, LeftParen);
                             let ty = self.typename()?;
                             eat!(self, RightParen);
-                            // 处理以下特殊情况
-                            // `typedef struct T T; struct T { int x; }; sizeof(T);`
-                            if let Some(type_name) = ty.get_ident() {
-                                if let Some(ty) = self
-                                    .struct_union_tag_env
-                                    .look(self.symbols.symbol(&type_name))
-                                {
-                                    return Ok(Expr::new_ulong(ty.get_size() as u64, pos));
-                                }
-                            }
 
                             Ok(Expr::new_ulong(ty.get_size() as u64, pos))
                         }
@@ -2708,7 +2647,7 @@ impl<'a> Parser<'a> {
                 let name;
                 let pos = eat!(self, Ident, name);
                 // variable
-                if let Some(var) = self.var_env.look(self.symbols.symbol(&name)) {
+                if let Some(var) = self.scope.find_var(name.clone()) {
                     let _ty = var.borrow_mut().ty.clone();
                     match _ty.ty {
                         Ty::TyEnum => {
@@ -2832,7 +2771,7 @@ impl<'a> Parser<'a> {
 
         self.locals = Vec::new();
 
-        self.begin_scope();
+        self.scope.enter_scope();
 
         let ident;
         match ty.clone().ty {
@@ -2874,7 +2813,7 @@ impl<'a> Parser<'a> {
                     fndef.goto_labels = self.goto_labels.clone();
                 }
 
-                self.end_scope();
+                self.scope.leave_scope();
 
                 self.functions.push(fndef);
                 self.goto_labels = HashMap::new();
@@ -2910,8 +2849,9 @@ impl<'a> Parser<'a> {
             init_data: None,
             rel: vec![],
             align: ty.get_align(),
+            type_def: None,
         }));
-        self.var_env.enter(self.symbols.symbol(&name), var.clone());
+        self.scope.enter_var(name, var.clone());
         Ok(var)
     }
 
@@ -2990,7 +2930,19 @@ impl<'a> Parser<'a> {
                         panic!("typedef name omitted.");
                     }
                     let ident = ty.get_ident().unwrap();
-                    self.typedef_env.enter(self.symbols.symbol(&ident), ty);
+                    let var = Rc::new(RefCell::new(Obj {
+                        name: Some(ident.clone()),
+                        ty: ty.clone(),
+                        offset: 0,
+                        is_local: false,
+                        is_static: false,
+                        is_definition: false,
+                        init_data: None,
+                        rel: vec![],
+                        align: ty.get_align(),
+                        type_def: Some(ty),
+                    }));
+                    self.scope.enter_var(ident, var);
                 }
             }
         }
@@ -3011,19 +2963,17 @@ impl<'a> Parser<'a> {
         }
 
         if tag.is_some() && self.peek()?.token != LeftBrace {
-            let ty = self.struct_union_tag_env.look(
-                self.symbols
-                    .symbol(&tag.clone().unwrap().token.get_ident_name().unwrap()),
-            );
-            match ty {
-                Some(t) => {
-                    if !t.is_enum() {
-                        panic!();
-                    } else {
-                        return Ok(t.clone());
-                    }
+            if let Some(ty) = self
+                .scope
+                .find_tag(tag.unwrap().token.get_ident_name().unwrap())
+            {
+                if !ty.is_enum() {
+                    panic!("not an enum tag.");
+                } else {
+                    return Ok(ty);
                 }
-                None => panic!(),
+            } else {
+                panic!("unknown enum type.");
             }
         }
 
@@ -3055,17 +3005,15 @@ impl<'a> Parser<'a> {
                 ty: ty.clone(),
                 rel: vec![],
                 align: 0,
+                type_def: None,
             }));
             val += 1;
-            self.var_env.enter(self.symbols.symbol(&name), enum_var);
+            self.scope.enter_var(name, enum_var);
         }
 
-        if tag.is_some() {
-            self.struct_union_tag_env.enter(
-                self.symbols
-                    .symbol(&tag.clone().unwrap().token.get_ident_name().unwrap()),
-                ty.clone(),
-            );
+        if let Some(tag) = tag {
+            self.scope
+                .enter_tag(tag.token.get_ident_name().unwrap(), ty.clone());
         }
         Ok(ty)
     }

@@ -456,6 +456,20 @@ impl Type {
             _ => None,
         }
     }
+
+    pub fn get_member(&mut self, name: String) -> Option<Member> {
+        match &self.ty {
+            Ty::TyStruct { members, .. } | Ty::TyUnion { members, .. } => {
+                for member in members {
+                    if member.name.token.get_ident_name().unwrap() == name {
+                        return Some(member.clone());
+                    }
+                }
+                None
+            }
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

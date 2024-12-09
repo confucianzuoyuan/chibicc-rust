@@ -1,3 +1,9 @@
+typedef struct T T;
+
+struct T {
+    int x;
+};
+
 int main() {
-    return ({ enum t { zero, one, two }; enum t y; sizeof(y); });
+    return sizeof(T);
 }
