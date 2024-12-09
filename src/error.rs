@@ -33,7 +33,7 @@ pub enum Error {
 }
 
 impl Error {
-    pub fn show(&self, symbols: &Symbols<()>, terminal: &Terminal) -> io::Result<()> {
+    pub fn show(&self, symbols: &Symbols, terminal: &Terminal) -> io::Result<()> {
         match *self {
             Error::Msg(ref string) => eprintln!("{}", string),
             Error::UnexpectedToken {
@@ -94,7 +94,7 @@ impl<'a> From<&'a Error> for Error {
     }
 }
 
-fn highlight_line(pos: Pos, symbols: &Symbols<()>, terminal: &Terminal) -> io::Result<()> {
+fn highlight_line(pos: Pos, symbols: &Symbols, terminal: &Terminal) -> io::Result<()> {
     let filename = symbols.name(pos.file);
     let mut file = File::open(filename)?;
     // TODO: support longer lines.

@@ -34,7 +34,7 @@ impl Pos {
         }
     }
 
-    pub fn show(&self, symbols: &Symbols<()>, terminal: &Terminal) {
+    pub fn show(&self, symbols: &Symbols, terminal: &Terminal) {
         let filename = symbols.name(self.file);
         eprintln!(
             "   {}{}-->{}{} {}:{}:{}",

@@ -9,7 +9,6 @@ use crate::{
     error::Error::{self, UnexpectedToken},
     position::{Pos, WithPos},
     sema::{self, add_type, align_to, pointer_to, sema_stmt, Ty, Type},
-    symbol::{Strings, Symbols},
     token::{
         Tok::{self, *},
         Token,
@@ -57,10 +56,9 @@ macro_rules! eat {
 
 pub type Result<T> = result::Result<T, Error>;
 
-pub struct Parser<'a> {
+pub struct Parser {
     tokens: Vec<Token>,
     current_pos: usize,
-    symbols: &'a mut Symbols<()>,
     /// All local variable instances created during parsing are
     /// accumulated to this map
     locals: Vec<Rc<RefCell<Obj>>>,
@@ -81,12 +79,11 @@ pub struct Parser<'a> {
     default_case_stmt: Option<StmtWithPos>,
 }
 
-impl<'a> Parser<'a> {
-    pub fn new(tokens: Vec<Token>, symbols: &'a mut Symbols<()>, strings: Rc<Strings>) -> Self {
+impl Parser {
+    pub fn new(tokens: Vec<Token>) -> Self {
         Parser {
             tokens,
             current_pos: 0,
-            symbols,
             locals: Vec::new(),
             globals: Vec::new(),
             functions: Vec::new(),
@@ -1193,7 +1190,8 @@ impl<'a> Parser<'a> {
             // If this is a redefinition, overwrite a previous type.
             // Otherwise, register the struct type.
             if self.scope.find_tag_in_current_scope(tag.clone()).is_some() {
-                self.scope.replace_tag_in_current_scope(tag.clone(), ty.clone());
+                self.scope
+                    .replace_tag_in_current_scope(tag.clone(), ty.clone());
                 if let Some(obj) = self.scope.find_var(tag) {
                     if obj.borrow().type_def.is_some() {
                         obj.borrow_mut().type_def = Some(ty.clone());

@@ -14,6 +14,7 @@ use terminal::Terminal;
 
 mod ast;
 mod codegen;
+mod environment;
 mod error;
 mod lexer;
 mod parser;
@@ -22,7 +23,6 @@ mod sema;
 mod symbol;
 mod terminal;
 mod token;
-mod environment;
 
 use clap::Parser as ClapParser;
 
@@ -40,7 +40,7 @@ struct Cli {
 fn main() {
     let strings = Rc::new(Strings::new());
     let mut symbols = Symbols::new(Rc::clone(&strings));
-    if let Err(error) = drive(strings, &mut symbols) {
+    if let Err(error) = drive(&mut symbols) {
         let terminal = Terminal::new();
         if let Err(error) = error.show(&symbols, &terminal) {
             eprintln!("Error printing errors: {}", error);
@@ -48,7 +48,7 @@ fn main() {
     }
 }
 
-fn drive(strings: Rc<Strings>, symbols: &mut Symbols<()>) -> Result<(), Error> {
+fn drive(symbols: &mut Symbols) -> Result<(), Error> {
     let cli = Cli::parse();
     let out_writer = match cli.output.as_deref() {
         Some(x) => {
@@ -82,7 +82,7 @@ fn drive(strings: Rc<Strings>, symbols: &mut Symbols<()>) -> Result<(), Error> {
         let file_symbol = symbols.symbol(filename);
         let mut lexer = Lexer::new(file, file_symbol);
         let tokens = lexer.lex()?;
-        let mut parser = Parser::new(tokens, symbols, strings);
+        let mut parser = Parser::new(tokens);
         let mut ast = parser.parse()?;
         // 获取绝对路径
         let abs_path = fs::canonicalize(filename);

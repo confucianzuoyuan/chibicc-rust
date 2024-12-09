@@ -20,18 +20,16 @@ impl Strings {
 }
 
 #[derive(Debug)]
-pub struct Symbols<T> {
+pub struct Symbols {
     stack: Vec<Vec<Symbol>>,
     strings: Rc<Strings>,
-    table: HashMap<Symbol, Vec<T>>,
 }
 
-impl<T> Symbols<T> {
+impl Symbols {
     pub fn new(strings: Rc<Strings>) -> Self {
         let mut symbols = Self {
             stack: vec![],
             strings,
-            table: HashMap::new(),
         };
         symbols.begin_scope();
         symbols
