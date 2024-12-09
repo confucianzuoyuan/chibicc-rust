@@ -69,14 +69,7 @@ impl Scope {
 
     pub fn enter_tag(&mut self, name: String, ty: Type) {
         if let Some(sc) = self.tags.first_mut() {
-            if sc.get(&name).is_some() {
-                self.enter_scope();
-                if let Some(sc) = self.tags.first_mut() {
-                    sc.insert(name, ty);
-                }
-            } else {
-                sc.insert(name, ty);
-            }
+            sc.insert(name, ty);
         } else {
             // self.tags.insert(0, HashMap::new());
             self.enter_scope();
@@ -88,14 +81,7 @@ impl Scope {
 
     pub fn enter_var(&mut self, name: String, var: Rc<RefCell<Obj>>) {
         if let Some(sc) = self.vars.first_mut() {
-            if sc.get(&name).is_some() {
-                self.enter_scope();
-                if let Some(sc) = self.vars.first_mut() {
-                    sc.insert(name, var);
-                }
-            } else {
-                sc.insert(name, var);
-            }
+            sc.insert(name, var);
         } else {
             // self.vars.insert(0, HashMap::new());
             self.enter_scope();

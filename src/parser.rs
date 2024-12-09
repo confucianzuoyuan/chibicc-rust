@@ -1199,7 +1199,6 @@ impl<'a> Parser<'a> {
                         obj.borrow_mut().type_def = Some(ty.clone());
                     }
                 }
-                eprintln!("======{:?}", ty);
                 return Ok(ty);
             }
 
