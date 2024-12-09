@@ -1199,8 +1199,6 @@ impl Parser {
                 }
                 return Ok(ty);
             }
-
-            // self.scope.enter_tag(tag, ty.clone());
         }
 
         Ok(ty)
