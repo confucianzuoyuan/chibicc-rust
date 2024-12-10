@@ -406,12 +406,10 @@ impl Parser {
         self.initializer2(&mut init)?;
 
         if (ty.is_struct() || ty.is_union()) && ty.is_flexible() {
-            let _ty = &mut ty.clone();
-            let len = _ty.get_members().len();
-            _ty.set_last_member_type(init.get_child(len as i32 - 1).ty.clone());
-            _ty.set_size(_ty.get_size() + init.get_child(len as i32 - 1).ty.clone().get_size());
+            let len = ty.get_members().len();
+            ty.set_last_member_type(init.get_child(len as i32 - 1).ty.clone());
+            ty.set_size(ty.get_size() + init.get_child(len as i32 - 1).ty.clone().get_size());
 
-            *ty = _ty.clone();
             return Ok(init);
         }
 
@@ -2210,6 +2208,7 @@ impl Parser {
 
                     // compound literal
                     if self.peek()?.token == LeftBrace {
+                        // 回溯
                         self.current_pos = old_pos;
                         return self.unary();
                     }
@@ -2239,7 +2238,6 @@ impl Parser {
                 // num * 8
                 let num = Expr::new_long(base.get_size() as i64, pos);
                 rhs = Expr::new_binary(BinaryOperator::Mul, rhs, num, pos);
-                add_type(&mut rhs);
                 lhs = Expr::new_binary(BinaryOperator::Sub, lhs, rhs, pos);
             }
             // ptr - ptr, which returns how many elements are between the two.
@@ -2335,10 +2333,8 @@ impl Parser {
         // A += 1
         // A + 1
         let a_plus_one = self.new_add(node.clone(), positive_one, pos)?;
-        // add_type(&mut a_plus_one);
         // A = A + 1
         let a = self.to_assign(a_plus_one)?;
-        // add_type(&mut a);
         let mut e = self.new_add(a, negative_one, pos)?;
         add_type(&mut e);
 
@@ -2364,14 +2360,12 @@ impl Parser {
                 let var =
                     self.new_global_variable(unique_name, &mut ty, Some(InitData::IntInitData(0)))?;
                 self.global_var_initializer(var.clone())?;
-                let mut node = Expr::new_var(var, pos);
-                add_type(&mut node);
+                let node = Expr::new_var(var, pos);
                 return Ok(node);
             }
 
             let var = self.new_local_variable("".to_string(), &mut ty)?;
-            let mut lhs = self.local_var_initializer(var.clone())?;
-            add_type(&mut lhs);
+            let lhs = self.local_var_initializer(var.clone())?;
             let mut rhs = Expr::new_var(var, pos);
             add_type(&mut rhs);
             return Ok(Expr::new_comma(lhs, rhs, pos));
@@ -2404,11 +2398,9 @@ impl Parser {
                     let pos = eat!(self, MinusGreater);
                     add_type(&mut node);
                     node = Expr::new_deref(node, pos);
-                    // add_type(&mut node);
                     let name;
                     eat!(self, Ident, name);
                     node = self.struct_ref(&mut node, name)?;
-                    // add_type(&mut node);
                 }
                 Tok::PlusPlus => {
                     eat!(self, PlusPlus);
