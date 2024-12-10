@@ -2605,23 +2605,15 @@ impl Parser {
             }
             Tok::KeywordSizeof => {
                 let pos = eat!(self, KeywordSizeof);
+                let next_tok = self.peek_next_one()?.token.clone();
+                let next_tok_is_typename = self.is_typename(next_tok)?;
                 match self.peek()?.token {
-                    Tok::LeftParen => {
-                        let tok = self.peek_next_one()?.token.clone();
-                        if self.is_typename(tok.clone())? {
-                            eat!(self, LeftParen);
-                            let ty = self.typename()?;
-                            eat!(self, RightParen);
+                    Tok::LeftParen if next_tok_is_typename => {
+                        eat!(self, LeftParen);
+                        let ty = self.typename()?;
+                        eat!(self, RightParen);
 
-                            Ok(Expr::new_ulong(ty.get_size() as u64, pos))
-                        }
-                        // sizeof(x)
-                        else {
-                            let mut node = self.unary()?;
-                            add_type(&mut node);
-                            node = Expr::new_ulong(node.ty.get_size() as u64, pos);
-                            Ok(node)
-                        }
+                        Ok(Expr::new_ulong(ty.get_size() as u64, pos))
                     }
                     // sizeof x
                     _ => {
