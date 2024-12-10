@@ -2662,8 +2662,7 @@ impl Parser {
                     &mut var_type,
                     Some(InitData::StringInitData(string)),
                 )?;
-                let mut node = Expr::new_var(var.clone(), pos);
-                add_type(&mut node);
+                let node = Expr::new_var(var.clone(), pos);
                 return Ok(node);
             }
             Tok::KeywordAlignof => {
