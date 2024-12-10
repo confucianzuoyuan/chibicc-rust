@@ -148,8 +148,8 @@ impl Parser {
 
         if ty.is_struct() {
             let mut i = 0;
-            let len = ty.get_members().unwrap().len();
-            for mem in ty.get_members().unwrap() {
+            let len = ty.get_members().len();
+            for mem in ty.get_members() {
                 i += 1;
                 if is_flexible && ty.is_flexible() && i == len {
                     let child = Initializer::new(mem.ty, true);
@@ -164,8 +164,8 @@ impl Parser {
 
         if ty.is_union() {
             let mut i = 0;
-            let len = ty.get_members().unwrap().len();
-            for mem in ty.get_members().unwrap() {
+            let len = ty.get_members().len();
+            for mem in ty.get_members() {
                 i += 1;
                 if is_flexible && ty.is_flexible() && i == len {
                     let child = Initializer::new(mem.ty, true);
@@ -312,7 +312,7 @@ impl Parser {
     /// struct-initializer2 = initializer ("," initializer)*
     fn struct_initializer2(&mut self, init: &mut Initializer) -> Result<()> {
         let mut i = 0;
-        while i < init.ty.get_members().unwrap().len() && !self.is_end()? {
+        while i < init.ty.get_members().len() && !self.is_end()? {
             if i > 0 {
                 eat!(self, Comma);
             }
@@ -407,7 +407,7 @@ impl Parser {
 
         if (ty.is_struct() || ty.is_union()) && ty.is_flexible() {
             let _ty = &mut ty.clone();
-            let len = _ty.get_members().unwrap().len();
+            let len = _ty.get_members().len();
             _ty.set_last_member_type(init.get_child(len as i32 - 1).ty.clone());
             _ty.set_size(_ty.get_size() + init.get_child(len as i32 - 1).ty.clone().get_size());
 
@@ -470,7 +470,7 @@ impl Parser {
         if ty.is_struct() && init.expr.is_none() {
             let mut node = Expr::new_null_expr(self.peek()?.pos);
             let mut i = 0;
-            for mem in ty.get_members().unwrap() {
+            for mem in ty.get_members() {
                 let mut desg2 = InitDesg {
                     next: Some(Box::new(desg.clone())),
                     idx: 0,
@@ -487,7 +487,7 @@ impl Parser {
         }
 
         if ty.is_union() {
-            let member = ty.get_members().unwrap().get(0).unwrap().clone();
+            let member = ty.get_members().get(0).unwrap().clone();
             let mut desg2 = InitDesg {
                 next: Some(Box::new(desg.clone())),
                 idx: 0,
@@ -580,7 +580,7 @@ impl Parser {
         if ty.is_struct() {
             let mut i = 0;
             let mut rels = vec![];
-            for mem in &mut ty.get_members().unwrap() {
+            for mem in &mut ty.get_members() {
                 let mut rel = self.write_global_var_data(
                     init.get_child(i),
                     &mut mem.ty,
@@ -596,7 +596,7 @@ impl Parser {
         if ty.is_union() {
             return self.write_global_var_data(
                 init.get_child(0),
-                &mut ty.get_members().unwrap().get(0).unwrap().ty.clone(),
+                &mut ty.get_members().get(0).unwrap().ty.clone(),
                 buf,
                 offset,
             );
@@ -1173,7 +1173,7 @@ impl Parser {
 
         // Assign offsets within the struct to members.
         let mut offset = 0;
-        let mut members = ty.get_members().unwrap();
+        let mut members = ty.get_members();
         for mem in &mut members {
             offset = align_to(offset, mem.align);
             mem.offset = offset;
@@ -1216,7 +1216,7 @@ impl Parser {
         // If union, we don't have to assign offsets because they
         // are already initialized to zero. We need to compute the
         // alignment and the size though.
-        let mut members = ty.get_members().unwrap();
+        let mut members = ty.get_members();
         for mem in &mut members {
             if ty.get_align() < mem.align {
                 ty.set_align(mem.align);

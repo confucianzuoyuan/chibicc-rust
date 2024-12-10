@@ -450,10 +450,10 @@ impl Type {
         }
     }
 
-    pub fn get_members(&mut self) -> Option<Vec<Member>> {
+    pub fn get_members(&mut self) -> Vec<Member> {
         match &self.ty {
-            Ty::TyStruct { members, .. } | Ty::TyUnion { members, .. } => Some(members.clone()),
-            _ => None,
+            Ty::TyStruct { members, .. } | Ty::TyUnion { members, .. } => members.clone(),
+            _ => vec![],
         }
     }
 
